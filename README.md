@@ -21,5 +21,5 @@ git commit -m "Track .csv files with Git LFS"
 To set up the SQLite database with the required tables, run the following script:
 
 ```sh
-python setup-database.py
+python src/setup-database.py
 ```

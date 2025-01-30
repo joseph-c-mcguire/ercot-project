@@ -15,3 +15,11 @@ Remember to commit the changes to the .gitattributes file:
 git add .gitattributes
 git commit -m "Track .csv files with Git LFS"
 ```
+
+## Setting up the SQLite Database
+
+To set up the SQLite database with the required tables, run the following script:
+
+```sh
+python src/setup-database.py
+```

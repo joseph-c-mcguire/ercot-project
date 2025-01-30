@@ -9,4 +9,16 @@ dependencies = [
     "pandas",
     "requests",
     "logging",
+    "python-dotenv",
 ]
+
+[project.scripts]
+fetch_prices = "src.run:main"  # Updated to use run.py
+
+[project.optional-dependencies]
+test = [
+    "pytest>=6.2.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

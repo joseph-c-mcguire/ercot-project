@@ -1,0 +1,114 @@
+"""This module provides functionality to fetch settlement point prices from the ERCOT API
+and store them into a SQLite database.
+Functions:
+    fetch_settlement_point_prices(start_date=None, end_date=None):
+        Fetches settlement point prices from the ERCOT API and returns the JSON response.
+    store_prices_to_db(data, db_name='ercot.db'):
+        Stores settlement point prices data into a SQLite database.
+Environment Variables:
+    ERCOT_API_URL: The URL of the ERCOT API.
+    ERCOT_API_KEY: The subscription key for accessing the ERCOT API.
+"""
+
+import requests
+import sqlite3
+from dotenv import load_dotenv
+import os
+from initialize_database_tables import initialize_database_tables
+
+load_dotenv()
+
+API_URL = os.getenv("ERCOT_API_URL")
+API_KEY = os.getenv("ERCOT_API_PRIMARY_KEY")
+
+
+def fetch_settlement_point_prices(start_date=None, end_date=None):
+    """
+    Fetches settlement point prices from the ERCOT API.
+
+    This function sends a GET request to the ERCOT API using the provided
+    subscription key and returns the JSON response containing the settlement
+    point prices.
+
+    Args:
+        start_date (str): The start date for fetching data in YYYY-MM-DD format.
+        end_date (str): The end date for fetching data in YYYY-MM-DD format.
+
+    Returns:
+        dict: A dictionary containing the settlement point prices.
+
+    Raises:
+        requests.exceptions.HTTPError: If the HTTP request returned an unsuccessful status code.
+    """
+    headers = {"Ocp-Apim-Subscription-Key": API_KEY}
+    params = {}
+    if start_date:
+        params["deliveryDateFrom"] = start_date
+    if end_date:
+        params["deliveryDateTo"] = end_date
+
+    response = requests.get(API_URL, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+def store_prices_to_db(data, db_name="ercot.db"):
+    """
+    Stores settlement point prices data into a SQLite database.
+
+    This function connects to a SQLite database and creates a table
+    named 'settlement_point_prices' if it does not already exist. It then inserts
+    records from the provided data into this table.
+
+    Args:
+        data (dict): A dictionary containing the settlement point prices data. The dictionary
+                     should have a key "data" which maps to a list of records. Each record should
+                     be a dictionary with keys "DeliveryDate", "DeliveryHour", "DeliveryInterval",
+                     "SettlementPointName", "SettlementPointType", "SettlementPointPrice", and "DSTFlag".
+        db_name (str): The name of the SQLite database file.
+
+    Example:
+        data = {
+            "data": [
+                {"DeliveryDate": "2023-10-01", "DeliveryHour": 1, "DeliveryInterval": 15,
+                 "SettlementPointName": "ABC", "SettlementPointType": "Type1",
+                 "SettlementPointPrice": 25.5, "DSTFlag": "N"},
+                {"DeliveryDate": "2023-10-01", "DeliveryHour": 2, "DeliveryInterval": 30,
+                 "SettlementPointName": "XYZ", "SettlementPointType": "Type2",
+                 "SettlementPointPrice": 30.0, "DSTFlag": "N"}
+            ]
+        }
+        store_prices_to_db(data)
+    """
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+
+    # Check if the table exists
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='SETTLEMENT_POINT_PRICES'"
+    )
+    table_exists = cursor.fetchone()
+
+    if not table_exists:
+        initialize_database_tables(db_name)
+
+    for record in data["data"]:
+        cursor.execute(
+            """
+            INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,
+                                                 SettlementPointName, SettlementPointType,
+                                                 SettlementPointPrice, DSTFlag)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                record["DeliveryDate"],
+                record["DeliveryHour"],
+                record["DeliveryInterval"],
+                record["SettlementPointName"],
+                record["SettlementPointType"],
+                record["SettlementPointPrice"],
+                record["DSTFlag"],
+            ),
+        )
+    conn.commit()
+    conn.close()

@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import json
+import sqlite3
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -49,6 +50,10 @@ params = {
     "endDate": end_date_str,
 }
 
+# Connect to SQLite database
+conn = sqlite3.connect("ercot_data.db")
+cursor = conn.cursor()
+
 # Make the API request with error handling
 try:
     logging.info(
@@ -73,6 +78,10 @@ try:
     df.to_csv(output_file, index=False)
     logging.info(f"Data successfully saved to {output_file}")
 
+    # Insert data into the database
+    df.to_sql("SETTLEMENT_POINT_PRICES", conn, if_exists="append", index=False)
+    logging.info(f"Data successfully inserted into the database")
+
 except requests.exceptions.RequestException as e:
     logging.error(f"Request failed: {str(e)}")
     if hasattr(e, "response") and e.response is not None:
@@ -83,3 +92,7 @@ except json.JSONDecodeError as e:
     logging.error(f"Failed to parse JSON response: {str(e)}")
 except Exception as e:
     logging.error(f"Unexpected error: {str(e)}")
+
+finally:
+    # Close the database connection
+    conn.close()

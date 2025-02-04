@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ercot-project"
+name = "ercot_scraping"
 version = "0.1.0"
 dependencies = [
     "pandas",
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-fetch_prices = "src.run:main"  # Updated to use run.py
+fetch_prices = "ercot_scraping.run:main"
 
 [project.optional-dependencies]
 test = [

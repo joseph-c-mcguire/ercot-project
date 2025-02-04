@@ -2,7 +2,7 @@ import os
 import sqlite3
 import pytest
 
-from src.initialize_database_tables import (
+from ercot_scraping.initialize_database_tables import (
     initialize_database_tables,
 )  # Adjust the import as needed
 

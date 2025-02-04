@@ -2,12 +2,12 @@ import pytest
 import sqlite3
 import os
 from unittest.mock import patch
-from src.ercot_api import fetch_settlement_point_prices, store_prices_to_db
+from ercot_scraping.ercot_api import fetch_settlement_point_prices, store_prices_to_db
 
 TEST_DB = "test_ercot.db"
 
 
-@patch("src.ercot_api.requests.get")
+@patch("ercot_scraping.ercot_api.requests.get")
 def test_fetch_settlement_point_prices(mock_get):
     mock_response = {
         "data": [

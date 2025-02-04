@@ -7,7 +7,7 @@ Functions:
         Stores settlement point prices data into a SQLite database.
 Environment Variables:
     ERCOT_API_URL: The URL of the ERCOT API.
-    ERCOT_API_KEY: The subscription key for accessing the ERCOT API.
+    ERCOT_API_PRIMARY_KEY: The primary subscription key for accessing the ERCOT API.
 """
 
 import requests
@@ -18,11 +18,16 @@ from initialize_database_tables import initialize_database_tables
 
 load_dotenv()
 
-API_URL = os.getenv("ERCOT_API_URL")
-API_KEY = os.getenv("ERCOT_API_PRIMARY_KEY")
+ERCOT_API_BASE_URL = os.getenv("ERCOT_API_BASE_URL")
+ERCOT_API_SUBSCRIPTION_KEY = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
+REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY}
 
 
-def fetch_settlement_point_prices(start_date=None, end_date=None):
+def fetch_settlement_point_prices(
+    ercot_api_url: str = ERCOT_API_BASE_URL,
+    start_date: str = None,
+    end_date: str = None,
+):
     """
     Fetches settlement point prices from the ERCOT API.
 
@@ -31,6 +36,7 @@ def fetch_settlement_point_prices(start_date=None, end_date=None):
     point prices.
 
     Args:
+        ercot_api_url (str): The URL of the ERCOT API.
         start_date (str): The start date for fetching data in YYYY-MM-DD format.
         end_date (str): The end date for fetching data in YYYY-MM-DD format.
 
@@ -40,19 +46,18 @@ def fetch_settlement_point_prices(start_date=None, end_date=None):
     Raises:
         requests.exceptions.HTTPError: If the HTTP request returned an unsuccessful status code.
     """
-    headers = {"Ocp-Apim-Subscription-Key": API_KEY}
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
 
-    response = requests.get(API_URL, headers=headers, params=params)
+    response = requests.get(ercot_api_url, headers=REQUEST_HEADERS, params=params)
     response.raise_for_status()
     return response.json()
 
 
-def store_prices_to_db(data, db_name="ercot.db"):
+def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db"):
     """
     Stores settlement point prices data into a SQLite database.
 

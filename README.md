@@ -1,4 +1,4 @@
-# ercot-project
+# ercot_scraping
 
 ## Setting up Git LFS
 
@@ -32,12 +32,12 @@ To fetch settlement point prices from the ERCOT API and store them in the SQLite
 2. Add your ERCOT API key and URL to the `.env` file:
 
 ```env
-ERCOT_API_KEY=your_api_key_here
+ERCOT_API_PRIMARY_KEY=your_api_key_here
 ERCOT_API_URL=https://api.ercot.com/api/public-reports/np6-905-cd/spp_node_zone_hub
 ```
 
 Then, run the following script:
 
 ```sh
-python src/ercot_api.py
+python -m ercot_scraping
 ```

@@ -172,3 +172,5 @@ cython_debug/
 
 # VSCode
 .vscode/
+
+*.egg-info/

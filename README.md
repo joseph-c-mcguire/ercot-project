@@ -32,9 +32,11 @@ To fetch settlement point prices from the ERCOT API and store them in the SQLite
 2. Add your ERCOT API key and URL to the `.env` file:
 
 ```env
-ERCOT_API_PRIMARY_KEY=your_api_key_here
-ERCOT_API_URL=https://api.ercot.com/api/public-reports/np6-905-cd/spp_node_zone_hub
+ERCOT_API_SUBSCRIPTION_KEY=your_api_key_here
+ERCOT_API_BASE_URL=https://api.ercot.com/api/public-reports/np6-905-cd/spp_node_zone_hub
 ```
+
+Ensure that the API key is valid and has the necessary permissions.
 
 Then, run the following script:
 

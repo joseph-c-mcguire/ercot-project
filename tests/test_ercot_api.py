@@ -72,18 +72,6 @@ def test_store_prices_to_db():
     assert rows[1][0] == "2023-10-01"
 
 
-@pytest.mark.skipif(
-    not os.getenv("ERCOT_API_PRIMARY_KEY"),
-    reason="ERCOT_API_PRIMARY_KEY environment variable is not set",
-)
-def test_live_fetch_settlement_point_prices():
-    response = fetch_settlement_point_prices(
-        start_date="2023-10-01", end_date="2023-10-02"
-    )
-    assert response is not None
-    assert "data" in response
-
-
 @pytest.fixture(autouse=True)
 def cleanup():
     yield

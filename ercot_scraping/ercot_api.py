@@ -7,9 +7,11 @@ Functions:
         Stores settlement point prices data into a SQLite database.
 Environment Variables:
     ERCOT_API_URL: The URL of the ERCOT API.
-    ERCOT_API_PRIMARY_KEY: The primary subscription key for accessing the ERCOT API.
+    ERCOT_API_SUBSCRIPTION_KEY: The primary subscription key for accessing the ERCOT API.
+    REQUEST_HEADERS: The headers to be used in the API request.
 """
 
+from typing import Optional
 import requests
 import sqlite3
 from dotenv import load_dotenv
@@ -20,13 +22,14 @@ load_dotenv()
 
 ERCOT_API_BASE_URL = os.getenv("ERCOT_API_BASE_URL")
 ERCOT_API_SUBSCRIPTION_KEY = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
-REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY}
+ERCOT_API_REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY}
 
 
 def fetch_settlement_point_prices(
-    ercot_api_url: str = ERCOT_API_BASE_URL,
-    start_date: str = None,
-    end_date: str = None,
+    ercot_api_url: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
 ):
     """
     Fetches settlement point prices from the ERCOT API.
@@ -39,20 +42,32 @@ def fetch_settlement_point_prices(
         ercot_api_url (str): The URL of the ERCOT API.
         start_date (str): The start date for fetching data in YYYY-MM-DD format.
         end_date (str): The end date for fetching data in YYYY-MM-DD format.
-
+        header (dict): The headers to be used in the API request.
     Returns:
         dict: A dictionary containing the settlement point prices.
 
     Raises:
         requests.exceptions.HTTPError: If the HTTP request returned an unsuccessful status code.
     """
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    if ercot_api_url is None:
+        ercot_api_url = ERCOT_API_BASE_URL
+    if not ERCOT_API_SUBSCRIPTION_KEY:
+        raise ValueError(
+            "ERCOT_API_SUBSCRIPTION_KEY is not set. Please set it in the .env file."
+        )
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
 
-    response = requests.get(ercot_api_url, headers=REQUEST_HEADERS, params=params)
+    response = requests.get(url=ercot_api_url, headers=header, params=params)
+    if response.status_code == 401:
+        raise requests.exceptions.HTTPError(
+            "Unauthorized: Check your ERCOT_API_SUBSCRIPTION_KEY."
+        )
     response.raise_for_status()
     return response.json()
 

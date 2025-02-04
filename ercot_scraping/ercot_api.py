@@ -16,7 +16,8 @@ import requests
 import sqlite3
 from dotenv import load_dotenv
 import os
-from initialize_database_tables import initialize_database_tables
+
+from ercot_scraping.initialize_database_tables import initialize_database_tables
 
 load_dotenv()
 

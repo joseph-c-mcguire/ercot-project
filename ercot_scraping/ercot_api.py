@@ -115,7 +115,6 @@ def fetch_data_from_endpoint(
     """
     Fetch data from a specified API endpoint with optional date filtering.
     Constructs the URL using the given base URL and endpoint, and sends an HTTP GET request to the API.
-    If custom headers are not provided, the default ERCOT_API_REQUEST_HEADERS are used.
     Optional start and end dates can be specified to filter the API results by delivery dates.
     Args:
         base_url (str): The base URL of the API.
@@ -128,16 +127,22 @@ def fetch_data_from_endpoint(
     Raises:
         HTTPError: If an error occurs during the HTTP request (non-successful status code).
     """
-    if header is None:
-        header = ERCOT_API_REQUEST_HEADERS
-    url = f"{base_url}/{endpoint}"
+    header = {}
+
+    id_token = os.getenv("ERCOT_ID_TOKEN")
+    if id_token:
+        header["Authorization"] = f"Bearer {id_token}"
+
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
 
-    logger.info(f"Fetching data from endpoint: {url} with params: {params}")
+    url = f"{base_url}/{endpoint}"
+    logger.info(
+        f"Fetching data from endpoint: {url} with params: {params} and headers: {header}"
+    )
     response = requests.get(url=url, headers=header, params=params)
     try:
         response.raise_for_status()

@@ -18,7 +18,6 @@ from ercot_scraping.ercot_api import (
 
 TEST_DB = "test_ercot.db"
 LOG_FILE = "test_ercot_api.log"
-
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE, filemode="w")
 logger = logging.getLogger(__name__)
@@ -196,9 +195,8 @@ def test_fetch_data_from_endpoint_http_error(mock_get):
 
 
 def test_dam_base_url():
-    subscription_key = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
-    logger.debug(f"ERCOT_API_SUBSCRIPTION_KEY: {subscription_key}")
-    headers = {"Ocp-Apim-Subscription-Key": subscription_key}
+    id_token = os.getenv("ERCOT_ID_TOKEN")
+    headers = {"Authorization": f"Bearer {id_token}"}
     response = requests.get(ERCOT_API_BASE_URL_DAM, headers=headers)
     logger.info(f"Response status code for DAM base URL: {response.status_code}")
     logger.info(f"Response text for DAM base URL: {response.text}")
@@ -206,9 +204,8 @@ def test_dam_base_url():
 
 
 def test_settlement_base_url():
-    subscription_key = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
-    logger.debug(f"ERCOT_API_SUBSCRIPTION_KEY: {subscription_key}")
-    headers = {"Ocp-Apim-Subscription-Key": subscription_key}
+    id_token = os.getenv("ERCOT_ID_TOKEN")
+    headers = {"Authorization": f"Bearer {id_token}"}
     response = requests.get(ERCOT_API_BASE_URL_SETTLEMENT, headers=headers)
     logger.info(f"Response status code for Settlement base URL: {response.status_code}")
     logger.info(f"Response text for Settlement base URL: {response.text}")
@@ -216,11 +213,11 @@ def test_settlement_base_url():
 
 
 def test_subscription_key_validity():
-    subscription_key = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
-    logger.debug(f"ERCOT_API_SUBSCRIPTION_KEY: {subscription_key}")
-    headers = {"Ocp-Apim-Subscription-Key": subscription_key}
+    id_token = os.getenv("ERCOT_ID_TOKEN")
+    headers = {"Authorization": f"Bearer {id_token}"}
     response = requests.get(
-        f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub", headers=headers
+        f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub",
+        headers=headers,
     )
     logger.info(
         f"Response status code for subscription key validity: {response.status_code}"

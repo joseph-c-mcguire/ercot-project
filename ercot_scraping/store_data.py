@@ -54,6 +54,28 @@ def store_data_to_db(
     insert_query: str,
     model_class: type,
 ) -> None:
+    """
+    Stores data into the specified SQLite database and table.
+
+    This function connects to the provided SQLite database, checks if the target table exists,
+    and initializes it if missing. It then iterates over the records in the provided data dictionary,
+    instantiates objects of the given model_class using record parameters, and executes the insert query
+    to save the data. Finally, the changes are committed and the connection is closed.
+
+    Parameters:
+        data (dict[str, any]): A dictionary containing the data to be stored. It is expected to have a key "data"
+                               which maps to an iterable of record dictionaries.
+        db_name (str): The name (or path) of the SQLite database file.
+        table_name (str): The name of the table where data should be stored.
+        insert_query (str): The SQL INSERT query to add data into the table.
+        model_class (type): The class used to instantiate each record. The class must support initialization with
+                            the record's dictionary keys and must provide an as_tuple() method to return the data
+                            in tuple format compatible with the insert query.
+
+    Raises:
+        ValueError: If the data provided cannot be used to instantiate an instance of model_class due to a TypeError,
+                    indicating invalid or missing data fields.
+    """
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
     # Check if the table exists; initialize if not
@@ -74,6 +96,21 @@ def store_data_to_db(
 
 # Delegation functions for different models using local constants:
 def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+    """
+    Stores settlement point prices data into the database by utilizing the generic
+    store_data_to_db function.
+
+    This function wraps the store_data_to_db call, targeting the "SETTLEMENT_POINT_PRICES"
+    table with the pre-defined insert query and model. It accepts the data to be stored,
+    along with an optional database name.
+
+    Parameters:
+        data (dict[str, any]): A dictionary containing the settlement point price data.
+        db_name (str, optional): The name of the database file. Defaults to "ercot.db".
+
+    Returns:
+        None
+    """
     store_data_to_db(
         data,
         db_name,
@@ -84,6 +121,21 @@ def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
 
 
 def store_bid_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+    """
+    Store bid award data into the specified database.
+
+    This function acts as a thin wrapper around the lower-level function `store_data_to_db`
+    to persist bid awards data into a database table named "BID_AWARDS". The function uses a
+    predefined SQL insert query `BID_AWARDS_INSERT_QUERY` and a data model `BidAward` to perform
+    the insertion.
+
+    Parameters:
+        data (dict[str, any]): A dictionary containing the bid awards data to be stored.
+        db_name (str, optional): Name of the database file. Defaults to "ercot.db".
+
+    Returns:
+        None
+    """
     store_data_to_db(
         data,
         db_name,
@@ -94,6 +146,21 @@ def store_bid_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") -> N
 
 
 def store_bids_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+    """
+    Stores bid data into the database by delegating to the generic data storage function.
+
+    This function takes a dictionary containing bid data and inserts it into the "BIDS"
+    table in the specified SQLite database. It wraps the call to a lower-level function
+    that performs the actual database insertion logic based on the provided SQL query
+    (BIDS_INSERT_QUERY) and the Bid model.
+
+    Parameters:
+        data (dict[str, any]): A dictionary containing the bid data to be stored.
+        db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
+
+    Returns:
+        None
+    """
     store_data_to_db(
         data,
         db_name,
@@ -104,6 +171,22 @@ def store_bids_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
 
 
 def store_offers_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+    """
+    Stores offer data into the database.
+
+    This function abstracts the process of inserting offer-related data into the specified
+    database by calling the underlying helper function 'store_data_to_db'. The data is stored
+    in the 'OFFERS' table using a pre-defined SQL insert query and the corresponding ORM model.
+
+    Parameters:
+        data (dict[str, any]): A dictionary containing the offer data to be stored. The structure
+                               of the dictionary should align with the expected schema for
+                               the 'OFFERS' table.
+        db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
+
+    Returns:
+        None: This function does not return a value.
+    """
     store_data_to_db(
         data,
         db_name,
@@ -114,6 +197,19 @@ def store_offers_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
 
 
 def store_offer_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+    """
+    Stores offer awards data to the specified database by calling the underlying store_data_to_db function.
+
+    This function takes a dictionary containing offer awards information and saves it into the "OFFER_AWARDS" table of the provided database.
+    It utilizes the pre-defined OFFER_AWARDS_INSERT_QUERY and the OfferAward model to structure and insert the data.
+
+    Parameters:
+        data (dict[str, any]): A dictionary with keys as strings and values of any type, containing the offer awards data.
+        db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
+
+    Returns:
+        None
+    """
     store_data_to_db(
         data,
         db_name,
@@ -121,6 +217,3 @@ def store_offer_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") ->
         OFFER_AWARDS_INSERT_QUERY,
         OfferAward,
     )
-
-
-# ...existing code...

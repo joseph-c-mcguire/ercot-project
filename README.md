@@ -43,3 +43,28 @@ Then, run the following script:
 ```sh
 python -m ercot_scraping
 ```
+
+## Fetching Data from New Endpoints
+
+To fetch data from the new ERCOT API endpoints, you can use the following functions:
+
+- `fetch_dam_energy_bid_awards(start_date, end_date)`
+- `fetch_dam_energy_bids(start_date, end_date)`
+- `fetch_dam_energy_only_offer_awards(start_date, end_date)`
+- `fetch_dam_energy_only_offers(start_date, end_date)`
+
+Example usage:
+
+```python
+from ercot_scraping.ercot_api import (
+    fetch_dam_energy_bid_awards,
+    fetch_dam_energy_bids,
+    fetch_dam_energy_only_offer_awards,
+    fetch_dam_energy_only_offers,
+)
+
+data_bid_awards = fetch_dam_energy_bid_awards(start_date="2023-10-01", end_date="2023-10-02")
+data_bids = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02")
+data_offer_awards = fetch_dam_energy_only_offer_awards(start_date="2023-10-01", end_date="2023-10-02")
+data_offers = fetch_dam_energy_only_offers(start_date="2023-10-01", end_date="2023-10-02")
+```

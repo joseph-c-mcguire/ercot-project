@@ -1,4 +1,5 @@
 import logging
+import requests
 from datetime import datetime, timedelta
 from typing import Optional, Set
 from pathlib import Path
@@ -235,6 +236,13 @@ def main():
 
         elif args.command == "update-spp":
             update_daily_spp_data(db_name=args.db)
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            logger.error(f"API endpoint not found: {e.response.url}")
+        else:
+            logger.error(f"HTTP error occurred: {str(e)}")
+        raise
 
     except Exception as e:
         logger.error(f"Error executing command: {str(e)}")

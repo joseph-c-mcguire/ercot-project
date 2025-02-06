@@ -174,3 +174,4 @@ cython_debug/
 .vscode/
 
 *.egg-info/
+*test_ercot.db

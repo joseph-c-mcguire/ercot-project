@@ -6,6 +6,7 @@ from ercot_scraping.run import (
     download_historical_spp_data,
     update_daily_dam_data,
     update_daily_spp_data,
+    parse_args,
 )
 
 
@@ -239,3 +240,74 @@ def test_download_historical_spp_data_custom_db(mock_store_prices, mock_fetch_pr
 
     # Verify store prices uses custom db name
     mock_store_prices.assert_called_once_with(test_data, "test.db")
+
+
+@pytest.fixture
+def mock_argv(monkeypatch):
+    def _mock_argv(args):
+        monkeypatch.setattr("sys.argv", ["ercot_scraping.run"] + args)
+
+    return _mock_argv
+
+
+def test_parse_args_historical_dam(mock_argv):
+    mock_argv(["historical-dam", "--start", "2023-01-01", "--end", "2023-12-31"])
+    args = parse_args()
+    assert args.command == "historical-dam"
+    assert args.start == "2023-01-01"
+    assert args.end == "2023-12-31"
+    assert args.db == "ercot.db"
+    assert args.qse_filter is None
+
+
+def test_parse_args_historical_dam_with_db(mock_argv):
+    mock_argv(["historical-dam", "--start", "2023-01-01", "--db", "test.db"])
+    args = parse_args()
+    assert args.command == "historical-dam"
+    assert args.start == "2023-01-01"
+    assert args.end is None
+    assert args.db == "test.db"
+
+
+def test_parse_args_historical_spp(mock_argv):
+    mock_argv(["historical-spp", "--start", "2023-01-01"])
+    args = parse_args()
+    assert args.command == "historical-spp"
+    assert args.start == "2023-01-01"
+    assert args.end is None
+    assert args.db == "ercot.db"
+
+
+def test_parse_args_update_dam(mock_argv):
+    mock_argv(["update-dam"])
+    args = parse_args()
+    assert args.command == "update-dam"
+    assert args.db == "ercot.db"
+    assert args.qse_filter is None
+
+
+def test_parse_args_update_dam_with_qse_filter(mock_argv):
+    mock_argv(["update-dam", "--qse-filter", "test.csv"])
+    args = parse_args()
+    assert args.command == "update-dam"
+    assert args.db == "ercot.db"
+    assert args.qse_filter == Path("test.csv")
+
+
+def test_parse_args_update_spp(mock_argv):
+    mock_argv(["update-spp"])
+    args = parse_args()
+    assert args.command == "update-spp"
+    assert args.db == "ercot.db"
+
+
+def test_parse_args_no_command(mock_argv):
+    mock_argv([])
+    args = parse_args()
+    assert args.command is None
+
+
+def test_parse_args_historical_dam_missing_start(mock_argv):
+    with pytest.raises(SystemExit):
+        mock_argv(["historical-dam"])
+        parse_args()

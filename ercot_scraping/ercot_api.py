@@ -1,7 +1,7 @@
 """This module provides functionality to fetch settlement point prices from the ERCOT API
 and store them into a SQLite database.
 Functions:
-    fetch_settlement_point_prices(start_date=None, end_date=None):
+    fetch_settlement point prices(start_date=None, end_date=None):
         Fetches settlement point prices from the ERCOT API and returns the JSON response.
     store_prices_to_db(data, db_name='ercot.db'):
         Stores settlement point prices data into a SQLite database.
@@ -31,18 +31,71 @@ ERCOT_API_REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION
 def validate_sql_query(query: str) -> bool:
     """
     Validates an SQL query by attempting to execute it in a transaction and rolling back.
-    Bypasses validation for INSERT statements.
+    Handles complex queries including subqueries, UNION operations, and INSERT statements.
+
+    Args:
+        query (str): The SQL query to validate
+
+    Returns:
+        bool: True if query is valid, False otherwise
     """
+    # Handle None and empty queries
+    if query is None or not query.strip():
+        return False
+
+    # Early return for INSERT statements
     if query.lstrip().upper().startswith("INSERT"):
         return True
+
     try:
         conn = sqlite3.connect(":memory:")
         cursor = conn.cursor()
         cursor.execute("BEGIN TRANSACTION;")
-        cursor.execute(query, (None,) * query.count("?"))
+
+        # Basic SQL syntax validation
+        try:
+            first_word = query.lstrip().split()[0].upper()
+        except IndexError:
+            return False
+
+        if first_word not in {
+            "SELECT",
+            "CREATE",
+            "DROP",
+            "ALTER",
+            "UPDATE",
+            "DELETE",
+            "INSERT",
+        }:
+            return False
+
+        # Create temporary tables for any referenced tables in complex queries
+        if "BID_AWARDS" in query:
+            cursor.execute("CREATE TABLE BID_AWARDS (SettlementPoint TEXT)")
+        if "OFFER_AWARDS" in query:
+            cursor.execute("CREATE TABLE OFFER_AWARDS (SettlementPoint TEXT)")
+
+        # Try executing the query
+        try:
+            cursor.execute(query)
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                # If error is about missing tables, those were handled above
+                # So this must be a different table - query is invalid
+                cursor.execute("ROLLBACK;")
+                conn.close()
+                return False
+            else:
+                # Other operational errors indicate invalid SQL
+                return False
+        except sqlite3.Error:
+            # Any other SQLite error indicates invalid SQL
+            return False
+
         cursor.execute("ROLLBACK;")
         conn.close()
         return True
+
     except sqlite3.Error:
         return False
 

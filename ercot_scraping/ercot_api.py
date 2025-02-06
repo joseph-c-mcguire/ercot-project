@@ -16,10 +16,15 @@ import requests
 import sqlite3
 from dotenv import load_dotenv
 import os
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-ERCOT_API_BASE_URL = os.getenv("ERCOT_API_BASE_URL")
+ERCOT_API_BASE_URL_DAM = os.getenv("ERCOT_API_BASE_URL_DAM")
+ERCOT_API_BASE_URL_SETTLEMENT = os.getenv("ERCOT_API_BASE_URL_SETTLEMENT")
 ERCOT_API_SUBSCRIPTION_KEY = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
 ERCOT_API_REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY}
 
@@ -101,6 +106,7 @@ def validate_sql_query(query: str) -> bool:
 
 
 def fetch_data_from_endpoint(
+    base_url: str,
     endpoint: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -108,10 +114,11 @@ def fetch_data_from_endpoint(
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering.
-    Constructs the URL using the given endpoint and sends an HTTP GET request to the API.
+    Constructs the URL using the given base URL and endpoint, and sends an HTTP GET request to the API.
     If custom headers are not provided, the default ERCOT_API_REQUEST_HEADERS are used.
     Optional start and end dates can be specified to filter the API results by delivery dates.
     Args:
+        base_url (str): The base URL of the API.
         endpoint (str): The API endpoint to request data from, appended to the base URL.
         start_date (Optional[str]): The start date (inclusive) for filtering the data. Defaults to None.
         end_date (Optional[str]): The end date (inclusive) for filtering the data. Defaults to None.
@@ -123,15 +130,22 @@ def fetch_data_from_endpoint(
     """
     if header is None:
         header = ERCOT_API_REQUEST_HEADERS
-    url = f"{ERCOT_API_BASE_URL}/{endpoint}"
+    url = f"{base_url}/{endpoint}"
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
 
+    logger.info(f"Fetching data from endpoint: {url} with params: {params}")
     response = requests.get(url=url, headers=header, params=params)
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 404:
+            logger.error(f"Endpoint not found: {url}")
+        raise e
+    logger.info(f"Data fetched successfully from endpoint: {url}")
     return response.json()
 
 
@@ -154,9 +168,13 @@ def fetch_dam_energy_bid_awards(
     Raises:
         Exception: Propagates any exception raised during the API request process.
     """
-
+    logger.info(f"Fetching DAM energy bid awards from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
-        "60_dam_energy_bid_awards", start_date, end_date, header
+        ERCOT_API_BASE_URL_DAM,
+        "60_dam_energy_bid_awards",
+        start_date,
+        end_date,
+        header,
     )
 
 
@@ -184,7 +202,10 @@ def fetch_dam_energy_bids(
         The data retrieved from the "60_dam_energy_bids" endpoint, formatted as returned by
         fetch_data_from_endpoint.
     """
-    return fetch_data_from_endpoint("60_dam_energy_bids", start_date, end_date, header)
+    logger.info(f"Fetching DAM energy bids from {start_date} to {end_date}")
+    return fetch_data_from_endpoint(
+        ERCOT_API_BASE_URL_DAM, "60_dam_energy_bids", start_date, end_date, header
+    )
 
 
 def fetch_dam_energy_only_offer_awards(
@@ -211,8 +232,15 @@ def fetch_dam_energy_only_offer_awards(
         The data retrieved from the "60_dam_energy_only_offer_awards" endpoint as processed by the
         fetch_data_from_endpoint function. The exact format or type of the returned data depends on the endpoint's response.
     """
+    logger.info(
+        f"Fetching DAM energy only offer awards from {start_date} to {end_date}"
+    )
     return fetch_data_from_endpoint(
-        "60_dam_energy_only_offer_awards", start_date, end_date, header
+        ERCOT_API_BASE_URL_DAM,
+        "60_dam_energy_only_offer_awards",
+        start_date,
+        end_date,
+        header,
     )
 
 
@@ -242,8 +270,13 @@ def fetch_dam_energy_only_offers(
         dict[str, any]: A dictionary containing the data fetched from the DAM energy only
                         offers endpoint.
     """
+    logger.info(f"Fetching DAM energy only offers from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
-        "60_dam_energy_only_offers", start_date, end_date, header
+        ERCOT_API_BASE_URL_DAM,
+        "60_dam_energy_only_offers",
+        start_date,
+        end_date,
+        header,
     )
 
 
@@ -275,4 +308,11 @@ def fetch_settlement_point_prices(
         APIError: If the ERCOT API request fails
         ValueError: If the date format is invalid
     """
-    return fetch_data_from_endpoint("spp_node_zone_hub", start_date, end_date, header)
+    logger.info(f"Fetching settlement point prices from {start_date} to {end_date}")
+    return fetch_data_from_endpoint(
+        ERCOT_API_BASE_URL_SETTLEMENT,
+        "spp_node_zone_hub",
+        start_date,
+        end_date,
+        header,
+    )

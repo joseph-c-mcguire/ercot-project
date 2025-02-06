@@ -1,6 +1,8 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Set
+from pathlib import Path
+import argparse
 from ercot_scraping.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
@@ -140,29 +142,102 @@ def update_daily_spp_data(db_name: str = "ercot.db") -> None:
         raise
 
 
-def main():
-    """
-    Main entry point for the script.
-    This can be customized based on needs, but provides example usage of the functions.
-    """
-    db_name = "ercot.db"
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="ERCOT data downloading tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    # Download historical DAM data for a date range
+    python -m ercot_scraping.run historical-dam --start 2023-01-01 --end 2023-12-31
+    
+    # Download historical SPP data
+    python -m ercot_scraping.run historical-spp --start 2023-01-01
+    
+    # Update daily DAM data
+    python -m ercot_scraping.run update-dam
+    
+    # Update daily SPP data
+    python -m ercot_scraping.run update-spp
+    """,
+    )
 
-    # Optional: Load QSE filter from CSV
-    # qse_filter = load_qse_shortnames("path/to/qse_names.csv")
-    qse_filter = None
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # Historical DAM data command
+    historical_dam = subparsers.add_parser(
+        "historical-dam", help="Download historical DAM data"
+    )
+    historical_dam.add_argument(
+        "--start", required=True, help="Start date (YYYY-MM-DD)"
+    )
+    historical_dam.add_argument("--end", help="End date (YYYY-MM-DD)")
+    historical_dam.add_argument("--db", default="ercot.db", help="Database filename")
+    historical_dam.add_argument(
+        "--qse-filter", type=Path, help="Path to QSE filter CSV file"
+    )
+
+    # Historical SPP data command
+    historical_spp = subparsers.add_parser(
+        "historical-spp", help="Download historical SPP data"
+    )
+    historical_spp.add_argument(
+        "--start", required=True, help="Start date (YYYY-MM-DD)"
+    )
+    historical_spp.add_argument("--end", help="End date (YYYY-MM-DD)")
+    historical_spp.add_argument("--db", default="ercot.db", help="Database filename")
+
+    # Update DAM data command
+    update_dam = subparsers.add_parser("update-dam", help="Update daily DAM data")
+    update_dam.add_argument("--db", default="ercot.db", help="Database filename")
+    update_dam.add_argument(
+        "--qse-filter", type=Path, help="Path to QSE filter CSV file"
+    )
+
+    # Update SPP data command
+    update_spp = subparsers.add_parser("update-spp", help="Update daily SPP data")
+    update_spp.add_argument("--db", default="ercot.db", help="Database filename")
+
+    return parser.parse_args()
+
+
+def main():
+    """Main entry point for the CLI."""
+    args = parse_args()
+
+    if not args.command:
+        logger.error("No command specified. Use -h for help.")
+        return
 
     try:
-        # Example: Download one month of historical data
-        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        download_historical_dam_data(start_date, db_name=db_name, qse_filter=qse_filter)
-        download_historical_spp_data(start_date, db_name=db_name)
+        # Load QSE filter if specified
+        qse_filter = None
+        if hasattr(args, "qse_filter") and args.qse_filter:
+            qse_filter = load_qse_shortnames(args.qse_filter)
 
-        # Example: Update daily data
-        update_daily_dam_data(db_name, qse_filter)
-        update_daily_spp_data(db_name)
+        # Execute the requested command
+        if args.command == "historical-dam":
+            download_historical_dam_data(
+                start_date=args.start,
+                end_date=args.end,
+                db_name=args.db,
+                qse_filter=qse_filter,
+            )
+
+        elif args.command == "historical-spp":
+            download_historical_spp_data(
+                start_date=args.start, end_date=args.end, db_name=args.db
+            )
+
+        elif args.command == "update-dam":
+            update_daily_dam_data(db_name=args.db, qse_filter=qse_filter)
+
+        elif args.command == "update-spp":
+            update_daily_spp_data(db_name=args.db)
 
     except Exception as e:
-        logger.error(f"Error in main execution: {str(e)}")
+        logger.error(f"Error executing command: {str(e)}")
         raise
 
 

@@ -19,8 +19,9 @@ fetch_prices = "ercot_scraping.run:main"
 [project.optional-dependencies]
 test = [
     "pytest>=6.2.4",
-    "pytest-cov>=2.12.0",
-    "coverage>=5.5",
+    "pytest-cov>=4.1.0",  # Updated version
+    "coverage>=7.4.1",    # Updated version
+    "pytest-mock>=3.12.0" # Added for better mocking support
 ]
 
 [tool.pytest.ini_options]

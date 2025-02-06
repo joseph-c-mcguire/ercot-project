@@ -107,6 +107,11 @@ class Bid:
     MultiHourBlockIndicator: Optional[str] = None
     BlockCurveIndicator: Optional[str] = None
 
+    def __post_init__(self):
+        # Convert EnergyOnlyBidID to string if it's not already
+        if self.EnergyOnlyBidID is not None:
+            self.EnergyOnlyBidID = str(self.EnergyOnlyBidID)
+
     def as_tuple(self):
         return (
             self.DeliveryDate,
@@ -166,6 +171,10 @@ class BidAward:
     EnergyOnlyBidAwardMW: float
     SettlementPointPrice: float
     BidID: str
+
+    def __post_init__(self):
+        # Convert BidID to string if it's not already
+        self.BidID = str(self.BidID)
 
     def as_tuple(self):
         return (
@@ -245,6 +254,11 @@ class Offer:
     MultiHourBlockIndicator: Optional[str] = None
     BlockCurveIndicator: Optional[str] = None
 
+    def __post_init__(self):
+        # Convert EnergyOnlyOfferID to string if it's not already
+        if self.EnergyOnlyOfferID is not None:
+            self.EnergyOnlyOfferID = str(self.EnergyOnlyOfferID)
+
     def as_tuple(self):
         return (
             self.DeliveryDate,
@@ -303,6 +317,10 @@ class OfferAward:
     EnergyOnlyOfferAwardMW: float
     SettlementPointPrice: float
     OfferID: str
+
+    def __post_init__(self):
+        # Convert OfferID to string if it's not already
+        self.OfferID = str(self.OfferID)
 
     def as_tuple(self):
         return (

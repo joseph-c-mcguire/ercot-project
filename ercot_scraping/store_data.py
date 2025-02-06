@@ -8,6 +8,7 @@ from ercot_scraping.data_models import (
     OfferAward,
 )
 from typing import Optional, Set
+from ercot_scraping.ercot_api import validate_sql_query
 
 # New: Move INSERT query constants here
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
@@ -103,22 +104,29 @@ def store_data_to_db(
 
 
 # Delegation functions for different models using local constants:
-def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+def store_prices_to_db(
+    data: dict[str, any], db_name: str = "ercot.db", filter_by_awards: bool = True
+) -> None:
     """
-    Stores settlement point prices data into the database by utilizing the generic
-    store_data_to_db function.
+    Stores settlement point prices data into the database.
 
-    This function wraps the store_data_to_db call, targeting the "SETTLEMENT_POINT_PRICES"
-    table with the pre-defined insert query and model. It accepts the data to be stored,
-    along with an optional database name.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the settlement point price data.
-        db_name (str, optional): The name of the database file. Defaults to "ercot.db".
-
-    Returns:
-        None
+    Args:
+        data (dict[str, any]): Settlement point price data
+        db_name (str): Database name, defaults to "ercot.db"
+        filter_by_awards (bool): If True, only store prices for settlement points
+                               that appear in bid/offer awards. If award tables don't
+                               exist, stores all prices.
     """
+    if filter_by_awards:
+        from ercot_scraping.filters import (
+            get_active_settlement_points,
+            filter_by_settlement_points,
+        )
+
+        active_points = get_active_settlement_points(db_name)
+        if active_points:  # Only filter if we found active points
+            data = filter_by_settlement_points(data, active_points)
+
     store_data_to_db(
         data,
         db_name,

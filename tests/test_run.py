@@ -8,6 +8,7 @@ from ercot_scraping.run import (
     update_daily_dam_data,
     update_daily_spp_data,
     parse_args,
+    main,
 )
 
 
@@ -312,3 +313,128 @@ def test_parse_args_historical_dam_missing_start(mock_argv):
     with pytest.raises(SystemExit):
         mock_argv(["historical-dam"])
         parse_args()
+
+
+@patch("ercot_scraping.run.load_qse_shortnames")
+@patch("ercot_scraping.run.download_historical_dam_data")
+@patch("ercot_scraping.run.download_historical_spp_data")
+@patch("ercot_scraping.run.update_daily_dam_data")
+@patch("ercot_scraping.run.update_daily_spp_data")
+def test_main_historical_dam(
+    mock_update_spp,
+    mock_update_dam,
+    mock_dl_spp,
+    mock_dl_dam,
+    mock_load_qse,
+    mock_argv,
+):
+    mock_argv(["historical-dam", "--start", "2023-01-01", "--qse-filter", "test.csv"])
+    mock_load_qse.return_value = {"QSE1", "QSE2"}
+
+    main()
+
+    mock_load_qse.assert_called_once_with(Path("test.csv"))
+    mock_dl_dam.assert_called_once_with(
+        start_date="2023-01-01",
+        end_date=None,
+        db_name="ercot.db",
+        qse_filter={"QSE1", "QSE2"},
+    )
+    mock_dl_spp.assert_not_called()
+    mock_update_dam.assert_not_called()
+    mock_update_spp.assert_not_called()
+
+
+@patch("ercot_scraping.run.download_historical_dam_data")
+@patch("ercot_scraping.run.download_historical_spp_data")
+@patch("ercot_scraping.run.update_daily_dam_data")
+@patch("ercot_scraping.run.update_daily_spp_data")
+def test_main_historical_spp(
+    mock_update_spp, mock_update_dam, mock_dl_spp, mock_dl_dam, mock_argv
+):
+    mock_argv(
+        [
+            "historical-spp",
+            "--start",
+            "2023-01-01",
+            "--end",
+            "2023-12-31",
+            "--db",
+            "test.db",
+        ]
+    )
+
+    main()
+
+    mock_dl_spp.assert_called_once_with(
+        start_date="2023-01-01", end_date="2023-12-31", db_name="test.db"
+    )
+    mock_dl_dam.assert_not_called()
+    mock_update_dam.assert_not_called()
+    mock_update_spp.assert_not_called()
+
+
+@patch("ercot_scraping.run.load_qse_shortnames")
+@patch("ercot_scraping.run.download_historical_dam_data")
+@patch("ercot_scraping.run.download_historical_spp_data")
+@patch("ercot_scraping.run.update_daily_dam_data")
+@patch("ercot_scraping.run.update_daily_spp_data")
+def test_main_update_dam(
+    mock_update_spp,
+    mock_update_dam,
+    mock_dl_spp,
+    mock_dl_dam,
+    mock_load_qse,
+    mock_argv,
+):
+    mock_argv(["update-dam", "--qse-filter", "test.csv"])
+    mock_load_qse.return_value = {"QSE1", "QSE2"}
+
+    main()
+
+    mock_load_qse.assert_called_once_with(Path("test.csv"))
+    mock_update_dam.assert_called_once_with(
+        db_name="ercot.db", qse_filter={"QSE1", "QSE2"}
+    )
+    mock_dl_dam.assert_not_called()
+    mock_dl_spp.assert_not_called()
+    mock_update_spp.assert_not_called()
+
+
+@patch("ercot_scraping.run.download_historical_dam_data")
+@patch("ercot_scraping.run.download_historical_spp_data")
+@patch("ercot_scraping.run.update_daily_dam_data")
+@patch("ercot_scraping.run.update_daily_spp_data")
+def test_main_update_spp(
+    mock_update_spp, mock_update_dam, mock_dl_spp, mock_dl_dam, mock_argv
+):
+    mock_argv(["update-spp", "--db", "test.db"])
+
+    main()
+
+    mock_update_spp.assert_called_once_with(db_name="test.db")
+    mock_dl_dam.assert_not_called()
+    mock_dl_spp.assert_not_called()
+    mock_update_dam.assert_not_called()
+
+
+@patch("ercot_scraping.run.logger")
+def test_main_no_command(mock_logger, mock_argv):
+    mock_argv([])
+
+    main()
+
+    mock_logger.error.assert_called_once_with("No command specified. Use -h for help.")
+
+
+@patch("ercot_scraping.run.logger")
+@patch("ercot_scraping.run.download_historical_dam_data")
+def test_main_error_handling(mock_dl_dam, mock_logger, mock_argv):
+    mock_argv(["historical-dam", "--start", "2023-01-01"])
+    mock_dl_dam.side_effect = Exception("Test error")
+
+    with pytest.raises(Exception) as exc_info:
+        main()
+
+    assert str(exc_info.value) == "Test error"
+    mock_logger.error.assert_called_once_with("Error executing command: Test error")

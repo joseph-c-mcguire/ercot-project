@@ -18,12 +18,23 @@ from dotenv import load_dotenv
 import os
 
 from ercot_scraping.initialize_database_tables import initialize_database_tables
+from ercot_scraping.data_models import (
+    SettlementPointPrice,
+)  # New import for data validation
 
 load_dotenv()
 
 ERCOT_API_BASE_URL = os.getenv("ERCOT_API_BASE_URL")
 ERCOT_API_SUBSCRIPTION_KEY = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
 ERCOT_API_REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY}
+
+SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
+    INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,
+                                         SettlementPointName, SettlementPointType,
+                                         SettlementPointPrice, DSTFlag)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+"""
+QUERY_CHECK_TABLE_EXISTS = "SELECT name FROM sqlite_master WHERE type='table' AND name='SETTLEMENT_POINT_PRICES'"
 
 
 def fetch_settlement_point_prices(
@@ -73,6 +84,25 @@ def fetch_settlement_point_prices(
     return response.json()
 
 
+def validate_sql_query(query: str) -> bool:
+    """
+    Validates an SQL query by attempting to execute it in a transaction and rolling back.
+    Bypasses validation for INSERT statements.
+    """
+    if query.lstrip().upper().startswith("INSERT"):
+        return True
+    try:
+        conn = sqlite3.connect(":memory:")
+        cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION;")
+        cursor.execute(query, (None,) * query.count("?"))
+        cursor.execute("ROLLBACK;")
+        conn.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
 def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db"):
     """
     Stores settlement point prices data into a SQLite database.
@@ -105,31 +135,81 @@ def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db"):
     cursor = conn.cursor()
 
     # Check if the table exists
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='SETTLEMENT_POINT_PRICES'"
-    )
+    cursor.execute(QUERY_CHECK_TABLE_EXISTS)
     table_exists = cursor.fetchone()
 
     if not table_exists:
         initialize_database_tables(db_name)
 
     for record in data["data"]:
-        cursor.execute(
-            """
-            INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,
-                                                 SettlementPointName, SettlementPointType,
-                                                 SettlementPointPrice, DSTFlag)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                record["DeliveryDate"],
-                record["DeliveryHour"],
-                record["DeliveryInterval"],
-                record["SettlementPointName"],
-                record["SettlementPointType"],
-                record["SettlementPointPrice"],
-                record["DSTFlag"],
-            ),
-        )
+        # Validate and convert record using the dataclass
+        try:
+            spp_record = SettlementPointPrice(**record)
+        except TypeError as e:
+            raise ValueError(f"Invalid data for SettlementPointPrice: {e}")
+
+        if validate_sql_query(SETTLEMENT_POINT_PRICES_INSERT_QUERY):
+            cursor.execute(SETTLEMENT_POINT_PRICES_INSERT_QUERY, spp_record.as_tuple())
+        else:
+            raise ValueError("Invalid SQL query")
+
     conn.commit()
     conn.close()
+
+
+def fetch_data_from_endpoint(
+    endpoint: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
+):
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    url = f"{ERCOT_API_BASE_URL}/{endpoint}"
+    params = {}
+    if start_date:
+        params["deliveryDateFrom"] = start_date
+    if end_date:
+        params["deliveryDateTo"] = end_date
+
+    response = requests.get(url=url, headers=header, params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_dam_energy_bid_awards(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
+):
+    return fetch_data_from_endpoint(
+        "60_dam_energy_bid_awards", start_date, end_date, header
+    )
+
+
+def fetch_dam_energy_bids(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
+):
+    return fetch_data_from_endpoint("60_dam_energy_bids", start_date, end_date, header)
+
+
+def fetch_dam_energy_only_offer_awards(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
+):
+    return fetch_data_from_endpoint(
+        "60_dam_energy_only_offer_awards", start_date, end_date, header
+    )
+
+
+def fetch_dam_energy_only_offers(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
+):
+    return fetch_data_from_endpoint(
+        "60_dam_energy_only_offers", start_date, end_date, header
+    )

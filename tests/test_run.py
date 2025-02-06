@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 from datetime import datetime, timedelta
+from pathlib import Path  # Add this import
 from ercot_scraping.run import (
     download_historical_dam_data,
     download_historical_spp_data,

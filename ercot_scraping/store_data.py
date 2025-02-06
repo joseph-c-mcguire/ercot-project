@@ -7,6 +7,8 @@ from ercot_scraping.data_models import (
     Offer,
     OfferAward,
 )
+from typing import Optional, Set
+from ercot_scraping.ercot_api import validate_sql_query
 
 # New: Move INSERT query constants here
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
@@ -53,6 +55,7 @@ def store_data_to_db(
     table_name: str,
     insert_query: str,
     model_class: type,
+    qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """
     Stores data into the specified SQLite database and table.
@@ -71,11 +74,17 @@ def store_data_to_db(
         model_class (type): The class used to instantiate each record. The class must support initialization with
                             the record's dictionary keys and must provide an as_tuple() method to return the data
                             in tuple format compatible with the insert query.
+        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
 
     Raises:
         ValueError: If the data provided cannot be used to instantiate an instance of model_class due to a TypeError,
                     indicating invalid or missing data fields.
     """
+    if qse_filter is not None:
+        from ercot_scraping.filters import filter_by_qse_names
+
+        data = filter_by_qse_names(data, qse_filter)
+
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
     # Check if the table exists; initialize if not
@@ -95,22 +104,29 @@ def store_data_to_db(
 
 
 # Delegation functions for different models using local constants:
-def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+def store_prices_to_db(
+    data: dict[str, any], db_name: str = "ercot.db", filter_by_awards: bool = True
+) -> None:
     """
-    Stores settlement point prices data into the database by utilizing the generic
-    store_data_to_db function.
+    Stores settlement point prices data into the database.
 
-    This function wraps the store_data_to_db call, targeting the "SETTLEMENT_POINT_PRICES"
-    table with the pre-defined insert query and model. It accepts the data to be stored,
-    along with an optional database name.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the settlement point price data.
-        db_name (str, optional): The name of the database file. Defaults to "ercot.db".
-
-    Returns:
-        None
+    Args:
+        data (dict[str, any]): Settlement point price data
+        db_name (str): Database name, defaults to "ercot.db"
+        filter_by_awards (bool): If True, only store prices for settlement points
+                               that appear in bid/offer awards. If award tables don't
+                               exist, stores all prices.
     """
+    if filter_by_awards:
+        from ercot_scraping.filters import (
+            get_active_settlement_points,
+            filter_by_settlement_points,
+        )
+
+        active_points = get_active_settlement_points(db_name)
+        if active_points:  # Only filter if we found active points
+            data = filter_by_settlement_points(data, active_points)
+
     store_data_to_db(
         data,
         db_name,
@@ -120,7 +136,11 @@ def store_prices_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
     )
 
 
-def store_bid_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+def store_bid_awards_to_db(
+    data: dict[str, any],
+    db_name: str = "ercot.db",
+    qse_filter: Optional[Set[str]] = None,
+) -> None:
     """
     Store bid award data into the specified database.
 
@@ -132,20 +152,21 @@ def store_bid_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") -> N
     Parameters:
         data (dict[str, any]): A dictionary containing the bid awards data to be stored.
         db_name (str, optional): Name of the database file. Defaults to "ercot.db".
+        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
 
     Returns:
         None
     """
     store_data_to_db(
-        data,
-        db_name,
-        "BID_AWARDS",
-        BID_AWARDS_INSERT_QUERY,
-        BidAward,
+        data, db_name, "BID_AWARDS", BID_AWARDS_INSERT_QUERY, BidAward, qse_filter
     )
 
 
-def store_bids_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+def store_bids_to_db(
+    data: dict[str, any],
+    db_name: str = "ercot.db",
+    qse_filter: Optional[Set[str]] = None,
+) -> None:
     """
     Stores bid data into the database by delegating to the generic data storage function.
 
@@ -157,20 +178,19 @@ def store_bids_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
     Parameters:
         data (dict[str, any]): A dictionary containing the bid data to be stored.
         db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
+        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
 
     Returns:
         None
     """
-    store_data_to_db(
-        data,
-        db_name,
-        "BIDS",
-        BIDS_INSERT_QUERY,
-        Bid,
-    )
+    store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
 
 
-def store_offers_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+def store_offers_to_db(
+    data: dict[str, any],
+    db_name: str = "ercot.db",
+    qse_filter: Optional[Set[str]] = None,
+) -> None:
     """
     Stores offer data into the database.
 
@@ -183,20 +203,19 @@ def store_offers_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
                                of the dictionary should align with the expected schema for
                                the 'OFFERS' table.
         db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
+        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
 
     Returns:
         None: This function does not return a value.
     """
-    store_data_to_db(
-        data,
-        db_name,
-        "OFFERS",
-        OFFERS_INSERT_QUERY,
-        Offer,
-    )
+    store_data_to_db(data, db_name, "OFFERS", OFFERS_INSERT_QUERY, Offer, qse_filter)
 
 
-def store_offer_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") -> None:
+def store_offer_awards_to_db(
+    data: dict[str, any],
+    db_name: str = "ercot.db",
+    qse_filter: Optional[Set[str]] = None,
+) -> None:
     """
     Stores offer awards data to the specified database by calling the underlying store_data_to_db function.
 
@@ -206,14 +225,11 @@ def store_offer_awards_to_db(data: dict[str, any], db_name: str = "ercot.db") ->
     Parameters:
         data (dict[str, any]): A dictionary with keys as strings and values of any type, containing the offer awards data.
         db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
+        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
 
     Returns:
         None
     """
     store_data_to_db(
-        data,
-        db_name,
-        "OFFER_AWARDS",
-        OFFER_AWARDS_INSERT_QUERY,
-        OfferAward,
+        data, db_name, "OFFER_AWARDS", OFFER_AWARDS_INSERT_QUERY, OfferAward, qse_filter
     )

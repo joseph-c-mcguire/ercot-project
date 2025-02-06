@@ -144,77 +144,107 @@ def cleanup():
         print(f"Warning: Could not remove test database {TEST_DB}. It may be in use.")
 
 
-def test_store_prices_to_db():
-    # Insert sample settlement point price and verify that it exists in the db.
-    store_prices_to_db(SETTLEMENT_POINT_PRICE_SAMPLE, db_name=TEST_DB)
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "prices",
+            "data": SETTLEMENT_POINT_PRICE_SAMPLE,
+            "store_func": store_prices_to_db,
+            "table": "SETTLEMENT_POINT_PRICES",
+            "model": SettlementPointPrice,
+            "filter_by_awards": False,
+        },
+        {
+            "name": "bid_awards",
+            "data": SAMPLE_BID_AWARDS,
+            "store_func": store_bid_awards_to_db,
+            "table": "BID_AWARDS",
+            "model": BidAward,
+        },
+        {
+            "name": "bids",
+            "data": SAMPLE_BIDS,
+            "store_func": store_bids_to_db,
+            "table": "BIDS",
+            "model": Bid,
+        },
+        {
+            "name": "offers",
+            "data": SAMPLE_OFFERS,
+            "store_func": store_offers_to_db,
+            "table": "OFFERS",
+            "model": Offer,
+        },
+        {
+            "name": "offer_awards",
+            "data": SAMPLE_OFFER_AWARDS,
+            "store_func": store_offer_awards_to_db,
+            "table": "OFFER_AWARDS",
+            "model": OfferAward,
+        },
+    ],
+)
+def test_store_to_db(test_case):
+    """Test storing different types of data to database."""
+    kwargs = {"db_name": TEST_DB}
+    if "filter_by_awards" in test_case:
+        kwargs["filter_by_awards"] = test_case["filter_by_awards"]
+
+    test_case["store_func"](test_case["data"], **kwargs)
 
     conn = sqlite3.connect(TEST_DB)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM SETTLEMENT_POINT_PRICES")
+    cursor.execute(f"SELECT * FROM {test_case['table']}")
     rows = cursor.fetchall()
     conn.close()
 
     assert len(rows) == 1
-    # Verify the row matches the sample data tuple
-    sample_instance = SettlementPointPrice(**SETTLEMENT_POINT_PRICE_SAMPLE["data"][0])
+    sample_instance = test_case["model"](**test_case["data"]["data"][0])
     assert rows[0] == sample_instance.as_tuple()
 
 
-def test_store_offer_awards_to_db():
-    # Insert sample offer awards data
+def test_store_prices_to_db_with_award_filtering():
+    """Test storing settlement point prices with award filtering."""
+    # First insert some awards to establish settlement points
+    store_bid_awards_to_db(SAMPLE_BID_AWARDS, db_name=TEST_DB)
     store_offer_awards_to_db(SAMPLE_OFFER_AWARDS, db_name=TEST_DB)
 
-    conn = sqlite3.connect(TEST_DB)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM OFFER_AWARDS")
-    rows = cursor.fetchall()
-    conn.close()
+    # Create sample price data that includes both matching and non-matching settlement points
+    test_prices = {
+        "data": [
+            {
+                "DeliveryDate": "2023-10-01",
+                "DeliveryHour": 1,
+                "DeliveryInterval": 15,
+                "SettlementPointName": "XYZ",  # Matches award settlement point
+                "SettlementPointType": "Type1",
+                "SettlementPointPrice": 25.5,
+                "DSTFlag": "N",
+            },
+            {
+                "DeliveryDate": "2023-10-01",
+                "DeliveryHour": 1,
+                "DeliveryInterval": 15,
+                "SettlementPointName": "ABC",  # Does not match any award
+                "SettlementPointType": "Type1",
+                "SettlementPointPrice": 30.5,
+                "DSTFlag": "N",
+            },
+        ]
+    }
 
-    assert len(rows) == 1
-    sample_instance = OfferAward(**SAMPLE_OFFER_AWARDS["data"][0])
-    assert rows[0] == sample_instance.as_tuple()
-
-
-def test_store_bid_awards_to_db():
-    store_bid_awards_to_db(SAMPLE_BID_AWARDS, db_name=TEST_DB)
-
-    conn = sqlite3.connect(TEST_DB)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM BID_AWARDS")
-    rows = cursor.fetchall()
-    conn.close()
-
-    assert len(rows) == 1
-    sample_instance = BidAward(**SAMPLE_BID_AWARDS["data"][0])
-    assert rows[0] == sample_instance.as_tuple()
-
-
-def test_store_bids_to_db():
-    store_bids_to_db(SAMPLE_BIDS, db_name=TEST_DB)
-
-    conn = sqlite3.connect(TEST_DB)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM BIDS")
-    rows = cursor.fetchall()
-    conn.close()
-
-    assert len(rows) == 1
-    sample_instance = Bid(**SAMPLE_BIDS["data"][0])
-    assert rows[0] == sample_instance.as_tuple()
-
-
-def test_store_offers_to_db():
-    store_offers_to_db(SAMPLE_OFFERS, db_name=TEST_DB)
+    # Store prices with filtering enabled
+    store_prices_to_db(test_prices, db_name=TEST_DB, filter_by_awards=True)
 
     conn = sqlite3.connect(TEST_DB)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM OFFERS")
-    rows = cursor.fetchall()
+    cursor.execute("SELECT SettlementPointName FROM SETTLEMENT_POINT_PRICES")
+    points = {row[0] for row in cursor.fetchall()}
     conn.close()
 
-    assert len(rows) == 1
-    sample_instance = Offer(**SAMPLE_OFFERS["data"][0])
-    assert rows[0] == sample_instance.as_tuple()
+    # Should only contain the settlement point that matches awards
+    assert points == {"XYZ"}
 
 
 def test_invalid_data():

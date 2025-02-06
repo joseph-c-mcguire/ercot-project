@@ -6,22 +6,20 @@ from ercot_scraping.create_ercot_tables import (
     create_ercot_tables,
 )  # Adjust the import as needed
 
-
-@pytest.fixture
-def test_db():
-    # Set up a test database
-    db_name = "test_ercot_data.db"
-    conn = sqlite3.connect(db_name)
-    conn.close()
-    yield db_name
-    # Ensure the connection is closed before removing the test database
-    os.remove(db_name)
+TEST_DB = "test_ercot.db"
 
 
-def test_initialize_database_tables(test_db):
+@pytest.fixture(autouse=True)
+def cleanup():
+    yield
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
+
+
+def test_initialize_database_tables():
     # Connect to the test database and initialize tables
-    conn = sqlite3.connect(test_db)
-    create_ercot_tables(test_db)
+    conn = sqlite3.connect(TEST_DB)
+    create_ercot_tables(TEST_DB)
 
     cursor = conn.cursor()
 

@@ -19,7 +19,23 @@ fetch_prices = "ercot_scraping.run:main"
 [project.optional-dependencies]
 test = [
     "pytest>=6.2.4",
+    "pytest-cov>=2.12.0",
+    "coverage>=5.5",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=ercot_scraping --cov-report=xml --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["ercot_scraping"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+]

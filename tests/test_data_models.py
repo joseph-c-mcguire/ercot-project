@@ -1,3 +1,4 @@
+import os
 import pytest
 from ercot_scraping.data_models import (
     SettlementPointPrice,
@@ -6,6 +7,15 @@ from ercot_scraping.data_models import (
     Offer,
     OfferAward,
 )
+
+TEST_DB = "test_ercot.db"
+
+
+@pytest.fixture(autouse=True)
+def cleanup():
+    yield
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
 
 
 def test_settlement_point_price_as_tuple():
@@ -137,33 +147,33 @@ def test_offer_as_tuple():
         BlockCurveIndicator="Y",
     )
     expected = (
-        "2023-10-03",
-        13,
-        "PointC",
-        "Entity3",
-        120.0,
-        40.0,
-        130.0,
-        42.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        "OfferID456",
-        "N",
-        "Y",
+        "2023-10-03",  # DeliveryDate
+        13,  # HourEnding
+        "PointC",  # SettlementPoint
+        "Entity3",  # QSEName
+        120.0,  # EnergyOnlyOfferMW1
+        40.0,  # EnergyOnlyOfferPrice1
+        130.0,  # EnergyOnlyOfferMW2
+        42.0,  # EnergyOnlyOfferPrice2
+        None,  # EnergyOnlyOfferMW3
+        None,  # EnergyOnlyOfferPrice3
+        None,  # EnergyOnlyOfferMW4
+        None,  # EnergyOnlyOfferPrice4
+        None,  # EnergyOnlyOfferMW5
+        None,  # EnergyOnlyOfferPrice5
+        None,  # EnergyOnlyOfferMW6
+        None,  # EnergyOnlyOfferPrice6
+        None,  # EnergyOnlyOfferMW7
+        None,  # EnergyOnlyOfferPrice7
+        None,  # EnergyOnlyOfferMW8
+        None,  # EnergyOnlyOfferPrice8
+        None,  # EnergyOnlyOfferMW9
+        None,  # EnergyOnlyOfferPrice9
+        None,  # EnergyOnlyOfferMW10
+        None,  # EnergyOnlyOfferPrice10
+        "OfferID456",  # EnergyOnlyOfferID
+        "N",  # MultiHourBlockIndicator
+        "Y",  # BlockCurveIndicator
     )
     assert offer.as_tuple() == expected
 

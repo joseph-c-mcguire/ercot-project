@@ -1,6 +1,5 @@
 import pytest
 import os
-from unittest.mock import patch
 from unittest.mock import patch, Mock
 from requests.exceptions import HTTPError
 from ercot_scraping.ercot_api import (
@@ -15,6 +14,13 @@ from ercot_scraping.ercot_api import (
 )
 
 TEST_DB = "test_ercot.db"
+
+
+@pytest.fixture(autouse=True)
+def cleanup():
+    yield
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
 
 
 @patch("ercot_scraping.ercot_api.requests.get")
@@ -173,10 +179,3 @@ def test_fetch_data_from_endpoint_http_error(mock_get):
 
     with pytest.raises(HTTPError):
         fetch_data_from_endpoint("test_endpoint")
-
-
-@pytest.fixture(autouse=True)
-def cleanup():
-    yield
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)

@@ -1,4 +1,7 @@
 # ercot_scraping
+## Description
+A python module to scrape data from the ERCOT(Electric Reliability Council of Texas) API for pulling all Day Ahead Market data and Settlement Point Prices data both historical as well as enabling daily updates. 
+
 
 ## Setting up Git LFS
 

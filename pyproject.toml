@@ -11,7 +11,7 @@ dependencies = [
     "logging",
     "python-dotenv",
 ]
-requires-python = "==3.11.9"
+requires-python = "==3.11.9 "
 
 [project.scripts]
 ercot = "ercot_scraping.run:main"  # Changed from fetch_prices to ercot

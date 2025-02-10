@@ -11,26 +11,41 @@ Environment Variables:
     REQUEST_HEADERS: The headers to be used in the API request.
 """
 
+import os
 from typing import Optional
 import requests
 import sqlite3
-from dotenv import load_dotenv
-import os
 import logging
+from config import (
+    ERCOT_API_BASE_URL_DAM,
+    ERCOT_API_BASE_URL_SETTLEMENT,
+    ERCOT_API_SUBSCRIPTION_KEY,
+    ERCOT_API_REQUEST_HEADERS,
+    ERCOT_USERNAME,
+    ERCOT_PASSWORD,
+    AUTH_URL,
+    ERCOT_ID_TOKEN,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+# Ensure environment variables are loaded correctly
+logger.info(f"ERCOT_API_BASE_URL_DAM: {ERCOT_API_BASE_URL_DAM}")
+logger.info(f"ERCOT_API_BASE_URL_SETTLEMENT: {ERCOT_API_BASE_URL_SETTLEMENT}")
 
-ERCOT_API_BASE_URL_DAM = os.getenv("ERCOT_API_BASE_URL_DAM")
-ERCOT_API_BASE_URL_SETTLEMENT = os.getenv("ERCOT_API_BASE_URL_SETTLEMENT")
-ERCOT_API_SUBSCRIPTION_KEY = os.getenv("ERCOT_API_SUBSCRIPTION_KEY")
-ERCOT_API_REQUEST_HEADERS = {"Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY}
 
-# Removed all SQL INSERT query constants from this file.
+def refresh_access_token() -> str:
+    """
+    Refresh the access token using the provided username and password.
 
-# Removed store_* functions and store_data_to_db as insertion logic is now in store_data.py
+    Returns:
+        str: The new access token.
+    """
+    auth_url = AUTH_URL.format(username=ERCOT_USERNAME, password=ERCOT_PASSWORD)
+    auth_response = requests.post(auth_url)
+    auth_response.raise_for_status()
+    return auth_response.json().get("id_token")
 
 
 def validate_sql_query(query: str) -> bool:
@@ -111,6 +126,7 @@ def fetch_data_from_endpoint(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = None,
+    retries: int = 3,
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering.
@@ -122,14 +138,18 @@ def fetch_data_from_endpoint(
         start_date (Optional[str]): The start date (inclusive) for filtering the data. Defaults to None.
         end_date (Optional[str]): The end date (inclusive) for filtering the data. Defaults to None.
         header (Optional[dict[str, any]]): A custom dictionary of HTTP headers for the request. Defaults to ERCOT_API_REQUEST_HEADERS if None.
+        retries (int): The number of retries for the request in case of failure. Defaults to 3.
     Returns:
         dict[str, any]: The parsed JSON response from the API.
     Raises:
         HTTPError: If an error occurs during the HTTP request (non-successful status code).
     """
-    header = {}
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS.copy()
+    else:
+        header.update(ERCOT_API_REQUEST_HEADERS)
 
-    id_token = os.getenv("ERCOT_ID_TOKEN")
+    id_token = ERCOT_ID_TOKEN
     if id_token:
         header["Authorization"] = f"Bearer {id_token}"
 
@@ -143,15 +163,32 @@ def fetch_data_from_endpoint(
     logger.info(
         f"Fetching data from endpoint: {url} with params: {params} and headers: {header}"
     )
-    response = requests.get(url=url, headers=header, params=params)
-    try:
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        if response.status_code == 404:
-            logger.error(f"Endpoint not found: {url}")
-        raise e
-    logger.info(f"Data fetched successfully from endpoint: {url}")
-    return response.json()
+
+    for attempt in range(retries):
+        response = requests.get(url=url, headers=header, params=params)
+        if response.status_code == 401:
+            logger.warning("Unauthorized. Refreshing access token.")
+            id_token = refresh_access_token()
+            header["Authorization"] = f"Bearer {id_token}"
+            os.environ["ERCOT_ID_TOKEN"] = id_token
+        else:
+            try:
+                response.raise_for_status()
+                logger.info(f"Data fetched successfully from endpoint: {url}")
+                response_json = response.json()
+                if "data" not in response_json:
+                    logger.error(f"Unexpected response format: {response_json}")
+                    return {}
+                return response_json
+            except requests.exceptions.HTTPError as e:
+                if attempt < retries - 1:
+                    logger.warning(
+                        f"Request failed. Retrying... ({attempt + 1}/{retries})"
+                    )
+                else:
+                    logger.error(f"Request failed after {retries} attempts.")
+                    raise e
+    return {}
 
 
 def fetch_dam_energy_bid_awards(

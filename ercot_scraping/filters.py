@@ -2,20 +2,12 @@ import csv
 from typing import Set
 import sqlite3
 
-GET_ACTIVE_SETTLEMENT_POINTS_QUERY = """
-    SELECT DISTINCT SettlementPoint FROM (
-        SELECT SettlementPoint FROM BID_AWARDS
-        UNION
-        SELECT SettlementPoint FROM OFFER_AWARDS
-    )
-"""
-FETCH_BID_SETTLEMENT_POINTS_QUERY = "SELECT SettlementPoint FROM BID_AWARDS"
-CHECK_EXISTING_TABLES_QUERY = """
-    SELECT name FROM sqlite_master 
-    WHERE type='table' 
-    AND name IN ('BID_AWARDS', 'OFFER_AWARDS')
-"""
-FETCH_OFFER_SETTLEMENT_POINTS_QUERY = "SELECT SettlementPoint FROM OFFER_AWARDS"
+from config import (
+    GET_ACTIVE_SETTLEMENT_POINTS_QUERY,
+    FETCH_BID_SETTLEMENT_POINTS_QUERY,
+    CHECK_EXISTING_TABLES_QUERY,
+    FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
+)
 
 
 def load_qse_shortnames(csv_path: str) -> Set[str]:

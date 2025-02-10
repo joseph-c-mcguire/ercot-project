@@ -1,52 +1,23 @@
 import sqlite3
-from ercot_scraping.create_ercot_tables import create_ercot_tables
-from ercot_scraping.data_models import (
+from create_ercot_tables import create_ercot_tables
+from data_models import (
     SettlementPointPrice,
     Bid,
     BidAward,
     Offer,
     OfferAward,
 )
+from config import (
+    SETTLEMENT_POINT_PRICES_INSERT_QUERY,
+    BID_AWARDS_INSERT_QUERY,
+    BIDS_INSERT_QUERY,
+    OFFERS_INSERT_QUERY,
+    OFFER_AWARDS_INSERT_QUERY,
+)
 from typing import Optional, Set
-from ercot_scraping.ercot_api import validate_sql_query
+
 
 # New: Move INSERT query constants here
-SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
-    INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,
-                                         SettlementPointName, SettlementPointType,
-                                         SettlementPointPrice, DSTFlag)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-"""
-BID_AWARDS_INSERT_QUERY = """
-    INSERT INTO BID_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName, 
-                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidID)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-"""
-BIDS_INSERT_QUERY = """
-    INSERT INTO BIDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                      EnergyOnlyBidMW1, EnergyOnlyBidPrice1, EnergyOnlyBidMW2, EnergyOnlyBidPrice2,
-                      EnergyOnlyBidMW3, EnergyOnlyBidPrice3, EnergyOnlyBidMW4, EnergyOnlyBidPrice4,
-                      EnergyOnlyBidMW5, EnergyOnlyBidPrice5, EnergyOnlyBidMW6, EnergyOnlyBidPrice6,
-                      EnergyOnlyBidMW7, EnergyOnlyBidPrice7, EnergyOnlyBidMW8, EnergyOnlyBidPrice8,
-                      EnergyOnlyBidMW9, EnergyOnlyBidPrice9, EnergyOnlyBidMW10, EnergyOnlyBidPrice10,
-                      EnergyOnlyBidID, MultiHourBlockIndicator, BlockCurveIndicator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-"""
-OFFERS_INSERT_QUERY = """
-    INSERT INTO OFFERS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                         EnergyOnlyOfferMW1, EnergyOnlyOfferPrice1, EnergyOnlyOfferMW2, EnergyOnlyOfferPrice2,
-                         EnergyOnlyOfferMW3, EnergyOnlyOfferPrice3, EnergyOnlyOfferMW4, EnergyOnlyOfferPrice4,
-                         EnergyOnlyOfferMW5, EnergyOnlyOfferPrice5, EnergyOnlyOfferMW6, EnergyOnlyOfferPrice6,
-                         EnergyOnlyOfferMW7, EnergyOnlyOfferPrice7, EnergyOnlyOfferMW8, EnergyOnlyOfferPrice8,
-                         EnergyOnlyOfferMW9, EnergyOnlyOfferPrice9, EnergyOnlyOfferMW10, EnergyOnlyOfferPrice10,
-                         EnergyOnlyOfferID, MultiHourBlockIndicator, BlockCurveIndicator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-"""
-OFFER_AWARDS_INSERT_QUERY = """
-    INSERT INTO OFFER_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName, 
-                              EnergyOnlyOfferAwardMW, SettlementPointPrice, OfferID)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-"""
 
 
 def store_data_to_db(

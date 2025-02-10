@@ -4,21 +4,22 @@ from datetime import datetime, timedelta
 from typing import Optional, Set
 from pathlib import Path
 import argparse
-from ercot_scraping.ercot_api import (
+from config import ERCOT_API_REQUEST_HEADERS
+from ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
     fetch_dam_energy_bids,
     fetch_dam_energy_only_offers,
     fetch_dam_energy_only_offer_awards,
 )
-from ercot_scraping.store_data import (
+from store_data import (
     store_prices_to_db,
     store_bid_awards_to_db,
     store_bids_to_db,
     store_offers_to_db,
     store_offer_awards_to_db,
 )
-from ercot_scraping.filters import load_qse_shortnames
+from filters import load_qse_shortnames
 
 # Configure logging
 logging.basicConfig(
@@ -51,22 +52,33 @@ def download_historical_dam_data(
     try:
         # Fetch and store bid awards
         logger.info("Fetching bid awards...")
-        bid_awards = fetch_dam_energy_bid_awards(start_date, end_date)
+        bid_awards = fetch_dam_energy_bid_awards(
+            start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+        )
+        if not bid_awards or "data" not in bid_awards:
+            logger.error("No bid awards data found.")
+            return
         store_bid_awards_to_db(bid_awards, db_name, qse_filter)
 
         # Fetch and store bids
         logger.info("Fetching bids...")
-        bids = fetch_dam_energy_bids(start_date, end_date)
+        bids = fetch_dam_energy_bids(
+            start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+        )
         store_bids_to_db(bids, db_name, qse_filter)
 
         # Fetch and store offer awards
         logger.info("Fetching offer awards...")
-        offer_awards = fetch_dam_energy_only_offer_awards(start_date, end_date)
+        offer_awards = fetch_dam_energy_only_offer_awards(
+            start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+        )
         store_offer_awards_to_db(offer_awards, db_name, qse_filter)
 
         # Fetch and store offers
         logger.info("Fetching offers...")
-        offers = fetch_dam_energy_only_offers(start_date, end_date)
+        offers = fetch_dam_energy_only_offers(
+            start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+        )
         store_offers_to_db(offers, db_name, qse_filter)
 
         logger.info("Historical DAM data download completed successfully")

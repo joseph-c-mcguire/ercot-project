@@ -250,20 +250,21 @@ def test_get_active_settlement_points_partial_tables(tmp_path):
 
 
 def test_filter_by_settlement_points():
+    """Test filtering data by settlement points."""
     data = {
         "data": [
-            {"SettlementPointName": "POINT1", "value": 10},
-            {"SettlementPointName": "POINT2", "value": 20},
-            {"SettlementPointName": "OTHER", "value": 30},
-            {"value": 40},  # Record missing SettlementPointName
+            {"settlementPointName": "POINT1", "value": 10},
+            {"settlementPointName": "POINT2", "value": 20},
+            {"settlementPointName": "OTHER", "value": 30},
+            {"value": 40},  # Record missing settlementPointName
         ]
     }
     settlement_points = {"POINT1", "POINT2"}
     result = filter_by_settlement_points(data, settlement_points)
     expected = {
         "data": [
-            {"SettlementPointName": "POINT1", "value": 10},
-            {"SettlementPointName": "POINT2", "value": 20},
+            {"settlementPointName": "POINT1", "value": 10},
+            {"settlementPointName": "POINT2", "value": 20},
         ]
     }
     assert result == expected

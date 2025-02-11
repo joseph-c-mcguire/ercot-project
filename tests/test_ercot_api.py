@@ -11,6 +11,8 @@ from ercot_scraping.ercot_api import (
     fetch_dam_energy_only_offer_awards,
     fetch_dam_energy_only_offers,
     fetch_data_from_endpoint,
+)
+from ercot_scraping.config import (
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
@@ -78,7 +80,8 @@ def test_fetch_dam_energy_bids(mock_get):
     mock_get.return_value.status_code = 200
     mock_get.return_value.json.return_value = mock_response
 
-    response = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02")
+    response = fetch_dam_energy_bids(
+        start_date="2023-10-01", end_date="2023-10-02")
     assert response is not None
     assert "data" in response
 
@@ -152,7 +155,8 @@ def test_fetch_data_from_endpoint_with_dates(mock_get):
     )
 
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
-    expected_params = {"deliveryDateFrom": start_date, "deliveryDateTo": end_date}
+    expected_params = {"deliveryDateFrom": start_date,
+                       "deliveryDateTo": end_date}
     mock_get.assert_called_with(
         url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params=expected_params
     )
@@ -176,7 +180,8 @@ def test_fetch_data_from_endpoint_with_custom_header(mock_get):
     )
 
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
-    mock_get.assert_called_with(url=expected_url, headers=custom_header, params={})
+    mock_get.assert_called_with(
+        url=expected_url, headers=custom_header, params={})
     assert result == expected_json
 
 
@@ -196,9 +201,11 @@ def test_fetch_data_from_endpoint_http_error(mock_get):
 
 def test_dam_base_url():
     id_token = os.getenv("ERCOT_ID_TOKEN")
-    headers = {"Authorization": f"Bearer {id_token}"}
-    response = requests.get(ERCOT_API_BASE_URL_DAM, headers=headers)
-    logger.info(f"Response status code for DAM base URL: {response.status_code}")
+    headers = {"Authorization": f"Bearer {id_token}", }
+    response = requests.get(ERCOT_API_BASE_URL_DAM,
+                            headers=ERCOT_API_REQUEST_HEADERS)
+    logger.info(
+        f"Response status code for DAM base URL: {response.status_code}")
     logger.info(f"Response text for DAM base URL: {response.text}")
     assert response.status_code == 200
 
@@ -206,8 +213,10 @@ def test_dam_base_url():
 def test_settlement_base_url():
     id_token = os.getenv("ERCOT_ID_TOKEN")
     headers = {"Authorization": f"Bearer {id_token}"}
-    response = requests.get(ERCOT_API_BASE_URL_SETTLEMENT, headers=headers)
-    logger.info(f"Response status code for Settlement base URL: {response.status_code}")
+    response = requests.get(ERCOT_API_BASE_URL_SETTLEMENT,
+                            headers=ERCOT_API_REQUEST_HEADERS)
+    logger.info(
+        f"Response status code for Settlement base URL: {response.status_code}")
     logger.info(f"Response text for Settlement base URL: {response.text}")
     assert response.status_code == 200
 
@@ -217,10 +226,11 @@ def test_subscription_key_validity():
     headers = {"Authorization": f"Bearer {id_token}"}
     response = requests.get(
         f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub",
-        headers=headers,
+        headers=ERCOT_API_REQUEST_HEADERS,
     )
     logger.info(
         f"Response status code for subscription key validity: {response.status_code}"
     )
-    logger.info(f"Response text for subscription key validity: {response.text}")
+    logger.info(
+        f"Response text for subscription key validity: {response.text}")
     assert response.status_code == 200

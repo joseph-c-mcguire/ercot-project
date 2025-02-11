@@ -16,15 +16,12 @@ from typing import Optional
 import requests
 import sqlite3
 import logging
-from config import (
+from .config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
-    ERCOT_API_SUBSCRIPTION_KEY,
     ERCOT_API_REQUEST_HEADERS,
-    ERCOT_USERNAME,
-    ERCOT_PASSWORD,
-    AUTH_URL,
-    ERCOT_ID_TOKEN,
+    ERCOT_API_REQUEST_HEADERS,
+    AUTH_URL
 )
 
 # Configure logging
@@ -42,8 +39,7 @@ def refresh_access_token() -> str:
     Returns:
         str: The new access token.
     """
-    auth_url = AUTH_URL.format(username=ERCOT_USERNAME, password=ERCOT_PASSWORD)
-    auth_response = requests.post(auth_url)
+    auth_response = requests.post(AUTH_URL)
     auth_response.raise_for_status()
     return auth_response.json().get("id_token")
 
@@ -125,7 +121,7 @@ def fetch_data_from_endpoint(
     endpoint: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = None,
+    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     retries: int = 3,
 ) -> dict[str, any]:
     """
@@ -144,15 +140,6 @@ def fetch_data_from_endpoint(
     Raises:
         HTTPError: If an error occurs during the HTTP request (non-successful status code).
     """
-    if header is None:
-        header = ERCOT_API_REQUEST_HEADERS.copy()
-    else:
-        header.update(ERCOT_API_REQUEST_HEADERS)
-
-    id_token = ERCOT_ID_TOKEN
-    if id_token:
-        header["Authorization"] = f"Bearer {id_token}"
-
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
@@ -177,7 +164,8 @@ def fetch_data_from_endpoint(
                 logger.info(f"Data fetched successfully from endpoint: {url}")
                 response_json = response.json()
                 if "data" not in response_json:
-                    logger.error(f"Unexpected response format: {response_json}")
+                    logger.error(
+                        f"Unexpected response format: {response_json}")
                     return {}
                 return response_json
             except requests.exceptions.HTTPError as e:
@@ -210,7 +198,8 @@ def fetch_dam_energy_bid_awards(
     Raises:
         Exception: Propagates any exception raised during the API request process.
     """
-    logger.info(f"Fetching DAM energy bid awards from {start_date} to {end_date}")
+    logger.info(
+        f"Fetching DAM energy bid awards from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
         ERCOT_API_BASE_URL_DAM,
         "60_dam_energy_bid_awards",
@@ -312,7 +301,8 @@ def fetch_dam_energy_only_offers(
         dict[str, any]: A dictionary containing the data fetched from the DAM energy only
                         offers endpoint.
     """
-    logger.info(f"Fetching DAM energy only offers from {start_date} to {end_date}")
+    logger.info(
+        f"Fetching DAM energy only offers from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
         ERCOT_API_BASE_URL_DAM,
         "60_dam_energy_only_offers",
@@ -350,7 +340,8 @@ def fetch_settlement_point_prices(
         APIError: If the ERCOT API request fails
         ValueError: If the date format is invalid
     """
-    logger.info(f"Fetching settlement point prices from {start_date} to {end_date}")
+    logger.info(
+        f"Fetching settlement point prices from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
         ERCOT_API_BASE_URL_SETTLEMENT,
         "spp_node_zone_hub",

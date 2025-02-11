@@ -36,6 +36,8 @@ jobs:
           echo "ERCOT_API_SUBSCRIPTION_KEY=${{ secrets.ERCOT_API_SUBSCRIPTION_KEY }}" >> $GITHUB_ENV
           echo "ERCOT_API_BASE_URL_DAM=${{ secrets.ERCOT_API_BASE_URL_DAM }}" >> $GITHUB_ENV
           echo "ERCOT_API_BASE_URL_SETTLEMENT=${{ secrets.ERCOT_API_BASE_URL_SETTLEMENT }}" >> $GITHUB_ENV
+          echo "ERCOT_API_USERNAME=${{ secrets.ERCOT_API_USERNAME }}" >> $GITHUB_ENV
+          echo "ERCOT_API_PASSWORD=${{ secrets.ERCOT_API_PASSWORD }}" >> $GITHUB_ENV
 
       - name: Run tests with coverage
         run: |

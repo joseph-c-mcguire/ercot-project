@@ -200,8 +200,6 @@ def test_fetch_data_from_endpoint_http_error(mock_get):
 
 
 def test_dam_base_url():
-    id_token = os.getenv("ERCOT_ID_TOKEN")
-    headers = {"Authorization": f"Bearer {id_token}", }
     response = requests.get(ERCOT_API_BASE_URL_DAM,
                             headers=ERCOT_API_REQUEST_HEADERS)
     logger.info(
@@ -211,8 +209,6 @@ def test_dam_base_url():
 
 
 def test_settlement_base_url():
-    id_token = os.getenv("ERCOT_ID_TOKEN")
-    headers = {"Authorization": f"Bearer {id_token}"}
     response = requests.get(ERCOT_API_BASE_URL_SETTLEMENT,
                             headers=ERCOT_API_REQUEST_HEADERS)
     logger.info(
@@ -222,8 +218,6 @@ def test_settlement_base_url():
 
 
 def test_subscription_key_validity():
-    id_token = os.getenv("ERCOT_ID_TOKEN")
-    headers = {"Authorization": f"Bearer {id_token}"}
     response = requests.get(
         f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub",
         headers=ERCOT_API_REQUEST_HEADERS,

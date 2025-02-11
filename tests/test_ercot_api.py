@@ -18,8 +18,7 @@ from ercot_scraping.config import (
     ERCOT_API_BASE_URL_SETTLEMENT,
 )
 
-TEST_DB = "test_ercot.db"
-LOG_FILE = "test_ercot_api.log"
+from tests.testconf import TEST_DB, LOG_FILE
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE, filemode="w")
 logger = logging.getLogger(__name__)

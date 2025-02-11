@@ -6,8 +6,8 @@ from typing import Optional
 class SettlementPointPrice:
     """
     Represents settlement price details for a delivery period.
-    Attributes:
-        deliveryDate (str): The date when the delivery occurs.
+    Attributes: 
+                 deliveryDate (str): The date when the delivery occurs.
         deliveryHour (int): The hour of delivery.
         deliveryInterval (int): The specific interval within the delivery hour.
         settlementPointName (str): The name of the settlement point.

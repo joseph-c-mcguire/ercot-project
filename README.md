@@ -1,4 +1,7 @@
 # ercot_scraping
+## Description
+A python module to scrape data from the ERCOT(Electric Reliability Council of Texas) API for pulling all Day Ahead Market data and Settlement Point Prices data both historical as well as enabling daily updates. 
+
 
 ## Setting up Git LFS
 
@@ -68,6 +71,7 @@ data_bids = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02"
 data_offer_awards = fetch_dam_energy_only_offer_awards(start_date="2023-10-01", end_date="2023-10-02")
 data_offers = fetch_dam_energy_only_offers(start_date="2023-10-01", end_date="2023-10-02")
 ```
+<<<<<<< HEAD
 
 ## Command Line Interface (CLI)
 
@@ -124,3 +128,5 @@ Only data for the listed QSEs will be downloaded and stored in the database.
 
 // ...existing code...
 
+=======
+>>>>>>> origin/main

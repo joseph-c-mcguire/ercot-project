@@ -2,12 +2,6 @@ import csv
 from typing import Set
 import sqlite3
 
-from ercot_scraping.config import (
-    FETCH_BID_SETTLEMENT_POINTS_QUERY,
-    CHECK_EXISTING_TABLES_QUERY,
-    FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
-)
-
 
 def load_qse_shortnames(csv_path: str) -> Set[str]:
     """
@@ -120,3 +114,18 @@ def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict
         filtered_data["fields"] = data["fields"]
 
     return filtered_data
+
+
+def format_qse_filter_param(qse_names: Set[str]) -> str:
+    """
+    Format QSE names for API query parameter.
+
+    Args:
+        qse_names (Set[str]): Set of QSE short names
+
+    Returns:
+        str: Formatted string for API query (e.g., "QABCD,QXYZ1")
+    """
+    # Filter for only QSE names (starting with 'Q')
+    qse_names = {name for name in qse_names if name.startswith('Q')}
+    return ','.join(sorted(qse_names))

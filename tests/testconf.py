@@ -1,1 +1,1 @@
-TEST_DB = "test_ercot.db"
+TEST_DB = "_data/test_ercot.db"

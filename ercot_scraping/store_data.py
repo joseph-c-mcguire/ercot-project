@@ -17,6 +17,7 @@ from ercot_scraping.config import (
     BIDS_INSERT_QUERY,
     OFFERS_INSERT_QUERY,
     OFFER_AWARDS_INSERT_QUERY,
+    ERCOT_DATA_DB_FILE
 )
 from ercot_scraping.filters import filter_by_qse_names
 
@@ -101,7 +102,7 @@ def store_data_to_db(
 
 # Delegation functions for different models using local constants:
 def store_prices_to_db(
-    data: dict[str, any], db_name: str = "ercot.db", filter_by_awards: bool = True
+    data: dict[str, any], db_name: str = ERCOT_DATA_DB_FILE, filter_by_awards: bool = True
 ) -> None:
     """
     Stores settlement point prices data into the database.
@@ -134,7 +135,7 @@ def store_prices_to_db(
 
 def store_bid_awards_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DATA_DB_FILE,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """
@@ -160,7 +161,7 @@ def store_bid_awards_to_db(
 
 def store_bids_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: Optional[str] = ERCOT_DATA_DB_FILE,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """
@@ -184,7 +185,7 @@ def store_bids_to_db(
 
 def store_offers_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DATA_DB_FILE,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """
@@ -210,7 +211,7 @@ def store_offers_to_db(
 
 def store_offer_awards_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DATA_DB_FILE,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """

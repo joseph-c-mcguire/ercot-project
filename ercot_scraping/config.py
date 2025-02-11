@@ -23,6 +23,8 @@ ERCOT_API_REQUEST_HEADERS = {
     "Ocp-Apim-Subscription-Key": ERCOT_API_SUBSCRIPTION_KEY,
     "Authorization": f"Bearer {ERCOT_ID_TOKEN}",
 }
+# Database path
+ERCOT_DATA_DB_FILE = "_data/ercot_data.db"
 
 # SQL Queries
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """

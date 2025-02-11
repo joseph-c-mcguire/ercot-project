@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, ANY
 from datetime import datetime, timedelta
 from pathlib import Path  # Add this import
 from ercot_scraping.run import (
@@ -55,7 +55,7 @@ def test_download_historical_dam_data(
         mock_fetch_offer_awards,
         mock_fetch_offers,
     ]:
-        mock.assert_called_once_with("2023-10-01", "2023-10-02")
+        mock.assert_called_once_with("2023-10-01", "2023-10-02", header=ANY)
 
     # Verify all store functions were called with the mock data
     for mock in [
@@ -84,7 +84,8 @@ def test_download_historical_spp_data(
 def test_update_daily_dam_data(mock_download):
     update_daily_dam_data()
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    mock_download.assert_called_once_with(yesterday, yesterday, "ercot.db", None)
+    mock_download.assert_called_once_with(
+        yesterday, yesterday, "ercot.db", None)
 
 
 @patch("ercot_scraping.run.download_historical_spp_data")
@@ -139,12 +140,13 @@ def test_download_historical_dam_data_default_end_date(
         mock_fetch_offer_awards,
         mock_fetch_offers,
     ]:
-        mock.assert_called_once_with("2023-09-01", mock_today)
+        mock.assert_called_once_with("2023-09-01", mock_today, header=ANY)
 
     # Verify store calls
     mock_store_bid_awards.assert_called_once_with(test_data, "ercot.db", None)
     mock_store_bids.assert_called_once_with(test_data, "ercot.db", None)
-    mock_store_offer_awards.assert_called_once_with(test_data, "ercot.db", None)
+    mock_store_offer_awards.assert_called_once_with(
+        test_data, "ercot.db", None)
     mock_store_offers.assert_called_once_with(test_data, "ercot.db", None)
 
 
@@ -182,9 +184,11 @@ def test_download_historical_dam_data_with_qse_filter(
     )
 
     # Verify store calls include QSE filter
-    mock_store_bid_awards.assert_called_once_with(test_data, "test.db", qse_filter)
+    mock_store_bid_awards.assert_called_once_with(
+        test_data, "test.db", qse_filter)
     mock_store_bids.assert_called_once_with(test_data, "test.db", qse_filter)
-    mock_store_offer_awards.assert_called_once_with(test_data, "test.db", qse_filter)
+    mock_store_offer_awards.assert_called_once_with(
+        test_data, "test.db", qse_filter)
     mock_store_offers.assert_called_once_with(test_data, "test.db", qse_filter)
 
 
@@ -253,7 +257,8 @@ def mock_argv(monkeypatch):
 
 
 def test_parse_args_historical_dam(mock_argv):
-    mock_argv(["historical-dam", "--start", "2023-01-01", "--end", "2023-12-31"])
+    mock_argv(["historical-dam", "--start",
+              "2023-01-01", "--end", "2023-12-31"])
     args = parse_args()
     assert args.command == "historical-dam"
     assert args.start == "2023-01-01"
@@ -328,7 +333,8 @@ def test_main_historical_dam(
     mock_load_qse,
     mock_argv,
 ):
-    mock_argv(["historical-dam", "--start", "2023-01-01", "--qse-filter", "test.csv"])
+    mock_argv(["historical-dam", "--start",
+              "2023-01-01", "--qse-filter", "test.csv"])
     mock_load_qse.return_value = {"QSE1", "QSE2"}
 
     main()
@@ -424,7 +430,8 @@ def test_main_no_command(mock_logger, mock_argv):
 
     main()
 
-    mock_logger.error.assert_called_once_with("No command specified. Use -h for help.")
+    mock_logger.error.assert_called_once_with(
+        "No command specified. Use -h for help.")
 
 
 @patch("ercot_scraping.run.logger")
@@ -437,4 +444,5 @@ def test_main_error_handling(mock_dl_dam, mock_logger, mock_argv):
         main()
 
     assert str(exc_info.value) == "Test error"
-    mock_logger.error.assert_called_once_with("Error executing command: Test error")
+    mock_logger.error.assert_called_once_with(
+        "Error executing command: Test error")

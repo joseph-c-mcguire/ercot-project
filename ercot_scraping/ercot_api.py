@@ -21,8 +21,10 @@ from ercot_scraping.config import (
     ERCOT_API_BASE_URL_SETTLEMENT,
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_API_REQUEST_HEADERS,
-    AUTH_URL
+    AUTH_URL,
+    QSE_FILTER_CSV
 )
+from ercot_scraping.filters import load_qse_shortnames, format_qse_filter_param
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -123,6 +125,7 @@ def fetch_data_from_endpoint(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     retries: int = 3,
+    qse_names: Optional[set[str]] = None,
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering.
@@ -145,6 +148,8 @@ def fetch_data_from_endpoint(
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
+    if qse_names:
+        params["qseName"] = format_qse_filter_param(qse_names)
 
     url = f"{base_url}/{endpoint}"
     logger.info(
@@ -185,6 +190,8 @@ def fetch_dam_energy_bid_awards(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = None,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+
 ) -> dict[str, any]:
     """
     Fetches DAM energy bid awards data from the specified endpoint.
@@ -202,12 +209,17 @@ def fetch_dam_energy_bid_awards(
     """
     logger.info(
         f"Fetching DAM energy bid awards from {start_date} to {end_date}")
+    # Load QSE names from tracking list
+    qse_names = load_qse_shortnames(tracking_list_path)
+    logger.info(f"Filtering by QSE names: {sorted(qse_names)}")
+
     return fetch_data_from_endpoint(
         ERCOT_API_BASE_URL_DAM,
         "60_dam_energy_bid_awards",
         start_date,
         end_date,
         header,
+        qse_names=qse_names,
     )
 
 
@@ -215,6 +227,8 @@ def fetch_dam_energy_bids(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = None,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+
 ) -> dict[str, any]:
     """
     Fetches DAM energy bids data from the specified API endpoint.
@@ -236,15 +250,21 @@ def fetch_dam_energy_bids(
         fetch_data_from_endpoint.
     """
     logger.info(f"Fetching DAM energy bids from {start_date} to {end_date}")
-    return fetch_data_from_endpoint(
-        ERCOT_API_BASE_URL_DAM, "60_dam_energy_bids", start_date, end_date, header
+    # Load QSE names from tracking list
+    qse_names = load_qse_shortnames(tracking_list_path)
+    logger.info(f"Filtering by QSE names: {sorted(qse_names)}")
+
+    response = fetch_data_from_endpoint(
+        ERCOT_API_BASE_URL_DAM, "60_dam_energy_bids", start_date, end_date, header, qse_names=qse_names
     )
+    return response
 
 
 def fetch_dam_energy_only_offer_awards(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = None,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
 ) -> dict[str, any]:
     """
     Fetch DAM energy only offer awards data from the API endpoint.
@@ -268,12 +288,17 @@ def fetch_dam_energy_only_offer_awards(
     logger.info(
         f"Fetching DAM energy only offer awards from {start_date} to {end_date}"
     )
+    # Load QSE names from tracking list
+    qse_names = load_qse_shortnames(tracking_list_path)
+    logger.info(f"Filtering by QSE names: {sorted(qse_names)}")
+
     return fetch_data_from_endpoint(
         ERCOT_API_BASE_URL_DAM,
         "60_dam_energy_only_offer_awards",
         start_date,
         end_date,
         header,
+        qse_names=qse_names,
     )
 
 
@@ -281,6 +306,7 @@ def fetch_dam_energy_only_offers(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = None,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
 ) -> dict[str, any]:
     """
     Fetches Demand Aggregated Market (DAM) energy only offers data.
@@ -303,6 +329,10 @@ def fetch_dam_energy_only_offers(
         dict[str, any]: A dictionary containing the data fetched from the DAM energy only
                         offers endpoint.
     """
+    # Load QSE names from tracking list
+    qse_names = load_qse_shortnames(tracking_list_path)
+    logger.info(f"Filtering by QSE names: {sorted(qse_names)}")
+
     logger.info(
         f"Fetching DAM energy only offers from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
@@ -311,6 +341,7 @@ def fetch_dam_energy_only_offers(
         start_date,
         end_date,
         header,
+        qse_names=qse_names,
     )
 
 
@@ -318,6 +349,7 @@ def fetch_settlement_point_prices(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = None,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
 ) -> dict[str, any]:
     """
     The function retrieves real-time settlement point prices for nodes, zones, and hubs
@@ -342,6 +374,10 @@ def fetch_settlement_point_prices(
         APIError: If the ERCOT API request fails
         ValueError: If the date format is invalid
     """
+
+    # Load QSE names from tracking list
+    qse_names = load_qse_shortnames(tracking_list_path)
+    logger.info(f"Filtering by QSE names: {sorted(qse_names)}")
     logger.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
     return fetch_data_from_endpoint(
@@ -350,4 +386,5 @@ def fetch_settlement_point_prices(
         start_date,
         end_date,
         header,
+        qse_names=qse_names,
     )

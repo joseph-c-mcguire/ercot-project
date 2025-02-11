@@ -1,13 +1,13 @@
 import sqlite3
-from create_ercot_tables import create_ercot_tables
-from data_models import (
+from .create_ercot_tables import create_ercot_tables
+from .data_models import (
     SettlementPointPrice,
     Bid,
     BidAward,
     Offer,
     OfferAward,
 )
-from config import (
+from .config import (
     SETTLEMENT_POINT_PRICES_INSERT_QUERY,
     BID_AWARDS_INSERT_QUERY,
     BIDS_INSERT_QUERY,
@@ -60,7 +60,8 @@ def store_data_to_db(
     cursor = conn.cursor()
     # Check if the table exists; initialize if not
     cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (
+            table_name,)
     )
     if not cursor.fetchone():
         create_ercot_tables(db_name)
@@ -179,7 +180,8 @@ def store_offers_to_db(
     Returns:
         None: This function does not return a value.
     """
-    store_data_to_db(data, db_name, "OFFERS", OFFERS_INSERT_QUERY, Offer, qse_filter)
+    store_data_to_db(data, db_name, "OFFERS",
+                     OFFERS_INSERT_QUERY, Offer, qse_filter)
 
 
 def store_offer_awards_to_db(

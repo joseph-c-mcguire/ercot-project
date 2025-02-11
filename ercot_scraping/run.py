@@ -4,22 +4,22 @@ from datetime import datetime, timedelta
 from typing import Optional, Set
 from pathlib import Path
 import argparse
-from config import ERCOT_API_REQUEST_HEADERS
-from ercot_api import (
+from .config import ERCOT_API_REQUEST_HEADERS
+from .ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
     fetch_dam_energy_bids,
     fetch_dam_energy_only_offers,
     fetch_dam_energy_only_offer_awards,
 )
-from store_data import (
+from .store_data import (
     store_prices_to_db,
     store_bid_awards_to_db,
     store_bids_to_db,
     store_offers_to_db,
     store_offer_awards_to_db,
 )
-from filters import load_qse_shortnames
+from .filters import load_qse_shortnames
 
 # Configure logging
 logging.basicConfig(
@@ -47,7 +47,8 @@ def download_historical_dam_data(
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info(f"Downloading historical DAM data from {start_date} to {end_date}")
+    logger.info(
+        f"Downloading historical DAM data from {start_date} to {end_date}")
 
     try:
         # Fetch and store bid awards
@@ -102,7 +103,8 @@ def download_historical_spp_data(
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info(f"Downloading historical SPP data from {start_date} to {end_date}")
+    logger.info(
+        f"Downloading historical SPP data from {start_date} to {end_date}")
 
     try:
         prices = fetch_settlement_point_prices(start_date, end_date)
@@ -176,7 +178,8 @@ Examples:
     """,
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+    subparsers = parser.add_subparsers(
+        dest="command", help="Command to execute")
 
     # Historical DAM data command
     historical_dam = subparsers.add_parser(
@@ -186,7 +189,8 @@ Examples:
         "--start", required=True, help="Start date (YYYY-MM-DD)"
     )
     historical_dam.add_argument("--end", help="End date (YYYY-MM-DD)")
-    historical_dam.add_argument("--db", default="ercot.db", help="Database filename")
+    historical_dam.add_argument(
+        "--db", default="ercot.db", help="Database filename")
     historical_dam.add_argument(
         "--qse-filter", type=Path, help="Path to QSE filter CSV file"
     )
@@ -199,18 +203,23 @@ Examples:
         "--start", required=True, help="Start date (YYYY-MM-DD)"
     )
     historical_spp.add_argument("--end", help="End date (YYYY-MM-DD)")
-    historical_spp.add_argument("--db", default="ercot.db", help="Database filename")
+    historical_spp.add_argument(
+        "--db", default="ercot.db", help="Database filename")
 
     # Update DAM data command
-    update_dam = subparsers.add_parser("update-dam", help="Update daily DAM data")
-    update_dam.add_argument("--db", default="ercot.db", help="Database filename")
+    update_dam = subparsers.add_parser(
+        "update-dam", help="Update daily DAM data")
+    update_dam.add_argument("--db", default="ercot.db",
+                            help="Database filename")
     update_dam.add_argument(
         "--qse-filter", type=Path, help="Path to QSE filter CSV file"
     )
 
     # Update SPP data command
-    update_spp = subparsers.add_parser("update-spp", help="Update daily SPP data")
-    update_spp.add_argument("--db", default="ercot.db", help="Database filename")
+    update_spp = subparsers.add_parser(
+        "update-spp", help="Update daily SPP data")
+    update_spp.add_argument("--db", default="ercot.db",
+                            help="Database filename")
 
     return parser.parse_args()
 

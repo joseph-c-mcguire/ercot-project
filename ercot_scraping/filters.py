@@ -2,8 +2,7 @@ import csv
 from typing import Set
 import sqlite3
 
-from config import (
-    GET_ACTIVE_SETTLEMENT_POINTS_QUERY,
+from .config import (
     FETCH_BID_SETTLEMENT_POINTS_QUERY,
     CHECK_EXISTING_TABLES_QUERY,
     FETCH_OFFER_SETTLEMENT_POINTS_QUERY,

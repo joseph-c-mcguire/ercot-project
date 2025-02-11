@@ -28,6 +28,22 @@ ERCOT_DATA_DB_FILE = "_data/ercot_data.db"
 # CSV file path
 QSE_FILTER_CSV = "_data/ERCOT_tracking_list.csv"
 
+# Archive API endpoints
+ERCOT_ARCHIVE_API_BASE_URL = "https://api.ercot.com/api/public-reports/archive"
+ERCOT_ARCHIVE_PRODUCT_IDS = {
+    "SPP": "NP6-788-CD",  # Settlement Point Prices
+    "DAM_BIDS": "NP3-966-ER",  # DAM Energy Bids
+    "DAM_BID_AWARDS": "NP3-966-ER",  # DAM Energy Bid Awards
+    "DAM_OFFERS": "NP3-966-ER",  # DAM Energy Offers
+    "DAM_OFFER_AWARDS": "NP3-966-ER",  # DAM Energy Offer Awards
+}
+
+# API Rate Limiting
+API_RATE_LIMIT_REQUESTS = 30  # requests per minute
+API_RATE_LIMIT_INTERVAL = 60  # seconds
+API_MAX_ARCHIVE_FILES = 1000  # maximum files per archive request
+API_CUTOFF_DATE = "2023-12-11"  # date when archive API becomes necessary
+
 # SQL Queries
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
     INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,

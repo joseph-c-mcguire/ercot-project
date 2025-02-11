@@ -10,6 +10,9 @@ dependencies = [
     "requests",
     "logging",
     "python-dotenv",
+    "ratelimit>=2.2.1",
+    "python-dateutil==2.9.0.post0",
+    "chardet>=5.0.0"
 ]
 requires-python = "==3.11.9 "
 
@@ -21,7 +24,7 @@ test = [
     "pytest>=6.2.4",
     "pytest-cov>=4.1.0",  # Updated version
     "coverage>=7.4.1",    # Updated version
-    "pytest-mock>=3.12.0" # Added for better mocking support
+    "pytest-mock>=3.12.0", # Added for better mocking support
 ]
 
 [tool.pytest.ini_options]

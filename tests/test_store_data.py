@@ -15,8 +15,7 @@ from ercot_scraping.data_models import (
     Bid,
     Offer,
 )
-
-TEST_DB = "test_ercot.db"
+from tests.testconf import TEST_DB
 
 SETTLEMENT_POINT_PRICE_SAMPLE = {
     "data": [
@@ -141,7 +140,8 @@ def cleanup():
         if os.path.exists(TEST_DB):
             os.remove(TEST_DB)
     except PermissionError:
-        print(f"Warning: Could not remove test database {TEST_DB}. It may be in use.")
+        print(
+            f"Warning: Could not remove test database {TEST_DB}. It may be in use.")
 
 
 @pytest.mark.parametrize(

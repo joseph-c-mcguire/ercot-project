@@ -6,7 +6,8 @@ from ercot_scraping.create_ercot_tables import (
     create_ercot_tables,
 )  # Adjust the import as needed
 
-TEST_DB = "test_ercot.db"
+
+from tests.testconf import TEST_DB
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +31,8 @@ def test_initialize_database_tables():
     assert cursor.fetchone() is not None
 
     # Check if BIDS table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='BIDS'")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='BIDS'")
     assert cursor.fetchone() is not None
 
     # Check if BID_AWARDS table exists

@@ -60,8 +60,30 @@ def store_data_to_db(
     if qse_filter is not None:
         data = filter_by_qse_names(data, qse_filter)
 
+    if not data or "data" not in data:
+        logger.warning(f"No data to store in {table_name}")
+        return
+
+    # Log unique dates in the data
+    if hasattr(model_class, "deliveryDate"):
+        unique_dates = {record.get("deliveryDate", "unknown")
+                        for record in data["data"]}
+        logger.info(
+            f"Storing {table_name} data for dates: {sorted(unique_dates)}")
+
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
+
+    # Check existing dates in the table
+    try:
+        cursor.execute(f"SELECT DISTINCT DeliveryDate FROM {table_name}")
+        existing_dates = {row[0] for row in cursor.fetchall()}
+        logger.info(
+            f"Existing dates in {table_name}: {sorted(existing_dates)}")
+    except sqlite3.OperationalError:
+        logger.info(f"Table {table_name} does not exist yet")
+        existing_dates = set()
+
     # Check if the table exists; initialize if not
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (
@@ -180,7 +202,18 @@ def store_bids_to_db(
     Returns:
         None
     """
+    logger.info("Starting to store bids to database")
+    if not data or "data" not in data:
+        logger.warning("No bid data to store")
+        return
+
+    unique_dates = {record.get("deliveryDate", "unknown")
+                    for record in data["data"]}
+    logger.info(f"Preparing to store bids for dates: {sorted(unique_dates)}")
+
     store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
+
+    logger.info("Finished storing bids to database")
 
 
 def store_offers_to_db(

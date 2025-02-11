@@ -8,25 +8,22 @@ from ercot_scraping.filters import (
     filter_by_settlement_points,
 )
 from ercot_scraping.ercot_api import validate_sql_query
-from ercot_scraping.filters import (
-    GET_ACTIVE_SETTLEMENT_POINTS_QUERY,
+# Import constants
+from ercot_scraping.config import (
     FETCH_BID_SETTLEMENT_POINTS_QUERY,
     CHECK_EXISTING_TABLES_QUERY,
     FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
-)
-from ercot_scraping.store_data import (
     SETTLEMENT_POINT_PRICES_INSERT_QUERY,
     BID_AWARDS_INSERT_QUERY,
     BIDS_INSERT_QUERY,
     OFFERS_INSERT_QUERY,
     OFFER_AWARDS_INSERT_QUERY,
-)
-from ercot_scraping.create_ercot_tables import (
     SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
     BIDS_TABLE_CREATION_QUERY,
     BID_AWARDS_TABLE_CREATION_QUERY,
     OFFERS_TABLE_CREATION_QUERY,
     OFFER_AWARDS_TABLE_CREATION_QUERY,
+    GET_ACTIVE_SETTLEMENT_POINTS_QUERY
 )
 
 
@@ -133,7 +130,6 @@ def test_filter_by_qse_names(test_case):
 @pytest.mark.parametrize(
     "sql_query",
     [
-        GET_ACTIVE_SETTLEMENT_POINTS_QUERY,
         FETCH_BID_SETTLEMENT_POINTS_QUERY,
         CHECK_EXISTING_TABLES_QUERY,
         FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
@@ -174,8 +170,10 @@ def test_settlement_points_queries(tmp_path, test_data):
     cursor.execute("CREATE TABLE OFFER_AWARDS (SettlementPoint TEXT)")
 
     # Insert data and commit
-    cursor.executemany("INSERT INTO BID_AWARDS VALUES (?)", test_data["bid_points"])
-    cursor.executemany("INSERT INTO OFFER_AWARDS VALUES (?)", test_data["offer_points"])
+    cursor.executemany("INSERT INTO BID_AWARDS VALUES (?)",
+                       test_data["bid_points"])
+    cursor.executemany("INSERT INTO OFFER_AWARDS VALUES (?)",
+                       test_data["offer_points"])
     conn.commit()  # Added commit before closing
     conn.close()
 
@@ -298,7 +296,8 @@ def test_fetch_bid_settlement_points_query(tmp_path):
     cursor.execute("CREATE TABLE BID_AWARDS (SettlementPoint TEXT)")
     test_points = ["POINT1", "POINT2", "POINT1"]  # Duplicate point
     for point in test_points:
-        cursor.execute("INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", (point,))
+        cursor.execute(
+            "INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", (point,))
 
     cursor.execute(FETCH_BID_SETTLEMENT_POINTS_QUERY)
     points = {row[0] for row in cursor.fetchall()}
@@ -346,7 +345,8 @@ def test_get_active_settlement_points_uses_constants(tmp_path):
     }
 
     for point in test_points["BID_AWARDS"]:
-        cursor.execute("INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", (point,))
+        cursor.execute(
+            "INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", (point,))
     for point in test_points["OFFER_AWARDS"]:
         cursor.execute(
             "INSERT INTO OFFER_AWARDS (SettlementPoint) VALUES (?)", (point,)
@@ -380,7 +380,8 @@ def test_combined_queries_integration(tmp_path):
 
     # Insert and verify bid data
     test_data = [("POINT1",), ("POINT2",)]
-    cursor.executemany("INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", test_data)
+    cursor.executemany(
+        "INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", test_data)
     cursor.execute(FETCH_BID_SETTLEMENT_POINTS_QUERY)
     bid_points = {row[0] for row in cursor.fetchall()}
     assert bid_points == {"POINT1", "POINT2"}
@@ -390,7 +391,8 @@ def test_combined_queries_integration(tmp_path):
     cursor.executemany(
         "INSERT INTO OFFER_AWARDS (SettlementPoint) VALUES (?)", test_data
     )
-    cursor.execute(FETCH_OFFER_SETTLEMENT_POINTS_QUERY)  # Execute the fetch query
+    # Execute the fetch query
+    cursor.execute(FETCH_OFFER_SETTLEMENT_POINTS_QUERY)
     offer_points = {row[0] for row in cursor.fetchall()}
     assert offer_points == {"POINT2", "POINT3"}
 
@@ -453,13 +455,16 @@ def test_sql_query_constants_are_valid():
 
     # Test each query group
     for query in filter_queries:
-        assert validate_sql_query(query), f"Filter query failed validation: {query}"
+        assert validate_sql_query(
+            query), f"Filter query failed validation: {query}"
 
     for query in insert_queries:
-        assert validate_sql_query(query), f"Insert query failed validation: {query}"
+        assert validate_sql_query(
+            query), f"Insert query failed validation: {query}"
 
     for query in create_queries:
-        assert validate_sql_query(query), f"Create query failed validation: {query}"
+        assert validate_sql_query(
+            query), f"Create query failed validation: {query}"
 
 
 def test_individual_query_functionality(tmp_path):
@@ -467,13 +472,6 @@ def test_individual_query_functionality(tmp_path):
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
-
-    # Test table creation queries first
-    from ercot_scraping.create_ercot_tables import (
-        SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
-        BID_AWARDS_TABLE_CREATION_QUERY,
-        OFFER_AWARDS_TABLE_CREATION_QUERY,
-    )
 
     cursor.execute(BID_AWARDS_TABLE_CREATION_QUERY)
     cursor.execute(OFFER_AWARDS_TABLE_CREATION_QUERY)
@@ -484,7 +482,8 @@ def test_individual_query_functionality(tmp_path):
         ("POINT2",),
         ("POINT1",),  # Duplicate to test DISTINCT
     ]
-    cursor.executemany("INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", test_data)
+    cursor.executemany(
+        "INSERT INTO BID_AWARDS (SettlementPoint) VALUES (?)", test_data)
     cursor.executemany(
         "INSERT INTO OFFER_AWARDS (SettlementPoint) VALUES (?)", [("POINT3",)]
     )

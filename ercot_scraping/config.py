@@ -33,7 +33,7 @@ SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
 """
 BID_AWARDS_INSERT_QUERY = """
     INSERT INTO BID_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidID)
+                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidId)
     VALUES (?, ?, ?, ?, ?, ?, ?)
 """
 BIDS_INSERT_QUERY = """
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS BID_AWARDS (
     QSEName TEXT,
     EnergyOnlyBidAwardMW REAL,
     SettlementPointPrice REAL,
-    BidID TEXT
+    BidId TEXT
 )
 """
 

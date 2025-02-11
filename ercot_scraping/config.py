@@ -25,6 +25,8 @@ ERCOT_API_REQUEST_HEADERS = {
 }
 # Database path
 ERCOT_DATA_DB_FILE = "_data/ercot_data.db"
+# CSV file path
+QSE_FILTER_CSV = "_data/ERCOT_tracking_list.csv"
 
 # SQL Queries
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """

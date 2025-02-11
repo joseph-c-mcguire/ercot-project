@@ -71,3 +71,62 @@ data_bids = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02"
 data_offer_awards = fetch_dam_energy_only_offer_awards(start_date="2023-10-01", end_date="2023-10-02")
 data_offers = fetch_dam_energy_only_offers(start_date="2023-10-01", end_date="2023-10-02")
 ```
+<<<<<<< HEAD
+
+## Command Line Interface (CLI)
+
+The package provides a command-line interface with four main commands for downloading and updating ERCOT data.
+
+### Installation
+
+After installation, you can use the CLI in two ways:
+
+1. Using the installed script:
+   ```sh
+   ercot-scraping <command> [options]
+   ```
+
+2. Running as a module:
+   ```sh
+   python -m ercot_scraping <command> [options]
+   ```
+
+### Available Commands
+
+- `download-historical-dam`: Download Historical DAM Data
+- `download-historical-spp`: Download Historical SPP Data
+- `update-daily-dam`: Update Daily DAM Data
+- `update-daily-spp`: Update Daily SPP Data
+
+### Examples
+
+- Download one month of historical DAM data:
+  ```sh
+  ercot-scraping download-historical-dam --start-date 2023-01-01 --end-date 2023-01-31
+  ```
+
+- Download historical SPP data with custom database:
+  ```sh
+  ercot-scraping download-historical-spp --start-date 2023-01-01 --end-date 2023-01-31 --database custom.db
+  ```
+
+- Update daily DAM data with QSE filtering:
+  ```sh
+  ercot-scraping update-daily-dam --qse-filter qse_filter.csv
+  ```
+
+- Update daily SPP data:
+  ```sh
+  ercot-scraping update-daily-spp
+  ```
+
+### QSE Filtering
+
+The --qse-filter option allows you to filter DAM data by QSE (Qualified Scheduling Entity) names. The filter file should be a CSV with a "SHORT NAME" column containing the QSE short names to include:
+
+Only data for the listed QSEs will be downloaded and stored in the database.
+
+// ...existing code...
+
+=======
+>>>>>>> origin/main

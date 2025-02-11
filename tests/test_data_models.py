@@ -20,13 +20,13 @@ def cleanup():
 
 def test_settlement_point_price_as_tuple():
     spp = SettlementPointPrice(
-        DeliveryDate="2023-10-01",
-        DeliveryHour=10,
-        DeliveryInterval=1,
-        SettlementPointName="TestPoint",
-        SettlementPointType="TypeA",
-        SettlementPointPrice=50.0,
-        DSTFlag="N",
+        deliveryDate="2023-10-01",
+        deliveryHour=10,
+        deliveryInterval=1,
+        settlementPointName="TestPoint",
+        settlementPointType="TypeA",
+        settlementPointPrice=50.0,
+        dstFlag="N",
     )
     expected = ("2023-10-01", 10, 1, "TestPoint", "TypeA", 50.0, "N")
     assert spp.as_tuple() == expected
@@ -34,33 +34,33 @@ def test_settlement_point_price_as_tuple():
 
 def test_bid_as_tuple():
     bid = Bid(
-        DeliveryDate="2023-10-01",
-        HourEnding=11,
-        SettlementPoint="PointA",
-        QSEName="Entity1",
-        EnergyOnlyBidMW1=100.0,
-        EnergyOnlyBidPrice1=45.0,
-        EnergyOnlyBidMW2=200.0,
-        EnergyOnlyBidPrice2=55.0,
-        EnergyOnlyBidMW3=150.0,
-        EnergyOnlyBidPrice3=50.0,
-        EnergyOnlyBidMW4=250.0,
-        EnergyOnlyBidPrice4=60.0,
-        EnergyOnlyBidMW5=None,
-        EnergyOnlyBidPrice5=None,
-        EnergyOnlyBidMW6=None,
-        EnergyOnlyBidPrice6=None,
-        EnergyOnlyBidMW7=None,
-        EnergyOnlyBidPrice7=None,
-        EnergyOnlyBidMW8=None,
-        EnergyOnlyBidPrice8=None,
-        EnergyOnlyBidMW9=None,
-        EnergyOnlyBidPrice9=None,
-        EnergyOnlyBidMW10=None,
-        EnergyOnlyBidPrice10=None,
-        EnergyOnlyBidID="BidID123",
-        MultiHourBlockIndicator="Y",
-        BlockCurveIndicator="N",
+        deliveryDate="2023-10-01",
+        hourEnding=11,
+        settlementPointName="PointA",
+        qseName="Entity1",
+        energyOnlyBidMw1=100.0,
+        energyOnlyBidPrice1=45.0,
+        energyOnlyBidMw2=200.0,
+        energyOnlyBidPrice2=55.0,
+        energyOnlyBidMw3=150.0,
+        energyOnlyBidPrice3=50.0,
+        energyOnlyBidMw4=250.0,
+        energyOnlyBidPrice4=60.0,
+        energyOnlyBidMw5=None,
+        energyOnlyBidPrice5=None,
+        energyOnlyBidMw6=None,
+        energyOnlyBidPrice6=None,
+        energyOnlyBidMw7=None,
+        energyOnlyBidPrice7=None,
+        energyOnlyBidMw8=None,
+        energyOnlyBidPrice8=None,
+        energyOnlyBidMw9=None,
+        energyOnlyBidPrice9=None,
+        energyOnlyBidMw10=None,
+        energyOnlyBidPrice10=None,
+        bidId="BidID123",
+        multiHourBlock="Y",
+        blockCurve="N",
     )
     expected = (
         "2023-10-01",
@@ -95,14 +95,14 @@ def test_bid_as_tuple():
 
 
 def test_bid_award_as_tuple():
-    bid_award = BidAward(
-        DeliveryDate="2023-10-02",
-        HourEnding=12,
-        SettlementPoint="PointB",
-        QSEName="Entity2",
-        EnergyOnlyBidAwardMW=300.0,
-        SettlementPointPrice=65.0,
-        BidID="BA123",
+    bidAward = BidAward(
+        deliveryDate="2023-10-02",
+        hourEnding=12,
+        settlementPointName="PointB",
+        qseName="Entity2",
+        energyOnlyBidAwardInMW=300.0,
+        settlementPointPrice=65.0,
+        bidId="BA123",
     )
     expected = (
         "2023-10-02",
@@ -113,80 +113,80 @@ def test_bid_award_as_tuple():
         65.0,
         "BA123",
     )
-    assert bid_award.as_tuple() == expected
+    assert bidAward.as_tuple() == expected
 
 
 def test_offer_as_tuple():
     offer = Offer(
-        DeliveryDate="2023-10-03",
-        HourEnding=13,
-        SettlementPoint="PointC",
-        QSEName="Entity3",
-        EnergyOnlyOfferMW1=120.0,
-        EnergyOnlyOfferPrice1=40.0,
-        EnergyOnlyOfferMW2=130.0,
-        EnergyOnlyOfferPrice2=42.0,
-        EnergyOnlyOfferMW3=None,
-        EnergyOnlyOfferPrice3=None,
-        EnergyOnlyOfferMW4=None,
-        EnergyOnlyOfferPrice4=None,
-        EnergyOnlyOfferMW5=None,
-        EnergyOnlyOfferPrice5=None,
-        EnergyOnlyOfferMW6=None,
-        EnergyOnlyOfferPrice6=None,
-        EnergyOnlyOfferMW7=None,
-        EnergyOnlyOfferPrice7=None,
-        EnergyOnlyOfferMW8=None,
-        EnergyOnlyOfferPrice8=None,
-        EnergyOnlyOfferMW9=None,
-        EnergyOnlyOfferPrice9=None,
-        EnergyOnlyOfferMW10=None,
-        EnergyOnlyOfferPrice10=None,
-        EnergyOnlyOfferID="OfferID456",
-        MultiHourBlockIndicator="N",
-        BlockCurveIndicator="Y",
+        deliveryDate="2023-10-03",
+        hourEnding=13,
+        settlementPointName="PointC",
+        qseName="Entity3",
+        energyOnlyOfferMW1=120.0,
+        energyOnlyOfferPrice1=40.0,
+        energyOnlyOfferMW2=130.0,
+        energyOnlyOfferPrice2=42.0,
+        energyOnlyOfferMW3=None,
+        energyOnlyOfferPrice3=None,
+        energyOnlyOfferMW4=None,
+        energyOnlyOfferPrice4=None,
+        energyOnlyOfferMW5=None,
+        energyOnlyOfferPrice5=None,
+        energyOnlyOfferMW6=None,
+        energyOnlyOfferPrice6=None,
+        energyOnlyOfferMW7=None,
+        energyOnlyOfferPrice7=None,
+        energyOnlyOfferMW8=None,
+        energyOnlyOfferPrice8=None,
+        energyOnlyOfferMW9=None,
+        energyOnlyOfferPrice9=None,
+        energyOnlyOfferMW10=None,
+        energyOnlyOfferPrice10=None,
+        offerId="OfferID456",
+        multiHourBlock="N",
+        blockCurve="Y",
     )
     expected = (
-        "2023-10-03",  # DeliveryDate
-        13,  # HourEnding
-        "PointC",  # SettlementPoint
-        "Entity3",  # QSEName
-        120.0,  # EnergyOnlyOfferMW1
-        40.0,  # EnergyOnlyOfferPrice1
-        130.0,  # EnergyOnlyOfferMW2
-        42.0,  # EnergyOnlyOfferPrice2
-        None,  # EnergyOnlyOfferMW3
-        None,  # EnergyOnlyOfferPrice3
-        None,  # EnergyOnlyOfferMW4
-        None,  # EnergyOnlyOfferPrice4
-        None,  # EnergyOnlyOfferMW5
-        None,  # EnergyOnlyOfferPrice5
-        None,  # EnergyOnlyOfferMW6
-        None,  # EnergyOnlyOfferPrice6
-        None,  # EnergyOnlyOfferMW7
-        None,  # EnergyOnlyOfferPrice7
-        None,  # EnergyOnlyOfferMW8
-        None,  # EnergyOnlyOfferPrice8
-        None,  # EnergyOnlyOfferMW9
-        None,  # EnergyOnlyOfferPrice9
-        None,  # EnergyOnlyOfferMW10
-        None,  # EnergyOnlyOfferPrice10
-        "OfferID456",  # EnergyOnlyOfferID
-        "N",  # MultiHourBlockIndicator
-        "Y",  # BlockCurveIndicator
+        "2023-10-03",  # deliveryDate
+        13,  # hourEnding
+        "PointC",  # settlementPoint
+        "Entity3",  # qseName
+        120.0,  # energyOnlyOfferMw1
+        40.0,  # energyOnlyOfferPrice1
+        130.0,  # energyOnlyOfferMw2
+        42.0,  # energyOnlyOfferPrice2
+        None,  # energyOnlyOfferMw3
+        None,  # energyOnlyOfferPrice3
+        None,  # energyOnlyOfferMw4
+        None,  # energyOnlyOfferPrice4
+        None,  # energyOnlyOfferMw5
+        None,  # energyOnlyOfferPrice5
+        None,  # energyOnlyOfferMw6
+        None,  # energyOnlyOfferPrice6
+        None,  # energyOnlyOfferMw7
+        None,  # energyOnlyOfferPrice7
+        None,  # energyOnlyOfferMw8
+        None,  # energyOnlyOfferPrice8
+        None,  # energyOnlyOfferMw9
+        None,  # energyOnlyOfferPrice9
+        None,  # energyOnlyOfferMw10
+        None,  # energyOnlyOfferPrice10
+        "OfferID456",  # offerId
+        "N",  # multiHourBlock
+        "Y",  # blockCurveIndicator
     )
     assert offer.as_tuple() == expected
 
 
 def test_offer_award_as_tuple():
-    offer_award = OfferAward(
-        DeliveryDate="2023-10-04",
-        HourEnding=14,
-        SettlementPoint="PointD",
-        QSEName="Entity4",
-        EnergyOnlyOfferAwardMW=350.0,
-        SettlementPointPrice=70.0,
-        OfferID="OA789",
+    offerAward = OfferAward(
+        deliveryDate="2023-10-04",
+        hourEnding=14,
+        settlementPointName="PointD",
+        qseName="Entity4",
+        energyOnlyOfferAwardInMW=350.0,
+        settlementPointPrice=70.0,
+        offerId="OA789",
     )
     expected = (
         "2023-10-04",
@@ -197,4 +197,4 @@ def test_offer_award_as_tuple():
         70.0,
         "OA789",
     )
-    assert offer_award.as_tuple() == expected
+    assert offerAward.as_tuple() == expected

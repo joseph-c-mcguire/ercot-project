@@ -1,5 +1,7 @@
 import pytest
+import requests
 import os
+import logging
 from unittest.mock import patch, Mock
 from requests.exceptions import HTTPError
 from ercot_scraping.ercot_api import (
@@ -9,11 +11,18 @@ from ercot_scraping.ercot_api import (
     fetch_dam_energy_only_offer_awards,
     fetch_dam_energy_only_offers,
     fetch_data_from_endpoint,
-    ERCOT_API_BASE_URL,
+)
+from ercot_scraping.config import (
     ERCOT_API_REQUEST_HEADERS,
+    ERCOT_API_BASE_URL_DAM,
+    ERCOT_API_BASE_URL_SETTLEMENT,
 )
 
 TEST_DB = "test_ercot.db"
+LOG_FILE = "test_ercot_api.log"
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE, filemode="w")
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +80,8 @@ def test_fetch_dam_energy_bids(mock_get):
     mock_get.return_value.status_code = 200
     mock_get.return_value.json.return_value = mock_response
 
-    response = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02")
+    response = fetch_dam_energy_bids(
+        start_date="2023-10-01", end_date="2023-10-02")
     assert response is not None
     assert "data" in response
 
@@ -117,10 +127,10 @@ def test_fetch_data_from_endpoint_default_params(mock_get):
 
     # Call function with only endpoint
     endpoint = "test_endpoint"
-    result = fetch_data_from_endpoint(endpoint)
+    result = fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
 
     # Verify URL construction and default header usage
-    expected_url = f"{ERCOT_API_BASE_URL}/{endpoint}"
+    expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
     mock_get.assert_called_with(
         url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params={}
     )
@@ -140,10 +150,13 @@ def test_fetch_data_from_endpoint_with_dates(mock_get):
     endpoint = "test_endpoint"
     start_date = "2023-10-01"
     end_date = "2023-10-02"
-    result = fetch_data_from_endpoint(endpoint, start_date, end_date)
+    result = fetch_data_from_endpoint(
+        ERCOT_API_BASE_URL_SETTLEMENT, endpoint, start_date, end_date
+    )
 
-    expected_url = f"{ERCOT_API_BASE_URL}/{endpoint}"
-    expected_params = {"deliveryDateFrom": start_date, "deliveryDateTo": end_date}
+    expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
+    expected_params = {"deliveryDateFrom": start_date,
+                       "deliveryDateTo": end_date}
     mock_get.assert_called_with(
         url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params=expected_params
     )
@@ -162,10 +175,13 @@ def test_fetch_data_from_endpoint_with_custom_header(mock_get):
     # Call function with a custom header
     endpoint = "test_endpoint"
     custom_header = {"Custom-Header": "Value"}
-    result = fetch_data_from_endpoint(endpoint, header=custom_header)
+    result = fetch_data_from_endpoint(
+        ERCOT_API_BASE_URL_SETTLEMENT, endpoint, header=custom_header
+    )
 
-    expected_url = f"{ERCOT_API_BASE_URL}/{endpoint}"
-    mock_get.assert_called_with(url=expected_url, headers=custom_header, params={})
+    expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
+    mock_get.assert_called_with(
+        url=expected_url, headers=custom_header, params={})
     assert result == expected_json
 
 
@@ -177,5 +193,38 @@ def test_fetch_data_from_endpoint_http_error(mock_get):
     mock_response.raise_for_status.side_effect = HTTPError("404 Client Error")
     mock_get.return_value = mock_response
 
+    endpoint = "test_endpoint"
+
     with pytest.raises(HTTPError):
-        fetch_data_from_endpoint("test_endpoint")
+        fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
+
+
+def test_dam_base_url():
+    response = requests.get(ERCOT_API_BASE_URL_DAM,
+                            headers=ERCOT_API_REQUEST_HEADERS)
+    logger.info(
+        f"Response status code for DAM base URL: {response.status_code}")
+    logger.info(f"Response text for DAM base URL: {response.text}")
+    assert response.status_code == 200
+
+
+def test_settlement_base_url():
+    response = requests.get(ERCOT_API_BASE_URL_SETTLEMENT,
+                            headers=ERCOT_API_REQUEST_HEADERS)
+    logger.info(
+        f"Response status code for Settlement base URL: {response.status_code}")
+    logger.info(f"Response text for Settlement base URL: {response.text}")
+    assert response.status_code == 200
+
+
+def test_subscription_key_validity():
+    response = requests.get(
+        f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub",
+        headers=ERCOT_API_REQUEST_HEADERS,
+    )
+    logger.info(
+        f"Response status code for subscription key validity: {response.status_code}"
+    )
+    logger.info(
+        f"Response text for subscription key validity: {response.text}")
+    assert response.status_code == 200

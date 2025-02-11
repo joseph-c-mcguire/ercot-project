@@ -1,4 +1,8 @@
 import sqlite3
+from typing import Optional, Set
+import json
+import logging
+
 from ercot_scraping.create_ercot_tables import create_ercot_tables
 from ercot_scraping.data_models import (
     SettlementPointPrice,
@@ -7,46 +11,18 @@ from ercot_scraping.data_models import (
     Offer,
     OfferAward,
 )
-from typing import Optional, Set
-from ercot_scraping.ercot_api import validate_sql_query
+from ercot_scraping.config import (
+    SETTLEMENT_POINT_PRICES_INSERT_QUERY,
+    BID_AWARDS_INSERT_QUERY,
+    BIDS_INSERT_QUERY,
+    OFFERS_INSERT_QUERY,
+    OFFER_AWARDS_INSERT_QUERY,
+)
+from ercot_scraping.filters import filter_by_qse_names
 
-# New: Move INSERT query constants here
-SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
-    INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,
-                                         SettlementPointName, SettlementPointType,
-                                         SettlementPointPrice, DSTFlag)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-"""
-BID_AWARDS_INSERT_QUERY = """
-    INSERT INTO BID_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName, 
-                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidID)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-"""
-BIDS_INSERT_QUERY = """
-    INSERT INTO BIDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                      EnergyOnlyBidMW1, EnergyOnlyBidPrice1, EnergyOnlyBidMW2, EnergyOnlyBidPrice2,
-                      EnergyOnlyBidMW3, EnergyOnlyBidPrice3, EnergyOnlyBidMW4, EnergyOnlyBidPrice4,
-                      EnergyOnlyBidMW5, EnergyOnlyBidPrice5, EnergyOnlyBidMW6, EnergyOnlyBidPrice6,
-                      EnergyOnlyBidMW7, EnergyOnlyBidPrice7, EnergyOnlyBidMW8, EnergyOnlyBidPrice8,
-                      EnergyOnlyBidMW9, EnergyOnlyBidPrice9, EnergyOnlyBidMW10, EnergyOnlyBidPrice10,
-                      EnergyOnlyBidID, MultiHourBlockIndicator, BlockCurveIndicator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-"""
-OFFERS_INSERT_QUERY = """
-    INSERT INTO OFFERS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                         EnergyOnlyOfferMW1, EnergyOnlyOfferPrice1, EnergyOnlyOfferMW2, EnergyOnlyOfferPrice2,
-                         EnergyOnlyOfferMW3, EnergyOnlyOfferPrice3, EnergyOnlyOfferMW4, EnergyOnlyOfferPrice4,
-                         EnergyOnlyOfferMW5, EnergyOnlyOfferPrice5, EnergyOnlyOfferMW6, EnergyOnlyOfferPrice6,
-                         EnergyOnlyOfferMW7, EnergyOnlyOfferPrice7, EnergyOnlyOfferMW8, EnergyOnlyOfferPrice8,
-                         EnergyOnlyOfferMW9, EnergyOnlyOfferPrice9, EnergyOnlyOfferMW10, EnergyOnlyOfferPrice10,
-                         EnergyOnlyOfferID, MultiHourBlockIndicator, BlockCurveIndicator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-"""
-OFFER_AWARDS_INSERT_QUERY = """
-    INSERT INTO OFFER_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName, 
-                              EnergyOnlyOfferAwardMW, SettlementPointPrice, OfferID)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-"""
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 def store_data_to_db(
@@ -81,24 +57,44 @@ def store_data_to_db(
                     indicating invalid or missing data fields.
     """
     if qse_filter is not None:
-        from ercot_scraping.filters import filter_by_qse_names
-
         data = filter_by_qse_names(data, qse_filter)
 
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
     # Check if the table exists; initialize if not
     cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (
+            table_name,)
     )
     if not cursor.fetchone():
         create_ercot_tables(db_name)
+
     for record in data["data"]:
         try:
-            instance = model_class(**record)
+            # If the record is already a dict, use it directly
+            if isinstance(record, dict):
+                record_dict = record
+            # If we have fields defined, use them to create the dict
+            elif "fields" in data:
+                fields = [field["name"] for field in data["fields"]]
+                record_dict = dict(zip(fields, record))
+            else:
+                raise ValueError(
+                    f"Invalid data for {model_class.__name__}: Record must be a dictionary or have fields defined")
+
+            instance = model_class(**record_dict)
         except TypeError as e:
-            raise ValueError(f"Invalid data for {model_class.__name__}: {e}")
+            missing_fields = [
+                field for field in model_class.__annotations__ if field not in record_dict
+            ]
+            logger.error(
+                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
+            )
+            raise ValueError(
+                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
+            )
         cursor.execute(insert_query, instance.as_tuple())
+
     conn.commit()
     conn.close()
 
@@ -208,7 +204,8 @@ def store_offers_to_db(
     Returns:
         None: This function does not return a value.
     """
-    store_data_to_db(data, db_name, "OFFERS", OFFERS_INSERT_QUERY, Offer, qse_filter)
+    store_data_to_db(data, db_name, "OFFERS",
+                     OFFERS_INSERT_QUERY, Offer, qse_filter)
 
 
 def store_offer_awards_to_db(

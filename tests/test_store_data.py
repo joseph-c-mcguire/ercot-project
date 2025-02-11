@@ -15,19 +15,18 @@ from ercot_scraping.data_models import (
     Bid,
     Offer,
 )
-
-TEST_DB = "test_ercot.db"
+from tests.testconf import TEST_DB
 
 SETTLEMENT_POINT_PRICE_SAMPLE = {
     "data": [
         {
-            "DeliveryDate": "2023-10-01",
-            "DeliveryHour": 1,
-            "DeliveryInterval": 15,
-            "SettlementPointName": "ABC",
-            "SettlementPointType": "Type1",
-            "SettlementPointPrice": 25.5,
-            "DSTFlag": "N",
+            "deliveryDate": "2023-10-01",
+            "deliveryHour": 1,
+            "deliveryInterval": 15,
+            "settlementPointName": "ABC",
+            "settlementPointType": "Type1",
+            "settlementPointPrice": 25.5,
+            "dstFlag": "N",
         }
     ]
 }
@@ -35,13 +34,13 @@ SETTLEMENT_POINT_PRICE_SAMPLE = {
 SAMPLE_OFFER_AWARDS = {
     "data": [
         {
-            "DeliveryDate": "2023-10-01",
-            "HourEnding": 1,
-            "SettlementPoint": "XYZ",
-            "QSEName": "Test QSE",
-            "EnergyOnlyOfferAwardMW": 50.0,
-            "SettlementPointPrice": 30.5,
-            "OfferID": "101",  # Changed to string
+            "deliveryDate": "2023-10-01",
+            "hourEnding": 1,
+            "settlementPointName": "XYZ",
+            "qseName": "Test QSE",
+            "energyOnlyOfferAwardInMW": 50.0,
+            "settlementPointPrice": 30.5,
+            "offerId": "101",  # Changed to string
         }
     ]
 }
@@ -49,13 +48,13 @@ SAMPLE_OFFER_AWARDS = {
 SAMPLE_BID_AWARDS = {
     "data": [
         {
-            "DeliveryDate": "2023-10-01",
-            "HourEnding": 1,
-            "SettlementPoint": "XYZ",
-            "QSEName": "Test QSE",
-            "EnergyOnlyBidAwardMW": 45.0,
-            "SettlementPointPrice": 28.5,
-            "BidID": "201",  # Changed to string
+            "deliveryDate": "2023-10-01",
+            "hourEnding": 1,
+            "settlementPointName": "XYZ",
+            "qseName": "Test QSE",
+            "energyOnlyBidAwardInMW": 45.0,
+            "settlementPointPrice": 28.5,
+            "bidId": "201",  # Changed to string
         }
     ]
 }
@@ -63,33 +62,33 @@ SAMPLE_BID_AWARDS = {
 SAMPLE_BIDS = {
     "data": [
         {
-            "DeliveryDate": "2023-10-01",
-            "HourEnding": 1,
-            "SettlementPoint": "XYZ",
-            "QSEName": "Test QSE",
-            "EnergyOnlyBidMW1": 10.0,
-            "EnergyOnlyBidPrice1": 25.0,
-            "EnergyOnlyBidMW2": 15.0,
-            "EnergyOnlyBidPrice2": 26.0,
-            "EnergyOnlyBidMW3": 0.0,
-            "EnergyOnlyBidPrice3": 0.0,
-            "EnergyOnlyBidMW4": 0.0,
-            "EnergyOnlyBidPrice4": 0.0,
-            "EnergyOnlyBidMW5": 0.0,
-            "EnergyOnlyBidPrice5": 0.0,
-            "EnergyOnlyBidMW6": 0.0,
-            "EnergyOnlyBidPrice6": 0.0,
-            "EnergyOnlyBidMW7": 0.0,
-            "EnergyOnlyBidPrice7": 0.0,
-            "EnergyOnlyBidMW8": 0.0,
-            "EnergyOnlyBidPrice8": 0.0,
-            "EnergyOnlyBidMW9": 0.0,
-            "EnergyOnlyBidPrice9": 0.0,
-            "EnergyOnlyBidMW10": 0.0,
-            "EnergyOnlyBidPrice10": 0.0,
-            "EnergyOnlyBidID": "201",  # Changed to string
-            "MultiHourBlockIndicator": "N",
-            "BlockCurveIndicator": "N",
+            "deliveryDate": "2023-10-01",
+            "hourEnding": 1,
+            "settlementPointName": "XYZ",
+            "qseName": "Test QSE",
+            "energyOnlyBidMw1": 10.0,
+            "energyOnlyBidPrice1": 25.0,
+            "energyOnlyBidMw2": 15.0,
+            "energyOnlyBidPrice2": 26.0,
+            "energyOnlyBidMw3": 0.0,
+            "energyOnlyBidPrice3": 0.0,
+            "energyOnlyBidMw4": 0.0,
+            "energyOnlyBidPrice4": 0.0,
+            "energyOnlyBidMw5": 0.0,
+            "energyOnlyBidPrice5": 0.0,
+            "energyOnlyBidMw6": 0.0,
+            "energyOnlyBidPrice6": 0.0,
+            "energyOnlyBidMw7": 0.0,
+            "energyOnlyBidPrice7": 0.0,
+            "energyOnlyBidMw8": 0.0,
+            "energyOnlyBidPrice8": 0.0,
+            "energyOnlyBidMw9": 0.0,
+            "energyOnlyBidPrice9": 0.0,
+            "energyOnlyBidMw10": 0.0,
+            "energyOnlyBidPrice10": 0.0,
+            "bidId": "201",  # Changed to string
+            "multiHourBlock": "N",
+            "blockCurve": "N",
         }
     ]
 }
@@ -97,33 +96,33 @@ SAMPLE_BIDS = {
 SAMPLE_OFFERS = {
     "data": [
         {
-            "DeliveryDate": "2023-10-01",
-            "HourEnding": 1,
-            "SettlementPoint": "XYZ",
-            "QSEName": "Test QSE",
-            "EnergyOnlyOfferMW1": 20.0,
-            "EnergyOnlyOfferPrice1": 30.0,
-            "EnergyOnlyOfferMW2": 25.0,
-            "EnergyOnlyOfferPrice2": 32.0,
-            "EnergyOnlyOfferMW3": 0.0,
-            "EnergyOnlyOfferPrice3": 0.0,
-            "EnergyOnlyOfferMW4": 0.0,
-            "EnergyOnlyOfferPrice4": 0.0,
-            "EnergyOnlyOfferMW5": 0.0,
-            "EnergyOnlyOfferPrice5": 0.0,
-            "EnergyOnlyOfferMW6": 0.0,
-            "EnergyOnlyOfferPrice6": 0.0,
-            "EnergyOnlyOfferMW7": 0.0,
-            "EnergyOnlyOfferPrice7": 0.0,
-            "EnergyOnlyOfferMW8": 0.0,
-            "EnergyOnlyOfferPrice8": 0.0,
-            "EnergyOnlyOfferMW9": 0.0,
-            "EnergyOnlyOfferPrice9": 0.0,
-            "EnergyOnlyOfferMW10": 0.0,
-            "EnergyOnlyOfferPrice10": 0.0,
-            "EnergyOnlyOfferID": "101",
-            "MultiHourBlockIndicator": "N",
-            "BlockCurveIndicator": "N",
+            "deliveryDate": "2023-10-01",
+            "hourEnding": 1,
+            "settlementPointName": "XYZ",
+            "qseName": "Test QSE",
+            "energyOnlyOfferMW1": 20.0,
+            "energyOnlyOfferPrice1": 30.0,
+            "energyOnlyOfferMW2": 25.0,
+            "energyOnlyOfferPrice2": 32.0,
+            "energyOnlyOfferMW3": 0.0,
+            "energyOnlyOfferPrice3": 0.0,
+            "energyOnlyOfferMW4": 0.0,
+            "energyOnlyOfferPrice4": 0.0,
+            "energyOnlyOfferMW5": 0.0,
+            "energyOnlyOfferPrice5": 0.0,
+            "energyOnlyOfferMW6": 0.0,
+            "energyOnlyOfferPrice6": 0.0,
+            "energyOnlyOfferMW7": 0.0,
+            "energyOnlyOfferPrice7": 0.0,
+            "energyOnlyOfferMW8": 0.0,
+            "energyOnlyOfferPrice8": 0.0,
+            "energyOnlyOfferMW9": 0.0,
+            "energyOnlyOfferPrice9": 0.0,
+            "energyOnlyOfferMW10": 0.0,
+            "energyOnlyOfferPrice10": 0.0,
+            "offerId": "101",
+            "multiHourBlock": "N",
+            "blockCurve": "N",
         }
     ]
 }
@@ -141,7 +140,8 @@ def cleanup():
         if os.path.exists(TEST_DB):
             os.remove(TEST_DB)
     except PermissionError:
-        print(f"Warning: Could not remove test database {TEST_DB}. It may be in use.")
+        print(
+            f"Warning: Could not remove test database {TEST_DB}. It may be in use.")
 
 
 @pytest.mark.parametrize(
@@ -214,22 +214,22 @@ def test_store_prices_to_db_with_award_filtering():
     test_prices = {
         "data": [
             {
-                "DeliveryDate": "2023-10-01",
-                "DeliveryHour": 1,
-                "DeliveryInterval": 15,
-                "SettlementPointName": "XYZ",  # Matches award settlement point
-                "SettlementPointType": "Type1",
-                "SettlementPointPrice": 25.5,
-                "DSTFlag": "N",
+                "deliveryDate": "2023-10-01",
+                "deliveryHour": 1,
+                "deliveryInterval": 15,
+                "settlementPointName": "XYZ",  # Matches award settlement point
+                "settlementPointType": "Type1",
+                "settlementPointPrice": 25.5,
+                "dstFlag": "N",
             },
             {
-                "DeliveryDate": "2023-10-01",
-                "DeliveryHour": 1,
-                "DeliveryInterval": 15,
-                "SettlementPointName": "ABC",  # Does not match any award
-                "SettlementPointType": "Type1",
-                "SettlementPointPrice": 30.5,
-                "DSTFlag": "N",
+                "deliveryDate": "2023-10-01",
+                "deliveryHour": 1,
+                "deliveryInterval": 15,
+                "settlementPointName": "ABC",  # Does not match any award
+                "settlementPointType": "Type1",
+                "settlementPointPrice": 30.5,
+                "dstFlag": "N",
             },
         ]
     }
@@ -264,3 +264,21 @@ def test_invalid_data():
 
     with pytest.raises(ValueError):
         store_offer_awards_to_db(invalid_data, db_name=TEST_DB)
+
+
+def test_store_bid_awards_with_invalid_data():
+    # nested list instead of dict
+    invalid_data = {"data": [["not", "a", "dict"]]}
+    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+        store_bid_awards_to_db(invalid_data, "test.db", None)
+
+
+def test_store_bid_awards_with_list_of_dicts():
+    # Simulate data with an inner list of records
+    valid_record = {"deliveryDate": "2024-01-01",
+                    "settlementPointName": "TEST"}
+    data_with_list = {"data": [[valid_record, valid_record]]}
+
+    # Expect a ValueError due to missing required fields
+    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+        store_bid_awards_to_db(data_with_list, "test.db", None)

@@ -269,7 +269,7 @@ def test_invalid_data():
 def test_store_bid_awards_with_invalid_data():
     # nested list instead of dict
     invalid_data = {"data": [["not", "a", "dict"]]}
-    with pytest.raises(ValueError, match="Invalid record type for BidAward"):
+    with pytest.raises(ValueError, match="Invalid data for BidAward"):
         store_bid_awards_to_db(invalid_data, "test.db", None)
 
 

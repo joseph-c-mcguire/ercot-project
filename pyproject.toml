@@ -27,6 +27,8 @@ test = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=ercot_scraping --cov-report=xml --cov-report=term-missing"
+python_files = ["test_*.py", "*_test.py", "test.py", "tests.py"]
+python_functions = ["test_*","test"]
 
 [tool.coverage.run]
 branch = true

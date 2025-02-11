@@ -16,7 +16,7 @@ from typing import Optional
 import requests
 import sqlite3
 import logging
-from .config import (
+from ercot_scraping.config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
     ERCOT_API_REQUEST_HEADERS,
@@ -163,6 +163,8 @@ def fetch_data_from_endpoint(
                 response.raise_for_status()
                 logger.info(f"Data fetched successfully from endpoint: {url}")
                 response_json = response.json()
+                # Add this line
+                logger.debug(f"Response data: {response_json}")
                 if "data" not in response_json:
                     logger.error(
                         f"Unexpected response format: {response_json}")

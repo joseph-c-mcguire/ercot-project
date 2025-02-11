@@ -2,7 +2,7 @@ import csv
 from typing import Set
 import sqlite3
 
-from .config import (
+from ercot_scraping.config import (
     FETCH_BID_SETTLEMENT_POINTS_QUERY,
     CHECK_EXISTING_TABLES_QUERY,
     FETCH_OFFER_SETTLEMENT_POINTS_QUERY,

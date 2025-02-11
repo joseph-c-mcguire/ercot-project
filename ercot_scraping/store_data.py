@@ -1,23 +1,28 @@
 import sqlite3
-from .create_ercot_tables import create_ercot_tables
-from .data_models import (
+from typing import Optional, Set
+import json
+import logging
+
+from ercot_scraping.create_ercot_tables import create_ercot_tables
+from ercot_scraping.data_models import (
     SettlementPointPrice,
     Bid,
     BidAward,
     Offer,
     OfferAward,
 )
-from .config import (
+from ercot_scraping.config import (
     SETTLEMENT_POINT_PRICES_INSERT_QUERY,
     BID_AWARDS_INSERT_QUERY,
     BIDS_INSERT_QUERY,
     OFFERS_INSERT_QUERY,
     OFFER_AWARDS_INSERT_QUERY,
 )
-from typing import Optional, Set
+from ercot_scraping.filters import filter_by_qse_names
 
 
-# New: Move INSERT query constants here
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 def store_data_to_db(
@@ -52,8 +57,6 @@ def store_data_to_db(
                     indicating invalid or missing data fields.
     """
     if qse_filter is not None:
-        from ercot_scraping.filters import filter_by_qse_names
-
         data = filter_by_qse_names(data, qse_filter)
 
     conn = sqlite3.connect(db_name)
@@ -65,12 +68,24 @@ def store_data_to_db(
     )
     if not cursor.fetchone():
         create_ercot_tables(db_name)
+
     for record in data["data"]:
         try:
-            instance = model_class(**record)
+            fields = [field["name"] for field in data["fields"]]
+            record_dict = dict(zip(fields, record))
+            instance = model_class(**record_dict)
         except TypeError as e:
-            raise ValueError(f"Invalid data for {model_class.__name__}: {e}")
+            missing_fields = [
+                field for field in model_class.__annotations__ if field not in record
+            ]
+            logger.error(
+                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
+            )
+            raise ValueError(
+                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
+            )
         cursor.execute(insert_query, instance.as_tuple())
+
     conn.commit()
     conn.close()
 

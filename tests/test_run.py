@@ -1,7 +1,10 @@
-import pytest
+import sys
 from unittest.mock import patch, ANY
 from datetime import datetime, timedelta
 from pathlib import Path  # Add this import
+
+
+import pytest
 from ercot_scraping.run import (
     download_historical_dam_data,
     download_historical_spp_data,
@@ -446,3 +449,13 @@ def test_main_error_handling(mock_dl_dam, mock_logger, mock_argv):
     assert str(exc_info.value) == "Test error"
     mock_logger.error.assert_called_once_with(
         "Error executing command: Test error")
+
+
+def test_run_historical_dam_args():
+    original_argv = sys.argv
+    try:
+        sys.argv = ["ercot_scraping", "historical-dam",
+                    "--start", "2024-01-01", "--end", "2024-01-02"]
+        main()
+    finally:
+        sys.argv = original_argv

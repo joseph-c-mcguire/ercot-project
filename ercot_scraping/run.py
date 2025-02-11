@@ -4,22 +4,23 @@ from datetime import datetime, timedelta
 from typing import Optional, Set
 from pathlib import Path
 import argparse
-from .config import ERCOT_API_REQUEST_HEADERS
-from .ercot_api import (
+
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS
+from ercot_scraping.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
     fetch_dam_energy_bids,
     fetch_dam_energy_only_offers,
     fetch_dam_energy_only_offer_awards,
 )
-from .store_data import (
+from ercot_scraping.store_data import (
     store_prices_to_db,
     store_bid_awards_to_db,
     store_bids_to_db,
     store_offers_to_db,
     store_offer_awards_to_db,
 )
-from .filters import load_qse_shortnames
+from ercot_scraping.filters import load_qse_shortnames
 
 # Configure logging
 logging.basicConfig(
@@ -163,7 +164,7 @@ def parse_args() -> argparse.Namespace:
         description="ERCOT data downloading tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
+    Examples:
     # Download historical DAM data for a date range
     python -m ercot_scraping.run historical-dam --start 2023-01-01 --end 2023-12-31
     
@@ -221,12 +222,21 @@ Examples:
     update_spp.add_argument("--db", default="ercot.db",
                             help="Database filename")
 
+    # Add debug flag
+    parser.add_argument(
+        "--debug", action="store_true", help="Enable debug logging"
+    )
+
     return parser.parse_args()
 
 
 def main():
     """Main entry point for the CLI."""
     args = parse_args()
+
+    # Set logging level to DEBUG if --debug flag is specified
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
 
     if not args.command:
         logger.error("No command specified. Use -h for help.")

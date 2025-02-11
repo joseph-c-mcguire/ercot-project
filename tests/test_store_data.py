@@ -264,3 +264,20 @@ def test_invalid_data():
 
     with pytest.raises(ValueError):
         store_offer_awards_to_db(invalid_data, db_name=TEST_DB)
+
+
+def test_store_bid_awards_with_invalid_data():
+    # nested list instead of dict
+    invalid_data = {"data": [["not", "a", "dict"]]}
+    with pytest.raises(ValueError, match="Invalid record type for BidAward"):
+        store_bid_awards_to_db(invalid_data, "test.db", None)
+
+
+def test_store_bid_awards_with_list_of_dicts():
+    # Simulate data with an inner list of records
+    valid_record = {"DeliveryDate": "2024-01-01", "SettlementPoint": "TEST"}
+    data_with_list = {"data": [[valid_record, valid_record]]}
+
+    # Expect a ValueError due to missing required fields
+    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+        store_bid_awards_to_db(data_with_list, "test.db", None)

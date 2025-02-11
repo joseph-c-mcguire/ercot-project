@@ -65,53 +65,58 @@ def get_active_settlement_points(db_name: str) -> Set[str]:
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
 
-    # First check if the tables exist
-    cursor.execute(CHECK_EXISTING_TABLES_QUERY)
-    existing_tables = {row[0] for row in cursor.fetchall()}
+    points = set()
 
-    if not existing_tables:
-        conn.close()
-        return set()
+    # Query both award tables for settlement points
+    queries = [
+        "SELECT SettlementPoint FROM BID_AWARDS",
+        "SELECT SettlementPoint FROM OFFER_AWARDS"
+    ]
 
-    # Dynamically build query based on existing tables
-    queries = []
-    if "BID_AWARDS" in existing_tables:
-        queries.append(FETCH_BID_SETTLEMENT_POINTS_QUERY)
-    if "OFFER_AWARDS" in existing_tables:
-        queries.append(FETCH_OFFER_SETTLEMENT_POINTS_QUERY)
-
-    if not queries:
-        conn.close()
-        return set()
-
-    query = " UNION ".join(queries)
-    UNIQUE_SETTLEMENT_POINTS_QUERY = f"SELECT DISTINCT SettlementPoint FROM ({query})"
-    cursor.execute(UNIQUE_SETTLEMENT_POINTS_QUERY)
-    points = {row[0] for row in cursor.fetchall()}
+    for query in queries:
+        try:
+            cursor.execute(query)
+            points.update(row[0] for row in cursor.fetchall())
+        except sqlite3.OperationalError:
+            # Table might not exist yet, ignore
+            pass
 
     conn.close()
     return points
 
 
+def get_field_name(record: dict, field_names: list[str]) -> str:
+    """Helper function to find the correct field name in a record."""
+    return next((name for name in field_names if name in record), None)
+
+
 def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict:
     """
-    Filter settlement point price data to keep only records matching active settlement points.
+    Filter data to only include records matching the given settlement points.
 
     Args:
-        data (dict): Data dictionary with settlement point price records
-        settlement_points (Set[str]): Set of settlement point names to keep
+        data (dict): Dictionary containing a 'data' key with records
+        settlement_points (Set[str]): Set of settlement point names to filter by
 
     Returns:
-        dict: Filtered data dictionary
+        dict: Filtered data dictionary containing only records matching settlement_points
     """
-    if not data or "data" not in data:
-        return data
-
-    filtered_records = [
-        record
-        for record in data["data"]
-        if "SettlementPointName" in record
-        and record["SettlementPointName"] in settlement_points
+    # Common variations of settlement point field names
+    point_field_names = [
+        "settlementPointName",
+        "settlementPoint",
+        "SettlementPointName",
+        "SettlementPoint"
     ]
 
-    return {"data": filtered_records}
+    filtered_data = {"data": []}
+    for record in data["data"]:
+        field_name = get_field_name(record, point_field_names)
+        if field_name and record[field_name] in settlement_points:
+            filtered_data["data"].append(record)
+
+    # Preserve other fields if they exist
+    if "fields" in data:
+        filtered_data["fields"] = data["fields"]
+
+    return filtered_data

@@ -71,12 +71,21 @@ def store_data_to_db(
 
     for record in data["data"]:
         try:
-            fields = [field["name"] for field in data["fields"]]
-            record_dict = dict(zip(fields, record))
+            # If the record is already a dict, use it directly
+            if isinstance(record, dict):
+                record_dict = record
+            # If we have fields defined, use them to create the dict
+            elif "fields" in data:
+                fields = [field["name"] for field in data["fields"]]
+                record_dict = dict(zip(fields, record))
+            else:
+                raise ValueError(
+                    f"Invalid data for {model_class.__name__}: Record must be a dictionary or have fields defined")
+
             instance = model_class(**record_dict)
         except TypeError as e:
             missing_fields = [
-                field for field in model_class.__annotations__ if field not in record
+                field for field in model_class.__annotations__ if field not in record_dict
             ]
             logger.error(
                 f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"

@@ -2,6 +2,8 @@ import csv
 from typing import Set
 import sqlite3
 
+from ercot_scraping.utils import get_field_name
+
 
 def load_qse_shortnames(csv_path: str) -> Set[str]:
     """
@@ -77,11 +79,6 @@ def get_active_settlement_points(db_name: str) -> Set[str]:
 
     conn.close()
     return points
-
-
-def get_field_name(record: dict, field_names: list[str]) -> str:
-    """Helper function to find the correct field name in a record."""
-    return next((name for name in field_names if name in record), None)
 
 
 def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict:

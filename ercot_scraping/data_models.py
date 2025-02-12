@@ -1,3 +1,7 @@
+"""
+Module for the data classes to use as archetypes for the DB tables.
+"""
+
 from dataclasses import dataclass
 from typing import Optional
 

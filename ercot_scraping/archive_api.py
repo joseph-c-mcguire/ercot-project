@@ -4,9 +4,10 @@ import io
 import zipfile
 from io import BytesIO
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING
 from ercot_scraping.batched_api import rate_limited_request
-from ercot_scraping.utils import get_table_name
+from ercot_scraping.utils import get_table_name, get_column_mapping
+from ercot_scraping.store_data import store_data_to_db
 
 
 def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict]:

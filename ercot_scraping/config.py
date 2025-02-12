@@ -405,7 +405,7 @@ DAM_TABLE_DATA_MAPPING = {
     },
     "OFFERS": {
         "model_class": Offer,
-        "insert_query": OFFER_AWARDS_INSERT_QUERY
+        "insert_query": OFFERS_INSERT_QUERY
     }
 }
 # Configure logging

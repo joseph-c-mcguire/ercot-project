@@ -29,7 +29,7 @@ from ercot_scraping.config import (
 from ercot_scraping.filters import load_qse_shortnames
 from ercot_scraping.batched_api import fetch_in_batches
 from ercot_scraping.utils import refresh_access_token, should_use_archive_api
-from ercot_scraping.archive_api import get_archive_document_ids, download_archive_files
+from ercot_scraping.archive_api import get_archive_document_ids, download_spp_archive_files
 
 
 def fetch_data_from_endpoint(
@@ -122,17 +122,6 @@ def fetch_dam_energy_bid_awards(
     Raises:
         Exception: Propagates any exception raised during the API request process.
     """
-    if should_use_archive_api(start_date, end_date):
-        LOGGER.info("Using archive API for historical DAM bid awards data")
-        doc_ids = get_archive_document_ids(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BID_AWARDS"],
-            start_date,
-            end_date
-        )
-        data = list(download_archive_files(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BID_AWARDS"], doc_ids))
-        return {"data": data}
-
     return fetch_in_batches(
         lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
@@ -174,17 +163,6 @@ def fetch_dam_energy_bids(
         The data retrieved from the "60_dam_energy_bids" endpoint, formatted as returned by
         fetch_data_from_endpoint.
     """
-    if should_use_archive_api(start_date, end_date):
-        LOGGER.info("Using archive API for historical DAM bids data")
-        doc_ids = get_archive_document_ids(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"],
-            start_date,
-            end_date
-        )
-        data = list(download_archive_files(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"], doc_ids))
-        return {"data": data}
-
     return fetch_in_batches(
         lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
@@ -226,17 +204,6 @@ def fetch_dam_energy_only_offer_awards(
         The data retrieved from the "60_dam_energy_only_offer_awards" endpoint as processed by the
         fetch_data_from_endpoint function. The exact format or type of the returned data depends on the endpoint's response.
     """
-    if should_use_archive_api(start_date, end_date):
-        LOGGER.info("Using archive API for historical DAM offer awards data")
-        doc_ids = get_archive_document_ids(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_OFFER_AWARDS"],
-            start_date,
-            end_date
-        )
-        data = list(download_archive_files(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_OFFER_AWARDS"], doc_ids))
-        return {"data": data}
-
     return fetch_in_batches(
         lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
@@ -280,17 +247,6 @@ def fetch_dam_energy_only_offers(
         dict[str, any]: A dictionary containing the data fetched from the DAM energy only
                         offers endpoint.
     """
-    if should_use_archive_api(start_date, end_date):
-        LOGGER.info("Using archive API for historical DAM offers data")
-        doc_ids = get_archive_document_ids(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_OFFERS"],
-            start_date,
-            end_date
-        )
-        data = list(download_archive_files(
-            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_OFFERS"], doc_ids))
-        return {"data": data}
-
     return fetch_in_batches(
         lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
@@ -343,7 +299,7 @@ def fetch_settlement_point_prices(
             start_date,
             end_date
         )
-        data = list(download_archive_files(
+        data = list(download_spp_archive_files(
             ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids))
         return {"data": data}
 

@@ -1,9 +1,12 @@
 import os
-from dotenv import load_dotenv
 import requests
+import logging
+
+from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
 
 # ERCOT API Secrets
 ERCOT_USERNAME = os.getenv("ERCOT_API_USERNAME")
@@ -24,15 +27,15 @@ ERCOT_API_REQUEST_HEADERS = {
     "Authorization": f"Bearer {ERCOT_ID_TOKEN}",
 }
 # Database path
-ERCOT_DATA_DB_FILE = "_data/ercot_data.db"
+ERCOT_DB_NAME = "_data/ercot_data.db"
 # CSV file path
 QSE_FILTER_CSV = "_data/ERCOT_tracking_list.csv"
 
 # Archive API endpoints
 ERCOT_ARCHIVE_API_BASE_URL = "https://api.ercot.com/api/public-reports/archive"
 ERCOT_ARCHIVE_PRODUCT_IDS = {
-    "SPP": "NP6-788-CD",  # Settlement Point Prices
-    "DAM_BIDS": "NP3-966-ER",  # DAM Energy Bids
+    "SPP": "NP6-905-CD",  # Settlement Point Prices
+    "DAM_BIDS": "NP3-966-er",  # DAM Energy Bids
     "DAM_BID_AWARDS": "NP3-966-ER",  # DAM Energy Bid Awards
     "DAM_OFFERS": "NP3-966-ER",  # DAM Energy Offers
     "DAM_OFFER_AWARDS": "NP3-966-ER",  # DAM Energy Offer Awards
@@ -196,3 +199,99 @@ CREATE TABLE IF NOT EXISTS OFFER_AWARDS (
     OfferID TEXT
 )
 """
+
+# New mappings for different CSV types
+COLUMN_MAPPINGS = {
+    "settlement_point_prices": {
+        "deliverydate": "deliveryDate",
+        "deliveryhour": "deliveryHour",
+        "deliveryinterval": "deliveryInterval",
+        "settlementpointname": "settlementPointName",
+        "settlementpointtype": "settlementPointType",
+        "settlementpointprice": "settlementPointPrice",
+        "dstflag": "dstFlag",
+    },
+    "bid_awards": {
+        "delivery date": "deliveryDate",
+        "hour ending": "hourEnding",
+        "settlement point": "settlementPointName",
+        "qse name": "qseName",
+        "energy only bid award in mw": "energyOnlyBidAwardInMW",
+        "settlement point price": "settlementPointPrice",
+        "bid id": "bidId",
+    },
+    "bids": {
+        "delivery date": "deliveryDate",
+        "hour ending": "hourEnding",
+        "settlement point": "settlementPointName",
+        "qse name": "qseName",
+        "energy only bid mw1": "energyOnlyBidMw1",
+        "energy only bid price1": "energyOnlyBidPrice1",
+        "energy only bid mw2": "energyOnlyBidMw2",
+        "energy only bid price2": "energyOnlyBidPrice2",
+        "energy only bid mw3": "energyOnlyBidMw3",
+        "energy only bid price3": "energyOnlyBidPrice3",
+        "energy only bid mw4": "energyOnlyBidMw4",
+        "energy only bid price4": "energyOnlyBidPrice4",
+        "energy only bid mw5": "energyOnlyBidMw5",
+        "energy only bid price5": "energyOnlyBidPrice5",
+        "energy only bid mw6": "energyOnlyBidMw6",
+        "energy only bid price6": "energyOnlyBidPrice6",
+        "energy only bid mw7": "energyOnlyBidMw7",
+        "energy only bid price7": "energyOnlyBidPrice7",
+        "energy only bid mw8": "energyOnlyBidMw8",
+        "energy only bid price8": "energyOnlyBidPrice8",
+        "energy only bid mw9": "energyOnlyBidMw9",
+        "energy only bid price9": "energyOnlyBidPrice9",
+        "energy only bid mw10": "energyOnlyBidMw10",
+        "energy only bid price10": "energyOnlyBidPrice10",
+        "energy only bid id": "bidId",
+        "multi-hour block indicator": "multiHourBlock",
+        "block/curve indicator": "blockCurve",
+    },
+    "offer_awards": {
+        "delivery date": "deliveryDate",
+        "hour ending": "hourEnding",
+        "settlement point": "settlementPointName",
+        "qse name": "qseName",
+        "energy only offer award in mw": "energyOnlyOfferAwardInMW",
+        "settlement point price": "settlementPointPrice",
+        "offer id": "offerId",
+    },
+    "offers": {
+        "delivery date": "deliveryDate",
+        "hour ending": "hourEnding",
+        "settlement point": "settlementPointName",
+        "qse name": "qseName",
+        "energy only offer mw1": "energyOnlyOfferMW1",
+        "energy only offer price1": "energyOnlyOfferPrice1",
+        "energy only offer mw2": "energyOnlyOfferMW2",
+        "energy only offer price2": "energyOnlyOfferPrice2",
+        "energy only offer mw3": "energyOnlyOfferMW3",
+        "energy only offer price3": "energyOnlyOfferPrice3",
+        "energy only offer mw4": "energyOnlyOfferMW4",
+        "energy only offer price4": "energyOnlyOfferPrice4",
+        "energy only offer mw5": "energyOnlyOfferMW5",
+        "energy only offer price5": "energyOnlyOfferPrice5",
+        "energy only offer mw6": "energyOnlyOfferMW6",
+        "energy only offer price6": "energyOnlyOfferPrice6",
+        "energy only offer mw7": "energyOnlyOfferMW7",
+        "energy only offer price7": "energyOnlyOfferPrice7",
+        "energy only offer mw8": "energyOnlyOfferMW8",
+        "energy only offer price8": "energyOnlyOfferPrice8",
+        "energy only offer mw9": "energyOnlyOfferMW9",
+        "energy only offer price9": "energyOnlyOfferPrice9",
+        "energy only offer mw10": "energyOnlyOfferMW10",
+        "energy only offer price10": "energyOnlyOfferPrice10",
+        "energy only offer id": "offerId",
+        "multi-hour block indicator": "multiHourBlock",
+        "block/curve indicator": "blockCurve",
+    },
+}
+
+# Configure logging
+LOGGER = logging.getLogger(__name__)
+
+# Ensure environment variables are loaded correctly
+LOGGER.info(f"ERCOT_API_BASE_URL_DAM: {ERCOT_API_BASE_URL_DAM}")
+LOGGER.info(f"ERCOT_API_BASE_URL_SETTLEMENT: {ERCOT_API_BASE_URL_SETTLEMENT}")

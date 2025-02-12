@@ -109,11 +109,7 @@ def store_data_to_db(
                 raise ValueError(
                     f"Invalid data for {model_class.__name__}: Record must be a dictionary or have fields defined")
 
-            # Normalize the keys to match the model class
-            normalized_record = {model_class.__annotations__.get(
-                k, k): v for k, v in record_dict.items()}
-
-            instance = model_class(**normalized_record)
+            instance = model_class(**record_dict)
             cursor.execute(insert_query, instance.as_tuple())
         except TypeError as e:
             missing_fields = [
@@ -122,11 +118,6 @@ def store_data_to_db(
             logger.error(
                 f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
             )
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
-            )
-
     conn.commit()
     conn.close()
 

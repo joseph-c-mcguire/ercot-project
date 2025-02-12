@@ -5,7 +5,7 @@ from typing import Optional, Set
 from pathlib import Path
 import argparse
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_DB_NAME
 from ercot_scraping.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 def download_historical_dam_data(
     start_date: str,
     end_date: Optional[str] = None,
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """
@@ -91,7 +91,7 @@ def download_historical_dam_data(
 
 
 def download_historical_spp_data(
-    start_date: str, end_date: Optional[str] = None, db_name: str = "ercot.db"
+    start_date: str, end_date: Optional[str] = None, db_name: str = ERCOT_DB_NAME
 ) -> None:
     """
     Downloads all historical Settlement Point Price data from start_date to end_date.
@@ -118,7 +118,7 @@ def download_historical_spp_data(
 
 
 def update_daily_dam_data(
-    db_name: str = "ercot.db", qse_filter: Optional[Set[str]] = None
+    db_name: str = ERCOT_DB_NAME, qse_filter: Optional[Set[str]] = None
 ) -> None:
     """
     Downloads DAM data for the previous day.
@@ -139,7 +139,7 @@ def update_daily_dam_data(
         raise
 
 
-def update_daily_spp_data(db_name: str = "ercot.db") -> None:
+def update_daily_spp_data(db_name: str = ERCOT_DB_NAME) -> None:
     """
     Downloads Settlement Point Price data for the previous day.
 
@@ -191,7 +191,7 @@ def parse_args() -> argparse.Namespace:
     )
     historical_dam.add_argument("--end", help="End date (YYYY-MM-DD)")
     historical_dam.add_argument(
-        "--db", default="ercot.db", help="Database filename")
+        "--db", default=ERCOT_DB_NAME, help="Database filename")
     historical_dam.add_argument(
         "--qse-filter", type=Path, help="Path to QSE filter CSV file"
     )
@@ -205,12 +205,12 @@ def parse_args() -> argparse.Namespace:
     )
     historical_spp.add_argument("--end", help="End date (YYYY-MM-DD)")
     historical_spp.add_argument(
-        "--db", default="ercot.db", help="Database filename")
+        "--db", default=ERCOT_DB_NAME, help="Database filename")
 
     # Update DAM data command
     update_dam = subparsers.add_parser(
         "update-dam", help="Update daily DAM data")
-    update_dam.add_argument("--db", default="ercot.db",
+    update_dam.add_argument("--db", default=ERCOT_DB_NAME,
                             help="Database filename")
     update_dam.add_argument(
         "--qse-filter", type=Path, help="Path to QSE filter CSV file"
@@ -219,7 +219,7 @@ def parse_args() -> argparse.Namespace:
     # Update SPP data command
     update_spp = subparsers.add_parser(
         "update-spp", help="Update daily SPP data")
-    update_spp.add_argument("--db", default="ercot.db",
+    update_spp.add_argument("--db", default=ERCOT_DB_NAME,
                             help="Database filename")
 
     # Add debug flag

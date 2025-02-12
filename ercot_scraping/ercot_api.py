@@ -14,8 +14,6 @@ Environment Variables:
 import os
 from typing import Optional
 import requests
-import logging
-
 
 from ercot_scraping.config import (
     ERCOT_API_BASE_URL_DAM,
@@ -24,7 +22,8 @@ from ercot_scraping.config import (
     ERCOT_API_REQUEST_HEADERS,
     QSE_FILTER_CSV,
     ERCOT_ARCHIVE_PRODUCT_IDS,
-    LOGGER
+    LOGGER,
+    ERCOT_DB_NAME
 )
 from ercot_scraping.filters import load_qse_shortnames
 from ercot_scraping.batched_api import fetch_in_batches
@@ -300,7 +299,7 @@ def fetch_settlement_point_prices(
             end_date
         )
         data = list(download_spp_archive_files(
-            ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids))
+            ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids, db_name=ERCOT_DB_NAME))
         return {"data": data}
 
     # Load QSE names from tracking list

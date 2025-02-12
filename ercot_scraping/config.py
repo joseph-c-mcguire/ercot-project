@@ -340,7 +340,6 @@ COLUMN_MAPPINGS = {
         "qse_name": "qseName",
         "energy only offer mw1": "energyOnlyOfferMW1",
         "energy_only_offer_mw1": "energyOnlyOfferMW1",
-        "energyOnlyOfferMW1": "energyOnlyOfferMW1",
         "energy only offer price1": "energyOnlyOfferPrice1",
         "energy_only_offer_price1": "energyOnlyOfferPrice1",
         "energy only offer mw2": "energyOnlyOfferMW2",

@@ -176,4 +176,4 @@ cython_debug/
 *.egg-info/
 *test_ercot.db
 *.db
-_data/*.db
+_data\ercot_data.db

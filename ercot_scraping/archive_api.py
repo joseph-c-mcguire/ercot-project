@@ -4,9 +4,9 @@ import io
 import zipfile
 from io import BytesIO
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES
 from ercot_scraping.batched_api import rate_limited_request
-from ercot_scraping.utils import get_column_mapping
+from ercot_scraping.utils import get_table_name
 
 
 def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict]:
@@ -44,10 +44,11 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
                 continue
 
             content = response.content
-            LOGGER.debug(
-                f"Downloaded {len(content)} bytes; expecting ZIP format.")
-            LOGGER.info(
-                "Verifying downloaded content is a ZIP file (not a CSV).")
+            if not content:
+                LOGGER.error("Empty response content")
+                continue
+
+            # Try to open as zip file
             try:
                 with zipfile.ZipFile(BytesIO(content)) as zip_file:
                     LOGGER.debug(f"Zip file contents: {zip_file.namelist()}")
@@ -62,105 +63,21 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
 
                         try:
                             # Read CSV from zip
-                            with zip_file.open(filename) as possible_zip_file:
-                                file_content = possible_zip_file.read()
+                            with zip_file.open(filename) as csv_file:
+                                # Try multiple encodings
+                                for encoding in ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
+                                    try:
+                                        csv_content = csv_file.read().decode(encoding)
+                                        break
+                                    except UnicodeDecodeError:
+                                        continue
+                                else:
+                                    LOGGER.error(
+                                        f"Could not decode {filename} with any encoding")
+                                    continue
+
+                                # Process CSV content
                                 try:
-                                    # Attempt to open as nested zip
-                                    with zipfile.ZipFile(BytesIO(file_content)) as nested_zip:
-                                        LOGGER.debug(
-                                            f"Nested zip contents: {nested_zip.namelist()}")
-                                        for nested_filename in nested_zip.namelist():
-                                            LOGGER.debug(
-                                                f"Processing nested file: {nested_filename}")
-                                            if nested_filename.endswith('/'):
-                                                continue
-                                            try:
-                                                with nested_zip.open(nested_filename) as csv_file:
-                                                    # Try multiple encodings
-                                                    for encoding in ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
-                                                        try:
-                                                            csv_content = csv_file.read().decode(encoding)
-                                                            break
-                                                        except UnicodeDecodeError:
-                                                            continue
-                                                    else:
-                                                        LOGGER.error(
-                                                            f"Could not decode {nested_filename} with any encoding")
-                                                        continue
-
-                                                    # Process CSV content
-                                                    try:
-                                                        reader = csv.DictReader(
-                                                            io.StringIO(csv_content.replace(
-                                                                '\r\n', '\n').replace('\r', '\n'))
-                                                        )
-
-                                                        if not reader.fieldnames:
-                                                            LOGGER.warning(
-                                                                f"No headers found in {nested_filename}, attempting fallback parsing")
-                                                            fallback_io = io.StringIO(
-                                                                csv_content)
-                                                            first_line = fallback_io.readline().strip()
-                                                            if first_line:
-                                                                field_candidates = first_line.split(
-                                                                    ',')
-                                                                fallback_io.seek(
-                                                                    0)
-                                                                reader = csv.DictReader(
-                                                                    fallback_io, fieldnames=field_candidates)
-                                                                # Skip the line that is now fieldnames
-                                                                next(
-                                                                    reader, None)
-
-                                                                # If we still have no valid fields, skip
-                                                                if not any(field_candidates):
-                                                                    LOGGER.warning(
-                                                                        f"Fallback also failed in {nested_filename}, skipping file")
-                                                                    continue
-                                                            else:
-                                                                LOGGER.warning(
-                                                                    f"File {nested_filename} appears empty, skipping")
-                                                                continue
-
-                                                        # Detect the appropriate column mapping
-                                                        chosen_mapping = get_column_mapping(
-                                                            reader.fieldnames)
-
-                                                        for row in reader:
-                                                            normalized_row = {}
-                                                            for key, value in row.items():
-                                                                if not key:
-                                                                    continue
-                                                                # Normalize field name
-                                                                norm_key = key.lower().strip().replace(' ', '_')
-                                                                final_key = chosen_mapping.get(
-                                                                    norm_key, norm_key)
-                                                                # Clean and convert value
-                                                                if value:
-                                                                    value = value.strip()
-                                                                    # Convert types for known fields
-                                                                    if final_key in ['deliveryHour', 'deliveryInterval']:
-                                                                        value = int(
-                                                                            value)
-                                                                    elif final_key == 'settlementPointPrice':
-                                                                        value = float(
-                                                                            value)
-                                                                normalized_row[final_key] = value
-                                                            yield normalized_row
-
-                                                    except csv.Error as e:
-                                                        LOGGER.error(
-                                                            f"CSV parsing error in {nested_filename}: {e}")
-                                                        continue
-
-                                            except Exception as e:
-                                                LOGGER.error(
-                                                    f"Error processing {nested_filename}: {e}")
-                                                continue
-
-                                except zipfile.BadZipFile:
-                                    # Fallback: treat file_content as an actual CSV
-                                    csv_content = file_content.decode('utf-8')
                                     reader = csv.DictReader(
                                         io.StringIO(csv_content.replace(
                                             '\r\n', '\n').replace('\r', '\n'))
@@ -190,9 +107,16 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
                                                 f"File {filename} appears empty, skipping")
                                             continue
 
-                                    # Detect the appropriate column mapping
-                                    chosen_mapping = get_column_mapping(
-                                        reader.fieldnames)
+                                    # Normalize field names
+                                    field_mapping = {
+                                        'delivery_date': 'deliveryDate',
+                                        'delivery_hour': 'deliveryHour',
+                                        'delivery_interval': 'deliveryInterval',
+                                        'settlement_point_name': 'settlementPointName',
+                                        'settlement_point_type': 'settlementPointType',
+                                        'settlement_point_price': 'settlementPointPrice',
+                                        'dst_flag': 'dstFlag'
+                                    }
 
                                     for row in reader:
                                         normalized_row = {}
@@ -201,7 +125,7 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
                                                 continue
                                             # Normalize field name
                                             norm_key = key.lower().strip().replace(' ', '_')
-                                            final_key = chosen_mapping.get(
+                                            final_key = field_mapping.get(
                                                 norm_key, norm_key)
                                             # Clean and convert value
                                             if value:
@@ -214,15 +138,17 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
                                             normalized_row[final_key] = value
                                         yield normalized_row
 
+                                except csv.Error as e:
+                                    LOGGER.error(
+                                        f"CSV parsing error in {filename}: {e}")
+                                    continue
+
                         except Exception as e:
                             LOGGER.error(f"Error processing {filename}: {e}")
                             continue
 
             except zipfile.BadZipFile:
-                LOGGER.error(
-                    "Response is not a valid ZIP file from the archive API.")
-                LOGGER.error(
-                    "Expected a ZIP file but got an invalid format instead.")
+                LOGGER.error("Response is not a valid zip file")
                 LOGGER.debug(f"First 100 bytes of content: {content[:100]}")
                 continue
 
@@ -230,6 +156,104 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
             LOGGER.error(f"Error downloading batch: {str(e)}")
             LOGGER.debug("Exception details:", exc_info=True)
             continue
+
+
+def download_dam_archive_files(
+    product_id: str,
+    doc_ids: list[int],
+    db_name: str
+) -> None:
+    """
+    Download and process DAM archive files, storing each type in its respective table.
+    This function handles the specific DAM file types:
+    - 60d_DAM_EnergyBidAwards-*.csv -> BID_AWARDS
+    - 60d_DAM_EnergyBids-*.csv -> BIDS
+    - 60d_DAM_EnergyOnlyOfferAwards-*.csv -> OFFER_AWARDS
+    - 60d_DAM_EnergyOnlyOffers-*.csv -> OFFERS
+    """
+    if not doc_ids:
+        LOGGER.warning(f"No document IDs found for DAM product {product_id}")
+        return
+
+    url = f"{ERCOT_ARCHIVE_API_BASE_URL}/{product_id}/download"
+    LOGGER.info(f"Downloading {len(doc_ids)} DAM documents from archive API")
+
+    for i in range(0, len(doc_ids), API_MAX_ARCHIVE_FILES):
+        batch = doc_ids[i:i + API_MAX_ARCHIVE_FILES]
+        payload = {"docIds": batch}
+
+        response = rate_limited_request(
+            "POST",
+            url,
+            headers=ERCOT_API_REQUEST_HEADERS,
+            json=payload,
+            stream=True
+        )
+
+        if not response.ok:
+            LOGGER.error(
+                f"Failed to download DAM batch. Status: {response.status_code}")
+            continue
+
+        content = response.content
+        with zipfile.ZipFile(BytesIO(content)) as zip_folder:
+            for filename in zip_folder.namelist():
+
+                with zip_folder.open(filename) as nested_zip_file:
+                    nested_content = nested_zip_file.read()
+                    with zipfile.ZipFile(BytesIO(nested_content)) as nested_zip:
+                        for nested_filename in nested_zip.namelist():
+
+                            table_name = get_table_name(nested_filename)
+                            if not any(nested_filename.startswith(prefix) for prefix in DAM_FILENAMES):
+                                continue
+                            if not table_name:
+                                LOGGER.warning(
+                                    f"Unrecognized DAM file type: {nested_filename}")
+                                continue
+                            if not nested_filename.endswith('.csv'):
+                                continue
+                            LOGGER.info(
+                                f"Processing DAM file: {nested_filename}")
+                            process_dam_file(
+                                nested_zip, nested_filename, table_name, db_name)
+
+
+def process_dam_file(zip_folder, filename, table_name, db_name):
+    """
+    Process a single DAM file and store its data in the database.
+    """
+    with zip_folder.open(filename) as csv_file:
+        csv_content = csv_file.read().decode('utf-8')
+        reader = csv.DictReader(io.StringIO(csv_content))
+
+        if not reader.fieldnames:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        mapping = get_column_mapping(reader.fieldnames)
+        rows = []
+
+        for row in reader:
+            normalized_row = {}
+            for key, value in row.items():
+                if not key:
+                    continue
+                norm_key = key.lower().strip().replace(' ', '_')
+                final_key = mapping.get(norm_key, norm_key)
+                normalized_row[final_key] = value.strip() if value else None
+            rows.append(normalized_row)
+
+        if rows:
+            LOGGER.info(f"Storing {len(rows)} rows to {table_name}")
+            if table_name in DAM_TABLE_DATA_MAPPING:
+                model_class = DAM_TABLE_DATA_MAPPING[table_name]["model_class"]
+                insert_query = DAM_TABLE_DATA_MAPPING[table_name]["insert_query"]
+                store_data_to_db(
+                    data={"data": rows}, db_name=db_name, table_name=table_name, model_class=model_class, insert_query=insert_query)
+            else:
+                LOGGER.warning(
+                    f"No data mapping found for table: {table_name}")
 
 
 def get_archive_document_ids(

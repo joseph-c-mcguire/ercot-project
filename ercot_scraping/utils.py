@@ -165,3 +165,16 @@ def get_column_mapping(fieldnames: list[str]) -> dict[str, str]:
     if "energy only offer mw1" in lowered:
         return COLUMN_MAPPINGS["offers"]
     return {}
+
+
+def get_table_name(filename: str) -> str:
+    """Map DAM filename to its corresponding table name."""
+    if "60d_DAM_EnergyBidAwards-" in filename:
+        return "BID_AWARDS"
+    elif "60d_DAM_EnergyBids-" in filename:
+        return "BIDS"
+    elif "60d_DAM_EnergyOnlyOfferAwards-" in filename:
+        return "OFFER_AWARDS"
+    elif "60d_DAM_EnergyOnlyOffers-" in filename:
+        return "OFFERS"
+    return None

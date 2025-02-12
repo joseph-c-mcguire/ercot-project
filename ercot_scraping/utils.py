@@ -150,23 +150,6 @@ def refresh_access_token() -> str:
     return auth_response.json().get("id_token")
 
 
-def get_column_mapping(fieldnames: list[str]) -> dict[str, str]:
-    """Return the best matching column mapping based on CSV headers."""
-    lowered = {f.lower().strip(): f for f in fieldnames if f}
-    # A very simple detection: check for a known unique column
-    if "dstflag" in lowered:
-        return COLUMN_MAPPINGS["settlement_point_prices"]
-    if "energy only bid award in mw" in lowered:
-        return COLUMN_MAPPINGS["bid_awards"]
-    if "energy only bid mw1" in lowered:
-        return COLUMN_MAPPINGS["bids"]
-    if "energy only offer award in mw" in lowered:
-        return COLUMN_MAPPINGS["offer_awards"]
-    if "energy only offer mw1" in lowered:
-        return COLUMN_MAPPINGS["offers"]
-    return {}
-
-
 def get_table_name(filename: str) -> str:
     """Map DAM filename to its corresponding table name."""
     if "60d_DAM_EnergyBidAwards-" in filename:

@@ -1,12 +1,12 @@
-from typing import Iterator, List
+from typing import List
 import csv
 import io
 import zipfile
 from io import BytesIO
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING, COLUMN_MAPPINGS
 from ercot_scraping.batched_api import rate_limited_request
-from ercot_scraping.utils import get_table_name, get_column_mapping
+from ercot_scraping.utils import get_table_name
 from ercot_scraping.store_data import store_data_to_db
 
 
@@ -76,7 +76,7 @@ def process_spp_file(zip_folder, filename, table_name, db_name):
             LOGGER.warning(f"No headers found in {filename}")
             return
 
-        mapping = get_column_mapping(reader.fieldnames)
+        mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
         rows = []
 
         for row in reader:
@@ -174,7 +174,7 @@ def process_dam_file(zip_folder, filename, table_name, db_name):
             LOGGER.warning(f"No headers found in {filename}")
             return
 
-        mapping = get_column_mapping(reader.fieldnames)
+        mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
         rows = []
 
         for row in reader:

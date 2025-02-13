@@ -120,7 +120,7 @@ def store_data_to_db(
             )
         except ValueError as e:
             raise ValueError(
-                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
+                f"Invalid data for {model_class.__name__}: {e}."
             )
 
     conn.commit()

@@ -36,6 +36,7 @@ def fetch_in_batches(
     LOGGER.info(f"Processing {total_batches} batches for {total_qses} QSEs")
 
     combined_data = []
+    fields = []
     empty_batches = []
     failed_batches = []
 
@@ -64,6 +65,10 @@ def fetch_in_batches(
                         continue
 
                     records = batch_data["data"]
+                    # Grab the fields if they're empty
+                    if not fields:
+                        fields = batch_data.get("fields")
+
                     if not records:
                         LOGGER.warning(
                             f"No data found for period {batch_start} to {batch_end}")
@@ -102,7 +107,10 @@ def fetch_in_batches(
                     failed_batches.append((batch_start, batch_end))
                     continue
 
-                records = batch_data["data"]
+                records = batch_data.get("data")
+                # Grab the fields if they're empty
+                if not fields:
+                    fields = batch_data.get("fields")
                 if not records:
                     LOGGER.warning(
                         f"No data found for period {batch_start} to {batch_end}")
@@ -133,7 +141,7 @@ def fetch_in_batches(
         f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
     )
 
-    return {"data": combined_data}
+    return {"data": combined_data, "fields": fields}
 
 
 @sleep_and_retry

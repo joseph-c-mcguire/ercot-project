@@ -178,3 +178,16 @@ def get_table_name(filename: str) -> str:
     elif "60d_DAM_EnergyOnlyOffers-" in filename:
         return "OFFERS"
     return None
+
+
+def normalize_data(data: dict[str, any]) -> dict[str, any]:
+    # If no records or missing 'data', just return
+    if "data" not in data:
+        return data
+
+    for row in data["data"]:
+        for old_key, new_key in COLUMN_MAPPINGS.items():
+            if old_key in row:
+                row[new_key] = row.pop(old_key)
+
+    return data

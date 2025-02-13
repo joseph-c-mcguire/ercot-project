@@ -3,6 +3,7 @@ from typing import Set
 import sqlite3
 
 from ercot_scraping.utils import get_field_name
+from ercot_scraping.config import COLUMN_MAPPINGS
 
 
 def load_qse_shortnames(csv_path: str) -> Set[str]:
@@ -93,13 +94,7 @@ def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict
         dict: Filtered data dictionary containing only records matching settlement_points
     """
     # Common variations of settlement point field names
-    point_field_names = [
-        "settlementPointName",
-        "settlementPoint",
-        "SettlementPointName",
-        "SettlementPoint"
-    ]
-
+    point_field_names = list(COLUMN_MAPPINGS["settlement_point_prices"].keys())
     filtered_data = {"data": []}
     for record in data["data"]:
         field_name = get_field_name(record, point_field_names)

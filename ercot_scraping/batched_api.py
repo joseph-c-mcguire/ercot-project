@@ -31,66 +31,72 @@ def fetch_in_batches(
     """
     batches = split_date_range(start_date, end_date, batch_days)
     total_batches = len(batches)
-    total_qses = len(qse_names) if qse_names else 1
 
-    LOGGER.info(
-        f"Processing {total_batches} batches for {total_qses} QSEs"
-    )
-
-    combined_data = []
-    empty_batches = []
-    failed_batches = []
-
-    # If we have QSE names, iterate through each one
     if qse_names:
-        for qse_name in sorted(qse_names):
-            LOGGER.info(f"Processing QSE: {qse_name}")
+        combined_qse = ",".join(sorted(qse_names))
+        LOGGER.info(
+            f"Processing {total_batches} batches for {len(qse_names)} QSEs in one request")
+        combined_data = []
+        empty_batches = []
+        failed_batches = []
 
-            for i, (batch_start, batch_end) in enumerate(batches, 1):
+        for i, (batch_start, batch_end) in enumerate(batches, 1):
+            LOGGER.info(
+                f"Fetching batch {i}/{total_batches} for all QSEs: {batch_start} to {batch_end}")
+            try:
+                batch_data = fetch_func(
+                    batch_start, batch_end, qse_name=combined_qse, **kwargs)
+
+                if not batch_data:
+                    LOGGER.warning(f"Batch {i}/{total_batches} returned None")
+                    failed_batches.append((batch_start, batch_end))
+                    continue
+
+                if "data" not in batch_data:
+                    LOGGER.warning(
+                        f"Batch {i}/{total_batches} missing 'data' key")
+                    LOGGER.debug(f"Batch response: {batch_data}")
+                    failed_batches.append((batch_start, batch_end))
+                    continue
+
+                records = batch_data["data"]
+                if not records:
+                    LOGGER.warning(
+                        f"No data found for period {batch_start} to {batch_end}")
+                    empty_batches.append((batch_start, batch_end))
+                    continue
+
+                combined_data.extend(records)
                 LOGGER.info(
-                    f"Fetching batch {i}/{total_batches} for QSE {qse_name}: {batch_start} to {batch_end}"
+                    f"Batch {i}/{total_batches} successful - got {len(records)} records"
                 )
 
-                try:
-                    # Pass single QSE name to fetch function
-                    batch_data = fetch_func(
-                        batch_start, batch_end, qse_name=qse_name, **kwargs)
+            except Exception as e:
+                LOGGER.error(f"Error in batch {i}/{total_batches}: {str(e)}")
+                failed_batches.append((batch_start, batch_end))
+                continue
 
-                    if not batch_data:
-                        LOGGER.warning(
-                            f"Batch {i}/{total_batches} for QSE {qse_name} returned None")
-                        failed_batches.append(
-                            (qse_name, batch_start, batch_end))
-                        continue
+        # Enhanced summary logging
+        if empty_batches:
+            LOGGER.warning(f"Empty batches: {empty_batches}")
+        if failed_batches:
+            LOGGER.error(f"Failed batches: {failed_batches}")
 
-                    if "data" not in batch_data:
-                        LOGGER.warning(
-                            f"Batch {i}/{total_batches} for QSE {qse_name} missing 'data' key")
-                        LOGGER.debug(f"Batch response: {batch_data}")
-                        failed_batches.append(
-                            (qse_name, batch_start, batch_end))
-                        continue
+        total_records = len(combined_data)
+        successful_batches = total_batches - len(failed_batches)
 
-                    records = batch_data["data"]
-                    if not records:
-                        LOGGER.warning(
-                            f"No data found for QSE {qse_name} period {batch_start} to {batch_end}")
-                        empty_batches.append(
-                            (qse_name, batch_start, batch_end))
-                        continue
+        LOGGER.info(f"Total records retrieved: {total_records}")
+        LOGGER.info(
+            f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
+        )
 
-                    combined_data.extend(records)
-                    LOGGER.info(
-                        f"Batch {i}/{total_batches} for QSE {qse_name} successful - got {len(records)} records"
-                    )
-
-                except Exception as e:
-                    LOGGER.error(
-                        f"Error in batch {i}/{total_batches} for QSE {qse_name}: {str(e)}")
-                    failed_batches.append((qse_name, batch_start, batch_end))
-                    continue
+        return {"data": combined_data}
     else:
         # Original batch processing without QSE filtering
+        combined_data = []
+        empty_batches = []
+        failed_batches = []
+
         for i, (batch_start, batch_end) in enumerate(batches, 1):
             LOGGER.info(
                 f"Fetching batch {i}/{total_batches}: {batch_start} to {batch_end}")
@@ -127,21 +133,21 @@ def fetch_in_batches(
                 failed_batches.append((batch_start, batch_end))
                 continue
 
-    # Enhanced summary logging
-    if empty_batches:
-        LOGGER.warning(f"Empty batches: {empty_batches}")
-    if failed_batches:
-        LOGGER.error(f"Failed batches: {failed_batches}")
+        # Enhanced summary logging
+        if empty_batches:
+            LOGGER.warning(f"Empty batches: {empty_batches}")
+        if failed_batches:
+            LOGGER.error(f"Failed batches: {failed_batches}")
 
-    total_records = len(combined_data)
-    successful_batches = total_batches * total_qses - len(failed_batches)
+        total_records = len(combined_data)
+        successful_batches = total_batches - len(failed_batches)
 
-    LOGGER.info(f"Total records retrieved: {total_records}")
-    LOGGER.info(
-        f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
-    )
+        LOGGER.info(f"Total records retrieved: {total_records}")
+        LOGGER.info(
+            f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
+        )
 
-    return {"data": combined_data}
+        return {"data": combined_data}
 
 
 @sleep_and_retry

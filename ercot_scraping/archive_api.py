@@ -63,86 +63,20 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
                             continue
 
                         try:
-                            # Read CSV from zip
-                            with zip_file.open(filename) as csv_file:
-                                # Try multiple encodings
-                                for encoding in ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
-                                    try:
-                                        csv_content = csv_file.read().decode(encoding)
-                                        break
-                                    except UnicodeDecodeError:
-                                        continue
-                                else:
-                                    LOGGER.error(
-                                        f"Could not decode {filename} with any encoding")
-                                    continue
+                            with zip_file.open(filename) as file_in_zip:
+                                content = file_in_zip.read()
 
-                                # Process CSV content
+                                # Try to open as a nested zip first
                                 try:
-                                    reader = csv.DictReader(
-                                        io.StringIO(csv_content.replace(
-                                            '\r\n', '\n').replace('\r', '\n'))
-                                    )
-
-                                    if not reader.fieldnames:
-                                        LOGGER.warning(
-                                            f"No headers found in {filename}, attempting fallback parsing")
-                                        fallback_io = io.StringIO(csv_content)
-                                        first_line = fallback_io.readline().strip()
-                                        if first_line:
-                                            field_candidates = first_line.split(
-                                                ',')
-                                            fallback_io.seek(0)
-                                            reader = csv.DictReader(
-                                                fallback_io, fieldnames=field_candidates)
-                                            # Skip the line that is now fieldnames
-                                            next(reader, None)
-
-                                            # If we still have no valid fields, skip
-                                            if not any(field_candidates):
-                                                LOGGER.warning(
-                                                    f"Fallback also failed in {filename}, skipping file")
-                                                continue
-                                        else:
-                                            LOGGER.warning(
-                                                f"File {filename} appears empty, skipping")
-                                            continue
-
-                                    # Normalize field names
-                                    field_mapping = {
-                                        'delivery_date': 'deliveryDate',
-                                        'delivery_hour': 'deliveryHour',
-                                        'delivery_interval': 'deliveryInterval',
-                                        'settlement_point_name': 'settlementPointName',
-                                        'settlement_point_type': 'settlementPointType',
-                                        'settlement_point_price': 'settlementPointPrice',
-                                        'dst_flag': 'dstFlag'
-                                    }
-
-                                    for row in reader:
-                                        normalized_row = {}
-                                        for key, value in row.items():
-                                            if not key:
-                                                continue
-                                            # Normalize field name
-                                            norm_key = key.lower().strip().replace(' ', '_')
-                                            final_key = field_mapping.get(
-                                                norm_key, norm_key)
-                                            # Clean and convert value
-                                            if value:
-                                                value = value.strip()
-                                                # Convert types for known fields
-                                                if final_key in ['deliveryHour', 'deliveryInterval']:
-                                                    value = int(value)
-                                                elif final_key == 'settlementPointPrice':
-                                                    value = float(value)
-                                            normalized_row[final_key] = value
-                                        yield normalized_row
-
-                                except csv.Error as e:
-                                    LOGGER.error(
-                                        f"CSV parsing error in {filename}: {e}")
-                                    continue
+                                    with zipfile.ZipFile(BytesIO(content)) as nested_zip:
+                                        for nested_file in nested_zip.namelist():
+                                            if nested_file.endswith('.csv'):
+                                                with nested_zip.open(nested_file) as csv_file:
+                                                    yield from process_csv_content(csv_file, nested_file)
+                                except zipfile.BadZipFile:
+                                    # If not a zip, try processing as CSV directly
+                                    if filename.endswith('.csv'):
+                                        yield from process_csv_content(BytesIO(content), filename)
 
                         except Exception as e:
                             LOGGER.error(f"Error processing {filename}: {e}")
@@ -157,6 +91,54 @@ def download_archive_files(product_id: str, doc_ids: list[int]) -> Iterator[dict
             LOGGER.error(f"Error downloading batch: {str(e)}")
             LOGGER.debug("Exception details:", exc_info=True)
             continue
+
+
+def process_csv_content(file_obj, filename: str) -> Iterator[dict]:
+    """Process CSV content and yield normalized rows."""
+    for encoding in ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
+        try:
+            content = file_obj.read().decode(encoding)
+            file_obj.seek(0)  # Reset file pointer for next attempt if needed
+
+            reader = csv.DictReader(
+                io.StringIO(content.replace('\r\n', '\n').replace('\r', '\n'))
+            )
+
+            if not reader.fieldnames:
+                LOGGER.warning(
+                    f"No headers found in {filename}, attempting fallback parsing")
+                lines = content.splitlines()
+                if not lines:
+                    LOGGER.warning(f"File {filename} appears empty, skipping")
+                    return
+
+                # Try to extract headers from first line
+                headers = [h.strip() for h in lines[0].split(',')]
+                if not any(headers):
+                    LOGGER.warning(
+                        f"No valid headers found in {filename}, skipping")
+                    return
+
+                reader = csv.DictReader(io.StringIO(
+                    '\n'.join(lines[1:])), fieldnames=headers)
+
+            # Process rows
+            for row in reader:
+                normalized_row = {}
+                for key, value in row.items():
+                    if not key:
+                        continue
+                    norm_key = key.lower().strip().replace(' ', '_')
+                    normalized_row[norm_key] = value.strip() if value else None
+                yield normalized_row
+
+            break  # If successful, exit the encoding loop
+
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            LOGGER.error(f"Error processing CSV {filename}: {e}")
+            return
 
 
 def download_dam_archive_files(

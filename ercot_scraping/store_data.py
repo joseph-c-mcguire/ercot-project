@@ -213,9 +213,7 @@ def store_bids_to_db(
         logger.warning("No bid data to store")
         return
 
-    unique_dates = {record.get("deliveryDate", "unknown")
-                    for record in data["data"]}
-    logger.info(f"Preparing to store bids for dates: {sorted(unique_dates)}")
+    logger.info(f"Preparing to store bids")
 
     store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
 

@@ -138,17 +138,16 @@ def fetch_dam_energy_bid_awards(
         return {"data": data}
 
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_bid_awards",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -190,17 +189,16 @@ def fetch_dam_energy_bids(
         return {"data": data}
 
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_bids",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -242,17 +240,16 @@ def fetch_dam_energy_only_offer_awards(
         return {"data": data}
 
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_only_offer_awards",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -296,17 +293,16 @@ def fetch_dam_energy_only_offers(
         return {"data": data}
 
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_only_offers",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 

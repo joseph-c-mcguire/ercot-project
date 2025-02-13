@@ -65,7 +65,7 @@ def store_data_to_db(
                     indicating invalid or missing data fields.
     """
     if normalize:
-        data = normalize_data(data)
+        data = normalize_data(data, table_name=table_name.lower())
 
     if qse_filter is not None:
         data = filter_by_qse_names(data, qse_filter)

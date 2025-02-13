@@ -2,6 +2,7 @@ from typing import Optional
 
 from ratelimit import limits, sleep_and_retry
 import requests
+import time
 
 from ercot_scraping.config import API_RATE_LIMIT_REQUESTS, API_RATE_LIMIT_INTERVAL, LOGGER
 from ercot_scraping.utils import split_date_range
@@ -146,8 +147,6 @@ def fetch_in_batches(
 @sleep_and_retry
 @limits(calls=API_RATE_LIMIT_REQUESTS, period=API_RATE_LIMIT_INTERVAL)
 def rate_limited_request(*args, **kwargs) -> requests.Response:
-    """Make a rate-limited request using the requests library."""
     response = requests.request(*args, **kwargs)
-    if response.status_code == 429:
-        raise Exception("Rate limit exceeded")
+    time.sleep(3)
     return response

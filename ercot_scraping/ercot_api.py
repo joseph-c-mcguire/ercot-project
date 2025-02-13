@@ -14,7 +14,6 @@ Environment Variables:
 import os
 from typing import Optional
 import requests
-import logging
 
 
 from ercot_scraping.config import (
@@ -27,7 +26,7 @@ from ercot_scraping.config import (
     LOGGER
 )
 from ercot_scraping.filters import load_qse_shortnames
-from ercot_scraping.batched_api import fetch_in_batches
+from ercot_scraping.batched_api import fetch_in_batches, rate_limited_request
 from ercot_scraping.utils import refresh_access_token, should_use_archive_api
 from ercot_scraping.archive_api import get_archive_document_ids, download_archive_files
 
@@ -72,7 +71,12 @@ def fetch_data_from_endpoint(
     )
 
     for attempt in range(retries):
-        response = requests.get(url=url, headers=header, params=params)
+        response = rate_limited_request(
+            "GET",
+            url=url,
+            headers=header,
+            params=params
+        )
         if response.status_code == 401:
             LOGGER.warning("Unauthorized. Refreshing access token.")
             id_token = refresh_access_token()

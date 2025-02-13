@@ -228,6 +228,7 @@ COLUMN_MAPPINGS = {
         "settlement_point_price": "settlementPointPrice",
         "dstflag": "dstFlag",
         "dst_flag": "dstFlag",
+        "DSTFlag": "dstFlag",
     },
     "bid_awards": {
         "delivery date": "deliveryDate",

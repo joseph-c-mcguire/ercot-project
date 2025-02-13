@@ -182,12 +182,12 @@ def get_table_name(filename: str) -> str:
 
 def normalize_data(data: dict[str, any], table_name: str) -> dict[str, any]:
     # If no records or missing 'data', just return
-    if "data" not in data:
+    if "fields" not in data:
         return data
 
-    for row in data["data"]:
+    for column_info in data["fields"]:
         for old_key, new_key in COLUMN_MAPPINGS[table_name].items():
-            if old_key in row:
-                row[new_key] = row.pop(old_key)
-
+            if old_key == column_info["name"]:
+                data["fields"][data["fields"].index(
+                    column_info)]["name"] = new_key
     return data

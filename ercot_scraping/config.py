@@ -219,6 +219,7 @@ COLUMN_MAPPINGS = {
         "delivery_hour": "deliveryHour",
         "deliveryinterval": "deliveryInterval",
         "delivery_interval": "deliveryInterval",
+        "settlementPoint": "settlementPointName",
         "settlementpointname": "settlementPointName",
         "settlement_point_name": "settlementPointName",
         "settlementpointtype": "settlementPointType",

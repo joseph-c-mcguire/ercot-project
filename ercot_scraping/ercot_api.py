@@ -355,7 +355,7 @@ def fetch_settlement_point_prices(
     LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_SETTLEMENT,
             "spp_node_zone_hub",
             s, e,

@@ -352,7 +352,6 @@ def fetch_settlement_point_prices(
         return {"data": data}
 
     # Load QSE names from tracking list
-    qse_names = load_qse_shortnames(tracking_list_path)
     LOGGER.info(f"Filtering by QSE names: {sorted(qse_names)}")
     LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
@@ -362,10 +361,8 @@ def fetch_settlement_point_prices(
             "spp_node_zone_hub",
             s, e,
             header,
-            qse_name=qse_name
         ),
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
     )

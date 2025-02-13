@@ -352,7 +352,6 @@ def fetch_settlement_point_prices(
         return {"data": data}
 
     # Load QSE names from tracking list
-    LOGGER.info(f"Filtering by QSE names: {sorted(qse_names)}")
     LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
     return fetch_in_batches(

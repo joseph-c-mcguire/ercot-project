@@ -56,6 +56,7 @@ API_RATE_LIMIT_REQUESTS = 30  # requests per minute
 API_RATE_LIMIT_INTERVAL = 60  # seconds
 API_MAX_ARCHIVE_FILES = 1000  # maximum files per archive request
 API_CUTOFF_DATE = "2023-12-11"  # date when archive API becomes necessary
+DEFAULT_BATCH_DAYS = 30  # default number of days per batch for API requests
 
 # SQL Queries
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """

@@ -94,42 +94,51 @@ def store_data_to_db(
         logger.info(f"Table {table_name} does not exist yet")
         existing_dates = set()
 
-    # Check if the table exists; initialize if not
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (
-            table_name,)
-    )
-    if not cursor.fetchone():
-        create_ercot_tables(db_name)
-
+    # Filter out records with dates that already exist
+    filtered_rows = []
     for record in data["data"]:
         try:
-            # If the record is already a dict, use it directly
             if isinstance(record, dict):
                 record_dict = record
-            # If we have fields defined, use them to create the dict
             elif "fields" in data:
                 fields = [field["name"] for field in data["fields"]]
                 record_dict = dict(zip(fields, record))
             else:
-                raise ValueError(
-                    f"Invalid data for {model_class.__name__}: Record must be a dictionary or have fields defined")
+                continue
 
-            instance = model_class(**record_dict)
-            cursor.execute(insert_query, instance.as_tuple())
-        except TypeError as e:
-            missing_fields = [
-                field for field in model_class.__annotations__ if field not in record_dict
-            ]
-            logger.error(
-                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
-            )
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid data for {model_class.__name__}: {e}."
-            )
+            delivery_date = record_dict.get('deliveryDate')
+            if delivery_date:
+                # Normalize the date format to YYYY-MM-DD
+                try:
+                    if '/' in delivery_date:
+                        # Convert MM/DD/YYYY to YYYY-MM-DD
+                        mm, dd, yyyy = delivery_date.split('/')
+                        delivery_date = f"{yyyy}-{mm:0>2}-{dd:0>2}"
+                    
+                    # Skip if this date is already in the database
+                    if delivery_date not in existing_dates:
+                        filtered_rows.append(record_dict)
+                except ValueError as e:
+                    logger.error(f"Error parsing date {delivery_date}: {e}")
+                    continue
 
-    conn.commit()
+        except (TypeError, ValueError) as e:
+            logger.error(f"Error processing record: {e}")
+            continue
+
+    logger.info(f"Found {len(filtered_rows)} new records to insert")
+    
+    if filtered_rows:
+        for record in filtered_rows:
+            try:
+                instance = model_class(**record)
+                cursor.execute(insert_query, instance.as_tuple())
+            except (TypeError, ValueError) as e:
+                logger.error(f"Error inserting record: {e}")
+                continue
+
+        conn.commit()
+
     conn.close()
 
 

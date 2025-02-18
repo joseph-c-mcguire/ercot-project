@@ -6,7 +6,7 @@ import logging
 
 import chardet
 
-from ercot_scraping.config import API_CUTOFF_DATE, AUTH_URL, COLUMN_MAPPINGS
+from ercot_scraping.config import API_CUTOFF_DATE, AUTH_URL, COLUMN_MAPPINGS, DEFAULT_BATCH_DAYS
 
 
 def detect_encoding(content: bytes) -> str:
@@ -23,14 +23,14 @@ def detect_encoding(content: bytes) -> str:
     return result['encoding'] if result['encoding'] else 'utf-8'
 
 
-def split_date_range(start_date: str, end_date: str, batch_days: int = 30) -> List[tuple[str, str]]:
+def split_date_range(start_date: str, end_date: str, batch_days: int = DEFAULT_BATCH_DAYS) -> List[tuple[str, str]]:
     """
     Split a date range into smaller batches.
 
     Args:
         start_date (str): Start date in YYYY-MM-DD format
         end_date (str): End date in YYYY-MM-DD format
-        batch_days (int): Number of days per batch
+        batch_days (int): Number of days per batch, defaults to DEFAULT_BATCH_DAYS to handle API limits
 
     Returns:
         List[tuple[str, str]]: List of (batch_start, batch_end) date tuples

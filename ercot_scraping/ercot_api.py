@@ -24,7 +24,8 @@ from ercot_scraping.config import (
     QSE_FILTER_CSV,
     ERCOT_ARCHIVE_PRODUCT_IDS,
     LOGGER,
-    ERCOT_DB_NAME
+    ERCOT_DB_NAME,
+    DEFAULT_BATCH_DAYS
 )
 from ercot_scraping.filters import load_qse_shortnames
 from ercot_scraping.batched_api import fetch_in_batches, rate_limited_request
@@ -111,7 +112,7 @@ def fetch_dam_energy_bid_awards(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = 30
+    batch_days: int = DEFAULT_BATCH_DAYS
 ) -> dict[str, any]:
     """
     Fetches DAM energy bid awards data from the specified endpoint.
@@ -146,7 +147,7 @@ def fetch_dam_energy_bids(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = 30
+    batch_days: int = DEFAULT_BATCH_DAYS
 ) -> dict[str, any]:
     """
     Fetches DAM energy bids data from the specified API endpoint.
@@ -186,7 +187,7 @@ def fetch_dam_energy_only_offer_awards(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = 30
+    batch_days: int = DEFAULT_BATCH_DAYS
 ) -> dict[str, any]:
     """
     Fetch DAM energy only offer awards data from the API endpoint.
@@ -226,7 +227,7 @@ def fetch_dam_energy_only_offers(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = 30
+    batch_days: int = DEFAULT_BATCH_DAYS
 ) -> dict[str, any]:
     """
     Fetches Demand Aggregated Market (DAM) energy only offers data.
@@ -268,7 +269,7 @@ def fetch_settlement_point_prices(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = 30
+    batch_days: int = DEFAULT_BATCH_DAYS
 ) -> dict[str, any]:
     """
     The function retrieves real-time settlement point prices for nodes, zones, and hubs

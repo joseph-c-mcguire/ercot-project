@@ -71,7 +71,7 @@ def fetch_in_batches(
                         # Update pagination info
                         if "_meta" in batch_data:
                             total_pages = batch_data["_meta"].get("totalPages", 1)
-                            current_page = batch_data["_meta"].get("currentPage", 1) + 1
+                            current_page += 1
                             LOGGER.info(f"Found {total_pages} total pages of data for this batch")
 
                         records = batch_data["data"]

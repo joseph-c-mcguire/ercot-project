@@ -5,7 +5,7 @@ from typing import Optional, Set
 from pathlib import Path
 import argparse
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_DB_NAME, ERCOT_ARCHIVE_PRODUCT_IDS
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_DB_NAME, ERCOT_ARCHIVE_PRODUCT_IDS, QSE_FILTER_CSV
 from ercot_scraping.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
@@ -54,8 +54,17 @@ def download_historical_dam_data(
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info(
-        f"Downloading historical DAM data from {start_date} to {end_date}")
+    # If no QSE filter provided, load from tracking list
+    if qse_filter is None:
+        qse_filter = load_qse_shortnames(QSE_FILTER_CSV)
+        if qse_filter:
+            logger.info(f"Loaded {len(qse_filter)} QSEs from tracking list")
+        else:
+            logger.warning("No QSEs found in tracking list")
+            return
+
+    logger.info(f"Downloading historical DAM data from {start_date} to {end_date}")
+    logger.info(f"Filtering for QSEs: {sorted(qse_filter)}")
 
     try:
         if should_use_archive_api(start_date, end_date):
@@ -73,10 +82,12 @@ def download_historical_dam_data(
             )
         else:
             logger.info("Using regular API for historical DAM data")
-            # Fetch and store bid awards
+            # Fetch and store bid awards with QSE filter
             logger.info(f"Fetching bid awards for {start_date} to {end_date}...")
             bid_awards = fetch_dam_energy_bid_awards(
-                start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+                start_date, end_date, 
+                header=ERCOT_API_REQUEST_HEADERS,
+                qse_names=qse_filter
             )
             if not bid_awards or "data" not in bid_awards:
                 logger.error("No bid awards data found.")
@@ -84,10 +95,12 @@ def download_historical_dam_data(
                 logger.info(f"Found {len(bid_awards.get('data', []))} bid awards")
                 store_bid_awards_to_db(bid_awards, db_name, qse_filter)
 
-            # Fetch and store bids
+            # Fetch and store bids with QSE filter
             logger.info(f"Fetching bids for {start_date} to {end_date}...")
             bids = fetch_dam_energy_bids(
-                start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+                start_date, end_date, 
+                header=ERCOT_API_REQUEST_HEADERS,
+                qse_names=qse_filter
             )
             if bids and "data" in bids:
                 logger.info(f"Found {len(bids.get('data', []))} bids")
@@ -95,10 +108,12 @@ def download_historical_dam_data(
             else:
                 logger.error("No bids data found.")
 
-            # Fetch and store offer awards
+            # Fetch and store offer awards with QSE filter
             logger.info(f"Fetching offer awards for {start_date} to {end_date}...")
             offer_awards = fetch_dam_energy_only_offer_awards(
-                start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+                start_date, end_date, 
+                header=ERCOT_API_REQUEST_HEADERS,
+                qse_names=qse_filter
             )
             if offer_awards and "data" in offer_awards:
                 logger.info(f"Found {len(offer_awards.get('data', []))} offer awards")
@@ -106,10 +121,12 @@ def download_historical_dam_data(
             else:
                 logger.error("No offer awards data found.")
 
-            # Fetch and store offers
+            # Fetch and store offers with QSE filter
             logger.info(f"Fetching offers for {start_date} to {end_date}...")
             offers = fetch_dam_energy_only_offers(
-                start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
+                start_date, end_date, 
+                header=ERCOT_API_REQUEST_HEADERS,
+                qse_names=qse_filter
             )
             if offers and "data" in offers:
                 logger.info(f"Found {len(offers.get('data', []))} offers")

@@ -112,7 +112,8 @@ def fetch_dam_energy_bid_awards(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetches DAM energy bid awards data from the specified endpoint.
@@ -134,11 +135,13 @@ def fetch_dam_energy_bid_awards(
             "60_dam_energy_bid_awards",
             s,
             e,
-            header
+            header=header,
+            qse_name=kw.get('qse_name')
         ),
         start_date,
         end_date,
-        batch_days
+        batch_days,
+        qse_names=qse_names
     )
 
 
@@ -147,7 +150,8 @@ def fetch_dam_energy_bids(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetches DAM energy bids data from the specified API endpoint.
@@ -174,11 +178,13 @@ def fetch_dam_energy_bids(
             "60_dam_energy_bids",
             s,
             e,
-            header
+            header=header,
+            qse_name=kw.get('qse_name')
         ),
         start_date,
         end_date,
-        batch_days
+        batch_days,
+        qse_names=qse_names
     )
 
 
@@ -187,7 +193,8 @@ def fetch_dam_energy_only_offer_awards(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetch DAM energy only offer awards data from the API endpoint.
@@ -214,11 +221,13 @@ def fetch_dam_energy_only_offer_awards(
             "60_dam_energy_only_offer_awards",
             s,
             e,
-            header
+            header=header,
+            qse_name=kw.get('qse_name')
         ),
         start_date,
         end_date,
-        batch_days
+        batch_days,
+        qse_names=qse_names
     )
 
 
@@ -227,7 +236,8 @@ def fetch_dam_energy_only_offers(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetches Demand Aggregated Market (DAM) energy only offers data.
@@ -256,11 +266,13 @@ def fetch_dam_energy_only_offers(
             "60_dam_energy_only_offers",
             s,
             e,
-            header
+            header=header,
+            qse_name=kw.get('qse_name')
         ),
         start_date,
         end_date,
-        batch_days
+        batch_days,
+        qse_names=qse_names
     )
 
 

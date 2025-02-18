@@ -51,17 +51,12 @@ def download_spp_archive_files(
                     with zipfile.ZipFile(BytesIO(nested_content)) as nested_zip:
                         for nested_filename in nested_zip.namelist():
 
-                            table_name = get_table_name(nested_filename)
                             if not nested_filename.endswith('.csv'):
-                                continue
-                            if not table_name:
-                                LOGGER.warning(
-                                    f"Unrecognized SPP file type: {nested_filename}")
                                 continue
                             LOGGER.info(
                                 f"Processing SPP file: {nested_filename}")
                             process_spp_file(
-                                nested_zip, nested_filename, table_name, db_name)
+                                nested_zip, nested_filename, "SETTLEMENT_POINT_PRICES", db_name)
 
 
 def process_spp_file(zip_folder, filename, table_name, db_name):

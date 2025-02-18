@@ -293,17 +293,6 @@ def fetch_settlement_point_prices(
         APIError: If the ERCOT API request fails
         ValueError: If the date format is invalid
     """
-
-    if should_use_archive_api(start_date, end_date):
-        doc_ids = get_archive_document_ids(
-            ERCOT_ARCHIVE_PRODUCT_IDS["SPP"],
-            start_date,
-            end_date
-        )
-        data = list(download_spp_archive_files(
-            ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids, db_name=ERCOT_DB_NAME))
-        return {"data": data}
-
     # Load QSE names from tracking list
     LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")

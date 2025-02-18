@@ -4,7 +4,7 @@ import logging
 
 from dotenv import load_dotenv
 
-from ercot_scraping.data_models import BidAward, Bid, Offer, OfferAward
+from ercot_scraping.data_models import BidAward, Bid, Offer, OfferAward, SettlementPointPrice
 
 # Load environment variables from .env file
 load_dotenv()
@@ -436,7 +436,10 @@ DAM_TABLE_DATA_MAPPING = {
     "OFFERS": {
         "model_class": Offer,
         "insert_query": OFFERS_INSERT_QUERY
-    }
+    },
+    "SETTLEMENT_POINT_PRICES": {
+        "model_class": SettlementPointPrice,
+        "insert_query": SETTLEMENT_POINT_PRICES_INSERT_QUERY}
 }
 # Configure logging
 LOGGER = logging.getLogger(__name__)

@@ -25,6 +25,7 @@ from ercot_scraping.filters import load_qse_shortnames
 from ercot_scraping.archive_api import (
     get_archive_document_ids,
     download_dam_archive_files,
+    download_spp_archive_files
 )
 
 # Configure logging
@@ -124,12 +125,19 @@ def download_historical_spp_data(
 
     logger.info(
         f"Downloading historical SPP data from {start_date} to {end_date}")
-
+    if should_use_archive_api(start_date, end_date):
+            doc_ids = get_archive_document_ids(
+                ERCOT_ARCHIVE_PRODUCT_IDS["SPP"],
+                start_date,
+                end_date
+            )
+            download_spp_archive_files(ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids, db_name=ERCOT_DB_NAME)
+            return
     try:
         prices = fetch_settlement_point_prices(start_date, end_date)
         store_prices_to_db(prices, db_name)
         logger.info("Historical SPP data download completed successfully")
-
+        return
     except Exception as e:
         logger.error(f"Error downloading historical SPP data: {str(e)}")
         raise

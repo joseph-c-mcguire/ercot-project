@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import datetime, timedelta
 
 from ratelimit import limits, sleep_and_retry
 import requests
@@ -9,6 +10,7 @@ from ercot_scraping.config import (
     API_RATE_LIMIT_INTERVAL,
     LOGGER,
     DEFAULT_BATCH_DAYS,
+    MAX_DATE_RANGE
 )
 from ercot_scraping.utils import split_date_range
 
@@ -35,6 +37,9 @@ def fetch_in_batches(
     Returns:
         dict[str, any]: Combined results from all batches
     """
+    # Validate batch_days
+    batch_days = min(batch_days, MAX_DATE_RANGE)
+    
     batches = split_date_range(start_date, end_date, batch_days)
     total_batches = len(batches)
     total_qses = len(qse_names) if qse_names else 1

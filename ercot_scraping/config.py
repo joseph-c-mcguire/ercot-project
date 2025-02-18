@@ -51,12 +51,14 @@ DAM_FILENAMES = [
 ]
 
 
-# API Rate Limiting
-API_RATE_LIMIT_REQUESTS = 30  # requests per minute
+# API Rate Limiting and Request Settings
+API_RATE_LIMIT_REQUESTS = 20  # requests per minute
 API_RATE_LIMIT_INTERVAL = 60  # seconds
-API_MAX_ARCHIVE_FILES = 1000  # maximum files per archive request
-API_CUTOFF_DATE = "2023-12-11"  # date when archive API becomes necessary
-DEFAULT_BATCH_DAYS = 30  # default number of days per batch for API requests
+API_MAX_ARCHIVE_FILES = 1000
+API_CUTOFF_DATE = "2023-12-11"
+DEFAULT_BATCH_DAYS = 7  # Reduced from 30 to 7 days
+MAX_DATE_RANGE = 7  # Maximum days allowed in a single request
+REQUEST_TIMEOUT = 30
 
 # SQL Queries
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """

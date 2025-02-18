@@ -15,6 +15,7 @@ import os
 from typing import Optional
 import requests
 
+
 from ercot_scraping.config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
@@ -26,7 +27,7 @@ from ercot_scraping.config import (
     ERCOT_DB_NAME
 )
 from ercot_scraping.filters import load_qse_shortnames
-from ercot_scraping.batched_api import fetch_in_batches
+from ercot_scraping.batched_api import fetch_in_batches, rate_limited_request
 from ercot_scraping.utils import refresh_access_token, should_use_archive_api
 from ercot_scraping.archive_api import get_archive_document_ids, download_spp_archive_files
 
@@ -71,7 +72,12 @@ def fetch_data_from_endpoint(
     )
 
     for attempt in range(retries):
-        response = requests.get(url=url, headers=header, params=params)
+        response = rate_limited_request(
+            "GET",
+            url=url,
+            headers=header,
+            params=params
+        )
         if response.status_code == 401:
             LOGGER.warning("Unauthorized. Refreshing access token.")
             id_token = refresh_access_token()
@@ -122,17 +128,16 @@ def fetch_dam_energy_bid_awards(
         Exception: Propagates any exception raised during the API request process.
     """
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_bid_awards",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -163,17 +168,16 @@ def fetch_dam_energy_bids(
         fetch_data_from_endpoint.
     """
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_bids",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -204,17 +208,16 @@ def fetch_dam_energy_only_offer_awards(
         fetch_data_from_endpoint function. The exact format or type of the returned data depends on the endpoint's response.
     """
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_only_offer_awards",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -247,17 +250,16 @@ def fetch_dam_energy_only_offers(
                         offers endpoint.
     """
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_only_offers",
-            s, e,
-            header,
-            qse_name=qse_name
+            s,
+            e,
+            header
         ),
         start_date,
         end_date,
-        batch_days,
-        qse_names=load_qse_shortnames(tracking_list_path)
+        batch_days
     )
 
 
@@ -303,20 +305,16 @@ def fetch_settlement_point_prices(
         return {"data": data}
 
     # Load QSE names from tracking list
-    qse_names = load_qse_shortnames(tracking_list_path)
-    LOGGER.info(f"Filtering by QSE names: {sorted(qse_names)}")
     LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
     return fetch_in_batches(
-        lambda s, e, qse_name, **kw: fetch_data_from_endpoint(
+        lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_SETTLEMENT,
             "spp_node_zone_hub",
             s, e,
             header,
-            qse_name=qse_name
         ),
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
     )

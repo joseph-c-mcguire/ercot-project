@@ -219,6 +219,7 @@ COLUMN_MAPPINGS = {
         "delivery_hour": "deliveryHour",
         "deliveryinterval": "deliveryInterval",
         "delivery_interval": "deliveryInterval",
+        "settlementPoint": "settlementPointName",
         "settlementpointname": "settlementPointName",
         "settlement_point_name": "settlementPointName",
         "settlementpointtype": "settlementPointType",
@@ -227,6 +228,7 @@ COLUMN_MAPPINGS = {
         "settlement_point_price": "settlementPointPrice",
         "dstflag": "dstFlag",
         "dst_flag": "dstFlag",
+        "DSTFlag": "dstFlag",
     },
     "bid_awards": {
         "delivery date": "deliveryDate",

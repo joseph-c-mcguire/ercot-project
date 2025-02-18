@@ -24,6 +24,7 @@ from ercot_scraping.filters import (
     filter_by_settlement_points,
     filter_by_qse_names
 )
+from ercot_scraping.utils import normalize_data
 
 
 # Configure logging
@@ -37,6 +38,7 @@ def store_data_to_db(
     insert_query: str,
     model_class: type,
     qse_filter: Optional[Set[str]] = None,
+    normalize: bool = True,
 ) -> None:
     """
     Stores data into the specified SQLite database and table.
@@ -56,11 +58,15 @@ def store_data_to_db(
                             the record's dictionary keys and must provide an as_tuple() method to return the data
                             in tuple format compatible with the insert query.
         qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
+        normalize (bool): If True, normalize the data before storing.
 
     Raises:
         ValueError: If the data provided cannot be used to instantiate an instance of model_class due to a TypeError,
                     indicating invalid or missing data fields.
     """
+    if normalize:
+        data = normalize_data(data, table_name=table_name.lower())
+
     if qse_filter is not None:
         data = filter_by_qse_names(data, qse_filter)
 
@@ -118,6 +124,11 @@ def store_data_to_db(
             logger.error(
                 f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
             )
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid data for {model_class.__name__}: {e}."
+            )
+
     conn.commit()
     conn.close()
 
@@ -202,9 +213,7 @@ def store_bids_to_db(
         logger.warning("No bid data to store")
         return
 
-    unique_dates = {record.get("deliveryDate", "unknown")
-                    for record in data["data"]}
-    logger.info(f"Preparing to store bids for dates: {sorted(unique_dates)}")
+    logger.info(f"Preparing to store bids")
 
     store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
 

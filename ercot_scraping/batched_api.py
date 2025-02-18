@@ -62,7 +62,11 @@ def fetch_in_batches(
                         )
                         
                         batch_data = fetch_func(
-                            batch_start, batch_end, page=current_page, qse_name=qse_name, **kwargs)
+                            batch_start, batch_end, 
+                            page=current_page,  # Pass page parameter
+                            qse_name=qse_name, 
+                            **kwargs
+                        )
 
                         if not batch_data or "data" not in batch_data:
                             LOGGER.warning(f"Invalid response for page {current_page}/{total_pages}")
@@ -71,8 +75,12 @@ def fetch_in_batches(
                         # Update pagination info
                         if "_meta" in batch_data:
                             total_pages = batch_data["_meta"].get("totalPages", 1)
-                            current_page += 1
+                            current_page = batch_data["_meta"].get("currentPage", 1) + 1
                             LOGGER.info(f"Found {total_pages} total pages of data for this batch")
+                        else:
+                            # If no _meta info, increment page and assume we're done after first page
+                            total_pages = 1
+                            current_page += 1
 
                         records = batch_data["data"]
                         if records:
@@ -112,7 +120,11 @@ def fetch_in_batches(
                         f"Fetching batch {i}/{total_batches}, page {current_page}/{total_pages}: {batch_start} to {batch_end}"
                     )
                     
-                    batch_data = fetch_func(batch_start, batch_end, page=current_page, **kwargs)
+                    batch_data = fetch_func(
+                        batch_start, batch_end, 
+                        page=current_page,  # Pass page parameter
+                        **kwargs
+                    )
 
                     if not batch_data or "data" not in batch_data:
                         LOGGER.warning(f"Invalid response for page {current_page}/{total_pages}")

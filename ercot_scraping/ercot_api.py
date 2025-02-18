@@ -41,6 +41,7 @@ def fetch_data_from_endpoint(
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     retries: int = 3,
     qse_name: Optional[str] = None,  # Changed from qse_names to qse_name
+    page: Optional[int] = None,  # Add page parameter
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering.
@@ -66,6 +67,8 @@ def fetch_data_from_endpoint(
     if qse_name:  # Changed from qse_names to qse_name
         # No need for formatting, just use the single name
         params["qseName"] = qse_name
+    if page is not None:  # Add page to params if provided
+        params["page"] = page
 
     url = f"{base_url}/{endpoint}"
     LOGGER.debug(
@@ -136,7 +139,8 @@ def fetch_dam_energy_bid_awards(
             s,
             e,
             header=header,
-            qse_name=kw.get('qse_name')
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page')
         ),
         start_date,
         end_date,
@@ -179,7 +183,8 @@ def fetch_dam_energy_bids(
             s,
             e,
             header=header,
-            qse_name=kw.get('qse_name')
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page')
         ),
         start_date,
         end_date,
@@ -222,7 +227,8 @@ def fetch_dam_energy_only_offer_awards(
             s,
             e,
             header=header,
-            qse_name=kw.get('qse_name')
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page'),
         ),
         start_date,
         end_date,
@@ -267,7 +273,8 @@ def fetch_dam_energy_only_offers(
             s,
             e,
             header=header,
-            qse_name=kw.get('qse_name')
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page')
         ),
         start_date,
         end_date,
@@ -314,7 +321,8 @@ def fetch_settlement_point_prices(
             ERCOT_API_BASE_URL_SETTLEMENT,
             "spp_node_zone_hub",
             s, e,
-            header,
+            header=header,
+            page=kw.get('page')
         ),
         start_date,
         end_date,

@@ -65,42 +65,57 @@ def download_historical_dam_data(
                 start_date,
                 end_date
             )
+            logger.info(f"Found {len(doc_ids)} documents in archive")
             download_dam_archive_files(
                 ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"],
                 doc_ids,
                 db_name
             )
         else:
+            logger.info("Using regular API for historical DAM data")
             # Fetch and store bid awards
-            logger.info("Fetching bid awards...")
+            logger.info(f"Fetching bid awards for {start_date} to {end_date}...")
             bid_awards = fetch_dam_energy_bid_awards(
                 start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
             )
             if not bid_awards or "data" not in bid_awards:
                 logger.error("No bid awards data found.")
-                return
-            store_bid_awards_to_db(bid_awards, db_name, qse_filter)
+            else:
+                logger.info(f"Found {len(bid_awards.get('data', []))} bid awards")
+                store_bid_awards_to_db(bid_awards, db_name, qse_filter)
 
             # Fetch and store bids
-            logger.info("Fetching bids...")
+            logger.info(f"Fetching bids for {start_date} to {end_date}...")
             bids = fetch_dam_energy_bids(
                 start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
             )
-            store_bids_to_db(bids, db_name, qse_filter)
+            if bids and "data" in bids:
+                logger.info(f"Found {len(bids.get('data', []))} bids")
+                store_bids_to_db(bids, db_name, qse_filter)
+            else:
+                logger.error("No bids data found.")
 
             # Fetch and store offer awards
-            logger.info("Fetching offer awards...")
+            logger.info(f"Fetching offer awards for {start_date} to {end_date}...")
             offer_awards = fetch_dam_energy_only_offer_awards(
                 start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
             )
-            store_offer_awards_to_db(offer_awards, db_name, qse_filter)
+            if offer_awards and "data" in offer_awards:
+                logger.info(f"Found {len(offer_awards.get('data', []))} offer awards")
+                store_offer_awards_to_db(offer_awards, db_name, qse_filter)
+            else:
+                logger.error("No offer awards data found.")
 
             # Fetch and store offers
-            logger.info("Fetching offers...")
+            logger.info(f"Fetching offers for {start_date} to {end_date}...")
             offers = fetch_dam_energy_only_offers(
                 start_date, end_date, header=ERCOT_API_REQUEST_HEADERS
             )
-            store_offers_to_db(offers, db_name, qse_filter)
+            if offers and "data" in offers:
+                logger.info(f"Found {len(offers.get('data', []))} offers")
+                store_offers_to_db(offers, db_name, qse_filter)
+            else:
+                logger.error("No offers data found.")
 
         logger.info("Historical DAM data download completed successfully")
 

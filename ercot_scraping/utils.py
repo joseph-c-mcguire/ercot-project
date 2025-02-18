@@ -2,6 +2,7 @@ from typing import List
 from datetime import timedelta, datetime
 import sqlite3
 import requests
+import logging
 
 import chardet
 
@@ -36,17 +37,25 @@ def split_date_range(start_date: str, end_date: str, batch_days: int = 30) -> Li
     """
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
+    
+    if start > end:
+        raise ValueError(f"Start date {start_date} is after end date {end_date}")
+
+    total_days = (end - start).days + 1
+    logging.info(f"Splitting date range of {total_days} days into batches of {batch_days} days")
 
     batches = []
     batch_start = start
     while batch_start <= end:
         batch_end = min(batch_start + timedelta(days=batch_days-1), end)
-        batches.append((
+        batch = (
             batch_start.strftime("%Y-%m-%d"),
             batch_end.strftime("%Y-%m-%d")
-        ))
+        )
+        batches.append(batch)
         batch_start = batch_end + timedelta(days=1)
 
+    logging.info(f"Created {len(batches)} batches: {batches}")
     return batches
 
 

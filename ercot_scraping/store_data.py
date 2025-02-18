@@ -2,6 +2,7 @@ import sqlite3
 from typing import Optional, Set
 import json
 import logging
+import pandas as pd
 
 from ercot_scraping.create_ercot_tables import create_ercot_tables
 from ercot_scraping.data_models import (
@@ -142,6 +143,41 @@ def store_data_to_db(
     conn.close()
 
 
+def aggregate_spp_data(data: dict) -> dict:
+    """
+    Aggregate Settlement Point Price data by hour, averaging the prices
+    and keeping first values for other fields.
+    """
+    if not data or "data" not in data:
+        return data
+
+    # Convert to DataFrame
+    df = pd.DataFrame(data["data"])
+    
+    # Group by these columns and aggregate
+    agg_dict = {
+        "SettlementPointPrice": "mean",
+        "SettlementPointName": "first",
+        "SettlementPointType": "first",
+        "DSTFlag": "first"
+    }
+    
+    # Group by date and hour, then apply aggregations
+    grouped_df = df.groupby(
+        ["DeliveryDate", "DeliveryHour"], 
+        as_index=False
+    ).agg(agg_dict)
+    
+    # Add DeliveryInterval as 1 since we're aggregating
+    grouped_df["DeliveryInterval"] = 1
+    
+    # Convert back to dict format
+    return {
+        "data": grouped_df.to_dict('records'),
+        "fields": data.get("fields", [])
+    }
+
+
 # Delegation functions for different models using local constants:
 def store_prices_to_db(
     data: dict[str, any], db_name: str = ERCOT_DB_NAME, filter_by_awards: bool = True
@@ -160,6 +196,9 @@ def store_prices_to_db(
         active_points = get_active_settlement_points(db_name)
         if active_points:  # Only filter if we found active points
             data = filter_by_settlement_points(data, active_points)
+
+    # Aggregate the data before storing
+    data = aggregate_spp_data(data)
 
     store_data_to_db(
         data,

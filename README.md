@@ -1,132 +1,105 @@
-# ercot_scraping
-## Description
-A python module to scrape data from the ERCOT(Electric Reliability Council of Texas) API for pulling all Day Ahead Market data and Settlement Point Prices data both historical as well as enabling daily updates. 
+# ERCOT Data Scraper
 
+This tool allows you to fetch historical and current ERCOT market data including Day Ahead Market (DAM) energy bids/offers and Settlement Point Prices (SPP).
 
-## Setting up Git LFS
+## Setup
 
-To track .csv files with Git LFS, run the following commands:
-
-```sh
-git lfs install
-git lfs track "*.csv"
+1. Install dependencies:
+```bash
+pip install .
+```
+If you want to make edits run it in editable mode:
+```bash
+pip install -e .
 ```
 
-Remember to commit the changes to the .gitattributes file:
-
-```sh
-git add .gitattributes
-git commit -m "Track .csv files with Git LFS"
-```
-
-## Setting up the SQLite Database
-
-To set up the SQLite database with the required tables, run the following script:
-
-```sh
-python src/setup-database.py
-```
-
-## Fetching and Storing Settlement Point Prices
-
-To fetch settlement point prices from the ERCOT API and store them in the SQLite database, you need to set up your API key and URL in a `.env` file.
-
-1. Create a `.env` file in the root directory of the project.
-2. Add your ERCOT API key and URL to the `.env` file:
-
+2. Create a `.env` file in the root directory with the following variables:
 ```env
-ERCOT_API_SUBSCRIPTION_KEY=your_api_key_here
-ERCOT_API_BASE_URL=https://api.ercot.com/api/public-reports/np6-905-cd/spp_node_zone_hub
+ERCOT_API_USERNAME=your_username
+ERCOT_API_PASSWORD=your_password 
+ERCOT_API_SUBSCRIPTION_KEY=your_subscription_key
 ```
 
-Ensure that the API key is valid and has the necessary permissions.
+## CLI Usage
 
-Then, run the following script:
+The CLI provides several commands to fetch and manage ERCOT data:
 
-```sh
-python -m ercot_scraping
+### Historical DAM Data
+
+Fetches historical Day Ahead Market data including bids, offers, and awards.
+
+```bash
+python ercot_scraping historical-dam --start YYYY-MM-DD --end YYYY-MM-DD [--debug]
 ```
 
-## Fetching Data from New Endpoints
-
-To fetch data from the new ERCOT API endpoints, you can use the following functions:
-
-- `fetch_dam_energy_bid_awards(start_date, end_date)`
-- `fetch_dam_energy_bids(start_date, end_date)`
-- `fetch_dam_energy_only_offer_awards(start_date, end_date)`
-- `fetch_dam_energy_only_offers(start_date, end_date)`
-
-Example usage:
-
-```python
-from ercot_scraping.ercot_api import (
-    fetch_dam_energy_bid_awards,
-    fetch_dam_energy_bids,
-    fetch_dam_energy_only_offer_awards,
-    fetch_dam_energy_only_offers,
-)
-
-data_bid_awards = fetch_dam_energy_bid_awards(start_date="2023-10-01", end_date="2023-10-02")
-data_bids = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02")
-data_offer_awards = fetch_dam_energy_only_offer_awards(start_date="2023-10-01", end_date="2023-10-02")
-data_offers = fetch_dam_energy_only_offers(start_date="2023-10-01", end_date="2023-10-02")
+Example:
+```bash
+python ercot_scraping historical-dam --start 2024-01-01 --end 2024-01-02
 ```
-<<<<<<< HEAD
 
-## Command Line Interface (CLI)
+### Historical Settlement Point Prices
 
-The package provides a command-line interface with four main commands for downloading and updating ERCOT data.
+Fetches historical Settlement Point Prices data.
 
-### Installation
+```bash
+python ercot_scraping historical-spp --start YYYY-MM-DD --end YYYY-MM-DD [--debug]
+```
 
-After installation, you can use the CLI in two ways:
+Example:
+```bash
+python ercot_scraping historical-spp --start 2024-01-01 --end 2024-01-02
+```
 
-1. Using the installed script:
-   ```sh
-   ercot-scraping <command> [options]
-   ```
+### Merge Data
 
-2. Running as a module:
-   ```sh
-   python -m ercot_scraping <command> [options]
-   ```
+Merges data from multiple databases into a single database.
 
-### Available Commands
+```bash
+python ercot_scraping merge-data
+```
 
-- `download-historical-dam`: Download Historical DAM Data
-- `download-historical-spp`: Download Historical SPP Data
-- `update-daily-dam`: Update Daily DAM Data
-- `update-daily-spp`: Update Daily SPP Data
+## CLI Functions
 
-### Examples
+- `historical-dam`: Downloads historical DAM data including:
+  - Energy Bid Awards
+  - Energy Bids
+  - Energy Only Offer Awards
+  - Energy Only Offers
 
-- Download one month of historical DAM data:
-  ```sh
-  ercot-scraping download-historical-dam --start-date 2023-01-01 --end-date 2023-01-31
-  ```
+- `historical-spp`: Downloads historical Settlement Point Prices for:
+  - Nodes
+  - Hubs
+  - Load Zones
 
-- Download historical SPP data with custom database:
-  ```sh
-  ercot-scraping download-historical-spp --start-date 2023-01-01 --end-date 2023-01-31 --database custom.db
-  ```
+- `merge-data`: Combines data from multiple database files into a single database
 
-- Update daily DAM data with QSE filtering:
-  ```sh
-  ercot-scraping update-daily-dam --qse-filter qse_filter.csv
-  ```
+## Environment Variables
 
-- Update daily SPP data:
-  ```sh
-  ercot-scraping update-daily-spp
-  ```
+Required variables in `.env`:
 
-### QSE Filtering
+| Variable | Description |
+|----------|-------------|
+| ERCOT_API_USERNAME | Your ERCOT API username |
+| ERCOT_API_PASSWORD | Your ERCOT API password |
+| ERCOT_API_SUBSCRIPTION_KEY | Your ERCOT API subscription key |
 
-The --qse-filter option allows you to filter DAM data by QSE (Qualified Scheduling Entity) names. The filter file should be a CSV with a "SHORT NAME" column containing the QSE short names to include:
+## Output
 
-Only data for the listed QSEs will be downloaded and stored in the database.
+The tool creates/updates a SQLite database (`_data/ercot_data.db`) with the following tables:
 
-// ...existing code...
+- SETTLEMENT_POINT_PRICES
+- BID_AWARDS
+- BIDS  
+- OFFER_AWARDS
+- OFFERS
+- FINAL 
 
-=======
->>>>>>> origin/main
+Data is stored in a normalized format with consistent column names and data types.
+
+## Debug Mode
+
+Add `--debug` flag to any command for detailed logging:
+
+```bash
+python main.py historical-dam --start 2024-01-01 --end 2024-01-02 --debug
+```

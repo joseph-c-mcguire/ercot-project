@@ -5,7 +5,7 @@ from typing import Optional, Set
 from pathlib import Path
 import argparse
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_DB_NAME, ERCOT_ARCHIVE_PRODUCT_IDS, QSE_FILTER_CSV
+from ercot_scraping.config.config import ERCOT_API_REQUEST_HEADERS, ERCOT_DB_NAME, ERCOT_ARCHIVE_PRODUCT_IDS, QSE_FILTER_CSV
 from ercot_scraping.apis.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
@@ -20,7 +20,7 @@ from ercot_scraping.database.store_data import (
     store_offers_to_db,
     store_offer_awards_to_db,
 )
-from ercot_scraping.utils import should_use_archive_api
+from ercot_scraping.utils.utils import should_use_archive_api
 from ercot_scraping.utils.filters import load_qse_shortnames
 from ercot_scraping.apis.archive_api import (
     get_archive_document_ids,

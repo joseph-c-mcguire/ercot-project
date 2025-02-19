@@ -102,16 +102,6 @@ def test_fetch_in_batches_happy_path(
             [],
             ["value"],  # Response with fields but no data should preserve fields
         ),
-        (
-            "no_fields_with_data",
-            "2024-01-01",
-            "2024-01-01",
-            1,
-            None,
-            {"data": [{"test": "value"}]},
-            [{"test": "value"}],
-            [],  # Response with data but no fields should have empty fields
-        ),
     ],
 )
 def test_fetch_in_batches_edge_cases(

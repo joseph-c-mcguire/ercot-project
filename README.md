@@ -6,7 +6,7 @@ This tool allows you to fetch historical and current ERCOT market data including
 
 1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install .
 ```
 
 2. Create a secret file called `.env` and put these three passwords in it:

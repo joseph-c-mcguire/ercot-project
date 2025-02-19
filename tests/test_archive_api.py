@@ -1,14 +1,9 @@
 import pytest
 from unittest import mock
-from ercot_scraping.archive_api import download_spp_archive_files
-from ercot_scraping.config import LOGGER, ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES
-from ercot_scraping.batched_api import rate_limited_request
-import zipfile
-import io
-import csv
+from ercot_scraping.archive_api import download_spp_archive_files, download_dam_archive_files
+
 from ercot_scraping.archive_api import process_spp_file
-from ercot_scraping.config import LOGGER, COLUMN_MAPPINGS, DAM_TABLE_DATA_MAPPING
-from ercot_scraping.store_data import store_data_to_db
+from ercot_scraping.config import COLUMN_MAPPINGS, DAM_TABLE_DATA_MAPPING
 
 
 @mock.patch('ercot_scraping.archive_api.rate_limited_request')
@@ -155,3 +150,142 @@ def test_process_spp_file_no_data_mapping(mock_logger, mock_store_data):
     mock_logger.warning.assert_called_once_with(
         "No data mapping found for table: unknown_table")
     mock_store_data.assert_not_called()
+
+
+@mock.patch('ercot_scraping.archive_api.rate_limited_request')
+@mock.patch('ercot_scraping.archive_api.zipfile.ZipFile')
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_download_dam_archive_files_no_doc_ids(mock_logger, mock_zipfile, mock_rate_limited_request):
+    download_dam_archive_files('product_id', [], 'db_name')
+    mock_logger.warning.assert_called_once_with(
+        "No document IDs found for DAM product product_id")
+
+
+@mock.patch('ercot_scraping.archive_api.rate_limited_request')
+@mock.patch('ercot_scraping.archive_api.zipfile.ZipFile')
+@mock.patch('ercot_scraping.archive_api.BytesIO')
+@mock.patch('ercot_scraping.archive_api.process_dam_file')
+@mock.patch('ercot_scraping.archive_api.get_table_name')
+@mock.patch('ercot_scraping.archive_api.DAM_FILENAMES', ['60d_DAM_'])
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_download_dam_archive_files_success(
+    mock_logger, mock_get_table_name, mock_process_dam, mock_bytesio, mock_zipfile,
+    mock_rate_limited_request
+):
+    # Setup API response mock
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.content = b'zip_content'
+    mock_rate_limited_request.return_value = mock_response
+
+    # Setup BytesIO mocks
+    mock_bytes_outer = mock.MagicMock()
+    mock_bytes_inner = mock.MagicMock()
+    mock_bytesio.side_effect = [mock_bytes_outer, mock_bytes_inner]
+
+    # Setup inner zip file structure with valid DAM filename
+    mock_inner_zip = mock.MagicMock()
+    mock_inner_zip.namelist.return_value = ['60d_DAM_file1.csv']
+    mock_inner_zip.__enter__.return_value = mock_inner_zip
+
+    # Setup outer zip structure
+    mock_outer_zip = mock.MagicMock()
+    mock_outer_zip.namelist.return_value = ['file1.zip']
+    mock_outer_zip.__enter__.return_value = mock_outer_zip
+
+    # Setup nested zip content
+    mock_nested_zip_content = mock.MagicMock()
+    mock_nested_zip_content.read.return_value = b'nested_zip_content'
+    mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
+
+    # Configure ZipFile mock
+    mock_zipfile.side_effect = [mock_outer_zip, mock_inner_zip]
+
+    # Setup table name mock
+    mock_get_table_name.return_value = 'test_table'
+
+    # Run the function
+    download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
+
+    # Verify calls
+    assert mock_bytesio.call_count == 2
+    assert mock_zipfile.call_count == 2
+    assert mock_process_dam.call_count == 1
+
+    # Verify logging calls in order
+    mock_logger.info.assert_has_calls([
+        mock.call("Downloading 3 DAM documents from archive API"),
+        mock.call("Processing DAM file: 60d_DAM_file1.csv")
+    ])
+
+    # Verify process_dam_file was called correctly
+    mock_process_dam.assert_called_once_with(
+        mock_inner_zip,
+        '60d_DAM_file1.csv',
+        'test_table',
+        'db_name'
+    )
+
+
+@mock.patch('ercot_scraping.archive_api.rate_limited_request')
+@mock.patch('ercot_scraping.archive_api.zipfile.ZipFile')
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_download_dam_archive_files_failed_download(mock_logger, mock_zipfile, mock_rate_limited_request):
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 500
+    mock_rate_limited_request.return_value = mock_response
+
+    download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
+
+    mock_logger.error.assert_called_once_with(
+        "Failed to download DAM batch. Status: 500")
+
+
+@mock.patch('ercot_scraping.archive_api.rate_limited_request')
+@mock.patch('ercot_scraping.archive_api.zipfile.ZipFile')
+@mock.patch('ercot_scraping.archive_api.BytesIO')
+@mock.patch('ercot_scraping.archive_api.get_table_name')
+@mock.patch('ercot_scraping.archive_api.DAM_FILENAMES', ['60d_DAM_'])
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_download_dam_archive_files_unrecognized_file_type(
+    mock_logger, mock_get_table_name, mock_bytesio, mock_zipfile, mock_rate_limited_request
+):
+    # Setup API response mock
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.content = b'zip_content'
+    mock_rate_limited_request.return_value = mock_response
+
+    # Setup BytesIO mocks
+    mock_bytes_outer = mock.MagicMock()
+    mock_bytes_inner = mock.MagicMock()
+    mock_bytesio.side_effect = [mock_bytes_outer, mock_bytes_inner]
+
+    # Setup inner zip file structure with valid DAM prefix but unrecognized type
+    mock_inner_zip = mock.MagicMock()
+    mock_inner_zip.namelist.return_value = ['60d_DAM_unknown.csv']
+    mock_inner_zip.__enter__.return_value = mock_inner_zip
+
+    # Setup outer zip file structure
+    mock_outer_zip = mock.MagicMock()
+    mock_outer_zip.namelist.return_value = ['file1.zip']
+    mock_outer_zip.__enter__.return_value = mock_outer_zip
+
+    # Setup nested zip content
+    mock_nested_zip_content = mock.MagicMock()
+    mock_nested_zip_content.read.return_value = b'nested_zip_content'
+    mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
+
+    # Configure ZipFile mock to return appropriate zip objects
+    mock_zipfile.side_effect = [mock_outer_zip, mock_inner_zip]
+
+    # Setup table name mock to return None for unrecognized file
+    mock_get_table_name.return_value = None
+
+    # Run the function
+    download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
+
+    # Verify the warning was logged
+    mock_logger.warning.assert_called_once_with(
+        "Unrecognized DAM file type: 60d_DAM_unknown.csv")

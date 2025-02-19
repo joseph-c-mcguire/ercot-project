@@ -129,13 +129,25 @@ def download_dam_archive_files(
     db_name: str
 ) -> None:
     """
-    Download and process DAM archive files, storing each type in its respective table.
-    This function handles the specific DAM file types:
-    - 60d_DAM_EnergyBidAwards-*.csv -> BID_AWARDS
-    - 60d_DAM_EnergyBids-*.csv -> BIDS
-    - 60d_DAM_EnergyOnlyOfferAwards-*.csv -> OFFER_AWARDS
-    - 60d_DAM_EnergyOnlyOffers-*.csv -> OFFERS
+    Downloads and processes DAM (Day-Ahead Market) archive files from the ERCOT API.
+    This function retrieves batches of document IDs, downloads the corresponding
+    zip files from the ERCOT archive API, and processes the nested zip files
+    containing CSV files. The CSV files are then processed and stored in the
+    specified database.
+    Args:
+        product_id (str): The product ID for the DAM product.
+        doc_ids (list[int]): A list of document IDs to download.
+        db_name (str): The name of the database where the processed files will be stored.
+    Returns:
+        None
+    Raises:
+        None
+    Logs:
+        - Warnings if no document IDs are found or if unrecognized DAM file types are encountered.
+        - Errors if the download of a DAM batch fails.
+        - Info messages for the number of documents being downloaded and the processing of each DAM file.
     """
+
     if not doc_ids:
         LOGGER.warning(f"No document IDs found for DAM product {product_id}")
         return

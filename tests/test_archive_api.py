@@ -209,7 +209,7 @@ def test_download_dam_archive_files_success(
     mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
 
     # Configure ZipFile mock
-    mock_zipfile.side_effect = [mock_outer_zip, mock_inner_zip]
+    mock_zipfile.side.effect = [mock_outer_zip, mock_inner_zip]
 
     # Setup table name mock
     mock_get_table_name.return_value = 'test_table'
@@ -217,10 +217,11 @@ def test_download_dam_archive_files_success(
     # Run the function
     download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
 
-    # Verify calls
-    assert mock_bytesio.call.count == 2
-    assert mock_zipfile.call.count == 2
-    assert mock_process_dam.call.count == 1
+    # Verify calls - fixed assertions
+    assert mock_bytesio.call_count == 2  # Changed from call.count to call_count
+    assert mock_zipfile.call_count == 2  # Changed from call.count to call_count
+    # Changed from call.count to call_count
+    assert mock_process_dam.call_count == 1
 
     # Verify logging calls in order
     mock_logger.info.assert_has_calls([
@@ -244,7 +245,7 @@ def test_download_dam_archive_files_failed_download(mock_logger, mock_zipfile, m
     mock_response = mock.Mock()
     mock_response.ok = False
     mock_response.status_code = 500
-    mock_rate_limited_request.return .value = mock_response
+    mock_rate_limited_request.return_value = mock_response
 
     download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
 
@@ -265,33 +266,38 @@ def test_download_dam_archive_files_unrecognized_file_type(
     mock_response = mock.Mock()
     mock_response.ok = True
     mock_response.content = b'zip_content'
-    mock_rate_limited_request.return .value = mock_response
+    mock_rate_limited_request.return_value = mock_response
 
     # Setup BytesIO mocks
     mock_bytes_outer = mock.MagicMock()
     mock_bytes_inner = mock.MagicMock()
-    mock_bytesio.side.effect = [mock_bytes_outer, mock_bytes_inner]
+    mock_bytesio.side_effect = [mock_bytes_outer, mock_bytes_inner]
 
     # Setup inner zip file structure with valid DAM prefix but unrecognized type
     mock_inner_zip = mock.MagicMock()
-    mock_inner_zip.namelist.return .value = ['60d_DAM_unknown.csv']
-    mock_inner_zip.__enter__.return .value = mock_inner_zip
+    mock_inner_zip.namelist.return_value = ['60d_DAM_unknown.csv']
+    mock_inner_zip.__enter__.return_value = mock_inner_zip
 
     # Setup outer zip file structure
     mock_outer_zip = mock.MagicMock()
-    mock_outer_zip.namelist.return .value = ['file1.zip']
-    mock_outer_zip.__enter__.return .value = mock_outer_zip
+    mock_outer_zip.namelist.return_value = ['file1.zip']
+    mock_outer_zip.__enter__.return_value = mock_outer_zip
 
     # Setup nested zip content
     mock_nested_zip_content = mock.MagicMock()
-    mock_nested_zip_content.read.return .value = b'nested_zip_content'
-    mock_outer_zip.open.return .value = mock_nested_zip_content
+    mock_nested_zip_content.read.return_value = b'nested_zip_content'
+    mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
 
     # Configure ZipFile mock to return appropriate zip objects
     mock_zipfile.side.effect = [mock_outer_zip, mock_inner_zip]
 
+    # Setup inner zip file handle
+    mock_inner_zip_file = mock.MagicMock()
+    mock_inner_zip_file.read.return_value = b'nested_zip_content'
+    mock_inner_zip.open.return_value.__enter__.return_value = mock_inner_zip_file
+
     # Setup table name mock to return None for unrecognized file
-    mock_get_table_name.return .value = None
+    mock_get_table_name.return_value = None
 
     # Run the function
     download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
@@ -460,19 +466,19 @@ def test_process_dam_file_no_table_mapping(mock_logger_warning, mock_store_data)
             [{"archives": [], "_meta": {"totalPages": 1}}],
             [],
         ),
-
     ],
 )
 def test_get_archive_document_ids(
     test_id, product_id, start_date, end_date, mock_responses, expected_doc_ids
 ):
-    # Arrange
+    """Test archive document ID retrieval with various scenarios."""
     mock_response = MagicMock()
-    mock_response.json.side.effect = mock_responses
-    with patch("ercot_scraping.apis.archive_api.rate_limited_request", return_value=mock_response) as mock_request:
+    # Create a list of responses if multiple pages, otherwise use single response
+    if len(mock_responses) > 1:
+        mock_response.json = MagicMock(side_effect=mock_responses)
+    else:
+        mock_response.json.return_value = mock_responses[0]
 
-        # Act
+    with patch("ercot_scraping.apis.archive_api.rate_limited_request", return_value=mock_response):
         doc_ids = get_archive_document_ids(product_id, start_date, end_date)
-
-        # Assert
         assert doc_ids == expected_doc_ids

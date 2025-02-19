@@ -16,7 +16,21 @@ def download_spp_archive_files(
     db_name: str
 ) -> None:
     """
-    Download and process SPP archive files, storing each type in its respective table.
+    Downloads and processes SPP archive files from the ERCOT archive API.
+    Args:
+        product_id (str): The product ID for the SPP documents to be downloaded.
+        doc_ids (list[int]): A list of document IDs to be downloaded.
+        db_name (str): The name of the database where the processed files will be stored.
+    Returns:
+        None
+    Logs:
+        - A warning if no document IDs are provided.
+        - Information about the number of documents being downloaded.
+        - Errors if the download of any batch fails.
+        - Information about each SPP file being processed.
+    Raises:
+        - Any exceptions raised by the `rate_limited_request` function.
+        - Any exceptions raised during the processing of the zip files.
     """
     if not doc_ids:
         LOGGER.warning(f"No document IDs found for SPP product {product_id}")

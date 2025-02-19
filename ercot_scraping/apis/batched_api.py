@@ -104,6 +104,9 @@ def fetch_in_batches(
 
                         if "data" in batch_data and batch_data["data"]:
                             batch_records.extend(batch_data["data"])
+                            LOGGER.info(
+                                f"Got {len(batch_data['data'])} records from page {current_page}"
+                            )
 
                         # Update pagination info
                         if "_meta" in batch_data:
@@ -111,17 +114,10 @@ def fetch_in_batches(
                                 "totalPages", 1)
                             current_page = batch_data["_meta"].get(
                                 "currentPage", 1) + 1
-                            LOGGER.info(
-                                f"Found {total_pages} total pages of data for this batch")
                         else:
                             # If no _meta info, increment page and assume we're done after first page
                             total_pages = 1
                             current_page += 1
-
-                        if records := batch_data["data"]:
-                            batch_records.extend(records)
-                            LOGGER.info(
-                                f"Got {len(records)} records from page {current_page-1}")
 
                     # After all pages, process the batch results
                     if batch_records:
@@ -168,6 +164,9 @@ def fetch_in_batches(
 
                     if "data" in batch_data and batch_data["data"]:
                         batch_records.extend(batch_data["data"])
+                        LOGGER.info(
+                            f"Got {len(batch_data['data'])} records from page {current_page}"
+                        )
 
                     # Update pagination info
                     if "_meta" in batch_data:

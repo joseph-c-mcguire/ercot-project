@@ -70,7 +70,7 @@ def fetch_in_batches(
     LOGGER.info(f"Processing {total_batches} batches for {total_qses} QSEs")
 
     combined_data = []
-    fields = None  # Initialize as None to detect if fields have been set
+    fields = []
     empty_batches = []
     failed_batches = []
 
@@ -79,21 +79,58 @@ def fetch_in_batches(
             LOGGER.info(f"Processing QSE: {qse_name}")
             for i, (batch_start, batch_end) in enumerate(batches, 1):
                 try:
-                    batch_data = fetch_func(
-                        batch_start, batch_end,
-                        page=1,  # Start with first page
-                        qse_name=qse_name,
-                        **kwargs
-                    )
+                    # Initialize for pagination
+                    current_page = 1
+                    total_pages = 1
+                    batch_records = []
 
-                    # Handle fields first, before any data processing
-                    if fields is None and batch_data and "fields" in batch_data:
-                        fields = batch_data["fields"]
+                    while current_page <= total_pages:
+                        LOGGER.info(
+                            f"Fetching batch {i}/{total_batches} for QSE {qse_name}, page {current_page}/{total_pages}: {batch_start} to {batch_end}"
+                        )
 
-                    # Process data if available
-                    if batch_data and "data" in batch_data:
-                        combined_data.extend(batch_data["data"])
+                        batch_data = fetch_func(
+                            batch_start, batch_end,
+                            page=current_page,  # Pass page parameter
+                            qse_name=qse_name,
+                            **kwargs
+                        )
+
+                        if not batch_data or "data" not in batch_data:
+                            LOGGER.warning(
+                                f"Invalid response for page {current_page}/{total_pages}")
+                            break
+
+                        # Update pagination info
+                        if "_meta" in batch_data:
+                            total_pages = batch_data["_meta"].get(
+                                "totalPages", 1)
+                            current_page = batch_data["_meta"].get(
+                                "currentPage", 1) + 1
+                            LOGGER.info(
+                                f"Found {total_pages} total pages of data for this batch")
+                        else:
+                            # If no _meta info, increment page and assume we're done after first page
+                            total_pages = 1
+                            current_page += 1
+
+                        if records := batch_data["data"]:
+                            batch_records.extend(records)
+                            LOGGER.info(
+                                f"Got {len(records)} records from page {current_page-1}")
+
+                        # Grab fields from first page if not already set
+                        if not fields and "fields" in batch_data:
+                            fields = batch_data["fields"]
+
+                    # After all pages, process the batch results
+                    if batch_records:
+                        combined_data.extend(batch_records)
+                        LOGGER.info(
+                            f"Batch {i}/{total_batches} complete - got {len(batch_records)} total records across {total_pages} pages"
+                        )
                     else:
+                        LOGGER.warning(f"No data found for batch {i}")
                         empty_batches.append((batch_start, batch_end))
 
                 except Exception as e:
@@ -106,20 +143,52 @@ def fetch_in_batches(
         # Handle non-QSE batches
         for i, (batch_start, batch_end) in enumerate(batches, 1):
             try:
-                batch_data = fetch_func(
-                    batch_start, batch_end,
-                    page=1,  # Start with first page
-                    **kwargs
-                )
+                # Initialize for pagination
+                current_page = 1
+                total_pages = 1
+                batch_records = []
 
-                # Handle fields first, before any data processing
-                if fields is None and batch_data and "fields" in batch_data:
-                    fields = batch_data["fields"]
+                while current_page <= total_pages:
+                    LOGGER.info(
+                        f"Fetching batch {i}/{total_batches}, page {current_page}/{total_pages}: {batch_start} to {batch_end}"
+                    )
 
-                # Process data if available
-                if batch_data and "data" in batch_data:
-                    combined_data.extend(batch_data["data"])
+                    batch_data = fetch_func(
+                        batch_start, batch_end,
+                        page=current_page,  # Pass page parameter
+                        **kwargs
+                    )
+
+                    if not batch_data or "data" not in batch_data:
+                        LOGGER.warning(
+                            f"Invalid response for page {current_page}/{total_pages}")
+                        break
+
+                    # Update pagination info
+                    if "_meta" in batch_data:
+                        total_pages = batch_data["_meta"].get("totalPages", 1)
+                        current_page = batch_data["_meta"].get(
+                            "currentPage", 1) + 1
+                        LOGGER.info(
+                            f"Found {total_pages} total pages of data for this batch")
+
+                    if records := batch_data["data"]:
+                        batch_records.extend(records)
+                        LOGGER.info(
+                            f"Got {len(records)} records from page {current_page-1}")
+
+                    # Grab fields from first page if not already set
+                    if not fields and "fields" in batch_data:
+                        fields = batch_data["fields"]
+
+                # After all pages, process the batch results
+                if batch_records:
+                    combined_data.extend(batch_records)
+                    LOGGER.info(
+                        f"Batch {i}/{total_batches} complete - got {len(batch_records)} total records across {total_pages} pages"
+                    )
                 else:
+                    LOGGER.warning(f"No data found for batch {i}")
                     empty_batches.append((batch_start, batch_end))
 
             except Exception as e:
@@ -141,11 +210,7 @@ def fetch_in_batches(
         f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
     )
 
-    return {
-        "data": combined_data,
-        # Return empty list if no fields found
-        "fields": fields if fields is not None else []
-    }
+    return {"data": combined_data, "fields": fields}
 
 
 @sleep_and_retry

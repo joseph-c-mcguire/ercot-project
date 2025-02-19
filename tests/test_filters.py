@@ -287,25 +287,68 @@ def test_get_active_settlement_points_partial_tables(tmp_path):
     assert points == {"POINT1"}
 
 
-def test_filter_by_settlement_points():
-    """Test filtering data by settlement points."""
-    data = {
-        "data": [
-            {"settlementPointName": "POINT1", "value": 10},
-            {"settlementPointName": "POINT2", "value": 20},
-            {"settlementPointName": "OTHER", "value": 30},
-            {"value": 40},  # Record missing settlementPointName
-        ]
-    }
-    settlement_points = {"POINT1", "POINT2"}
-    result = filter_by_settlement_points(data, settlement_points)
-    expected = {
-        "data": [
-            {"settlementPointName": "POINT1", "value": 10},
-            {"settlementPointName": "POINT2", "value": 20},
-        ]
-    }
-    assert result == expected
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "standard_field_name",
+            "data": {
+                "data": [
+                    {"settlementPointName": "POINT1", "value": 10},
+                    {"settlementPointName": "POINT2", "value": 20},
+                    {"settlementPointName": "OTHER", "value": 30},
+                    {"value": 40},  # Record missing settlementPointName
+                ]
+            },
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {
+                "data": [
+                    {"settlementPointName": "POINT1", "value": 10},
+                    {"settlementPointName": "POINT2", "value": 20},
+                ]
+            },
+        },
+        {
+            "name": "alternative_field_name",
+            "data": {
+                "data": [
+                    {"SettlementPointName": "POINT1", "value": 10},
+                    {"SettlementPoint": "POINT2", "value": 20},
+                ]
+            },
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {
+                "data": [
+                    {"SettlementPointName": "POINT1", "value": 10},
+                    {"SettlementPoint": "POINT2", "value": 20},
+                ]
+            },
+        },
+        {
+            "name": "empty_data",
+            "data": {"data": []},
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {"data": []},
+        },
+        {
+            "name": "no_matching_points",
+            "data": {
+                "data": [
+                    {"settlementPointName": "OTHER1", "value": 10},
+                    {"settlementPointName": "OTHER2", "value": 20},
+                ]
+            },
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {"data": []},
+        },
+    ],
+)
+def test_filter_by_settlement_points(test_case):
+    """Test filtering data by settlement points with various input cases."""
+    result = filter_by_settlement_points(
+        test_case["data"], test_case["settlement_points"])
+    assert result == test_case["expected"], \
+        f"Failed for {test_case['name']}\nExpected: {test_case['expected']}\nGot: {result}"
 
 
 def test_check_existing_tables_query(tmp_path):

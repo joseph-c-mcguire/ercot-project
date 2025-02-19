@@ -101,19 +101,29 @@ def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict
     Returns:
         dict: Filtered data dictionary containing only records matching settlement_points
     """
-    # Common variations of settlement point field names
-    point_field_names = list(COLUMN_MAPPINGS["settlement_point_prices"].keys())
-    filtered_data = {"data": []}
+    if not data or "data" not in data:
+        return {"data": []}
+
+    filtered_records = []
+    field_variations = [
+        "settlementPointName",
+        "SettlementPointName",
+        "SettlementPoint",
+        "settlementPoint"
+    ]
+
     for record in data["data"]:
-        field_name = get_field_name(record, point_field_names)
-        if field_name and record[field_name] in settlement_points:
-            filtered_data["data"].append(record)
+        # Try each possible field name
+        point_name = None
+        for field in field_variations:
+            if field in record:
+                point_name = record[field]
+                break
 
-    # Preserve other fields if they exist
-    if "fields" in data:
-        filtered_data["fields"] = data["fields"]
+        if point_name and point_name in settlement_points:
+            filtered_records.append(record)
 
-    return filtered_data
+    return {"data": filtered_records}
 
 
 def format_qse_filter_param(qse_names: Set[str]) -> str:

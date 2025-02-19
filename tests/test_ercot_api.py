@@ -2,7 +2,7 @@ import pytest
 import requests
 import os
 import logging
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, call, ANY
 from requests.exceptions import HTTPError
 from ercot_scraping.ercot_api import (
     fetch_settlement_point_prices,
@@ -210,18 +210,34 @@ def test_fetch_data_from_endpoint_http_error(mock_request):
 
 @patch("ercot_scraping.ercot_api.rate_limited_request")
 def test_fetch_data_from_endpoint_rate_limit(mock_request):
-    # First call returns 429 (Too Many Requests), then 200
-    responses = [
-        Mock(status_code=429),
-        Mock(status_code=200, json=Mock(return_value={"data": "success"}))
-    ]
-    mock_request.side_effect = responses
+    """Test handling of rate limits with 429 responses."""
+    # Create properly mocked responses
+    response_429 = Mock()
+    response_429.status_code = 429
+    response_429.raise_for_status.side_effect = HTTPError(
+        "429 Too Many Requests")
+
+    response_200 = Mock()
+    response_200.status_code = 200
+    response_200.raise_for_status.return_value = None
+    response_200.json.return_value = {"data": "success"}
+
+    # Set up the sequence of responses
+    mock_request.side_effect = [response_429, response_200]
 
     endpoint = "test_endpoint"
     result = fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
 
+    # Verify the results
     assert result == {"data": "success"}
     assert mock_request.call_count == 2
+
+    # Verify the calls were made with correct parameters
+    expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
+    mock_request.assert_has_calls([
+        call("GET", url=expected_url, headers=ANY, params={}),
+        call("GET", url=expected_url, headers=ANY, params={})
+    ])
 
 
 def test_dam_base_url():

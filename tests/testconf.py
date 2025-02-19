@@ -67,11 +67,11 @@ SAMPLE_OFFER_AWARDS = {
         {
             "deliveryDate": "2023-10-01",
             "hourEnding": 1,
-            "settlementPointName": "XYZ",
+            "settlementPointName": "XYZ",  # Use this field name consistently
             "qseName": "Test QSE",
             "energyOnlyOfferAwardInMW": 50.0,
             "settlementPointPrice": 30.5,
-            "offerId": "101",  # Changed to string
+            "offerId": "101",
         }
     ]
 }
@@ -81,11 +81,11 @@ SAMPLE_BID_AWARDS = {
         {
             "deliveryDate": "2023-10-01",
             "hourEnding": 1,
-            "settlementPointName": "XYZ",
+            "settlementPointName": "XYZ",  # Use this field name consistently
             "qseName": "Test QSE",
             "energyOnlyBidAwardInMW": 45.0,
             "settlementPointPrice": 28.5,
-            "bidId": "201",  # Changed to string
+            "bidId": "201",
         }
     ]
 }

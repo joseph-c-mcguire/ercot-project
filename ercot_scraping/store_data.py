@@ -115,7 +115,7 @@ def store_data_to_db(
                         # Convert MM/DD/YYYY to YYYY-MM-DD
                         mm, dd, yyyy = delivery_date.split('/')
                         delivery_date = f"{yyyy}-{mm:0>2}-{dd:0>2}"
-                    
+
                     # Skip if this date is already in the database
                     if delivery_date not in existing_dates:
                         filtered_rows.append(record_dict)
@@ -128,7 +128,7 @@ def store_data_to_db(
             continue
 
     logger.info(f"Found {len(filtered_rows)} new records to insert")
-    
+
     if filtered_rows:
         for record in filtered_rows:
             try:
@@ -143,39 +143,63 @@ def store_data_to_db(
     conn.close()
 
 
+def validate_spp_data(data: dict) -> None:
+    """Validate settlement point price data structure."""
+    required_fields = {
+        "deliveryDate",
+        "deliveryHour",
+        "deliveryInterval",
+        "settlementPointName",
+        "settlementPointType",
+        "settlementPointPrice",
+        "dstFlag"
+    }
+
+    if not data or "data" not in data or not data["data"]:
+        raise ValueError("Invalid or empty data structure")
+
+    if not isinstance(data["data"], list):
+        raise ValueError("Data must be a list of records")
+
+    first_record = data["data"][0]
+    missing_fields = required_fields - set(first_record.keys())
+    if missing_fields:
+        raise ValueError(f"Missing required fields: {missing_fields}")
+
+
 def aggregate_spp_data(data: dict) -> dict:
     """
-    Aggregate Settlement Point Price data by hour, averaging the prices
-    and keeping first values for other fields.
+    Aggregate settlement point price data by delivery date and hour.
+
+    Args:
+        data (dict): Dictionary containing settlement point price data
+
+    Returns:
+        dict: Aggregated data dictionary
     """
     if not data or "data" not in data:
         return data
 
-    # Convert to DataFrame
+    validate_spp_data(data)  # Add validation before processing
+
     df = pd.DataFrame(data["data"])
-    
-    # Group by these columns and aggregate
-    agg_dict = {
-        "SettlementPointPrice": "mean",
-        "SettlementPointName": "first",
-        "SettlementPointType": "first",
-        "DSTFlag": "first"
-    }
-    
-    # Group by date and hour, then apply aggregations
+
+    # Use lowercase column names to match the model field names
+    groupby_cols = ["deliveryDate", "deliveryHour"]
+
     grouped_df = df.groupby(
-        ["DeliveryDate", "DeliveryHour"], 
-        as_index=False
-    ).agg(agg_dict)
-    
-    # Add DeliveryInterval as 1 since we're aggregating
-    grouped_df["DeliveryInterval"] = 1
-    
-    # Convert back to dict format
-    return {
-        "data": grouped_df.to_dict('records'),
-        "fields": data.get("fields", [])
-    }
+        groupby_cols,
+        as_index=False,
+        dropna=False
+    ).agg({
+        "deliveryInterval": "first",
+        "settlementPointName": "first",
+        "settlementPointType": "first",
+        "settlementPointPrice": "mean",
+        "dstFlag": "first"
+    })
+
+    return {"data": grouped_df.to_dict("records")}
 
 
 # Delegation functions for different models using local constants:
@@ -191,7 +215,16 @@ def store_prices_to_db(
         filter_by_awards (bool): If True, only store prices for settlement points
                                that appear in bid/offer awards. If award tables don't
                                exist, stores all prices.
+
+    Raises:
+        ValueError: If the data structure is invalid or missing required fields
     """
+    try:
+        validate_spp_data(data)  # Validate before any processing
+    except ValueError as e:
+        logger.error(f"Invalid settlement point price data: {e}")
+        raise
+
     if filter_by_awards:
         active_points = get_active_settlement_points(db_name)
         if active_points:  # Only filter if we found active points

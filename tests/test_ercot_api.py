@@ -241,8 +241,24 @@ def test_fetch_data_from_endpoint_rate_limit(mock_request):
 
 
 def test_dam_base_url():
-    response = requests.get(ERCOT_API_BASE_URL_DAM,
-                            headers=ERCOT_API_REQUEST_HEADERS)
+    import time
+
+    def get_with_retries(url, headers, retries=5, backoff_factor=1):
+        for attempt in range(retries):
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                wait_time = backoff_factor * (2 ** attempt)
+                logger.warning(
+                    f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                response.raise_for_status()
+        return response
+
+    response = get_with_retries(
+        ERCOT_API_BASE_URL_DAM, headers=ERCOT_API_REQUEST_HEADERS)
     logger.info(
         f"Response status code for DAM base URL: {response.status_code}")
     logger.info(f"Response text for DAM base URL: {response.text}")
@@ -259,7 +275,23 @@ def test_settlement_base_url():
 
 
 def test_subscription_key_validity():
-    response = requests.get(
+    import time
+
+    def get_with_retries(url, headers, retries=5, backoff_factor=1):
+        for attempt in range(retries):
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                wait_time = backoff_factor * (2 ** attempt)
+                logger.warning(
+                    f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                response.raise_for_status()
+        return response
+
+    response = get_with_retries(
         f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub",
         headers=ERCOT_API_REQUEST_HEADERS,
     )

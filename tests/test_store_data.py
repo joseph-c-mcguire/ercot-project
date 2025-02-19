@@ -173,37 +173,50 @@ def test_store_prices_to_db_with_award_filtering():
 
 
 def test_invalid_data():
+    """Test validation of invalid data for each store function."""
+    # Test data with missing required fields
     invalid_data = {"data": [{"InvalidField": "value"}]}
 
-    with pytest.raises(ValueError):
+    # Test settlement point prices with specific validation
+    with pytest.raises(ValueError) as excinfo:
         store_prices_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test bid awards with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_bid_awards_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for BidAward" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test bids with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_bids_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for Bid" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test offers with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_offers_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for Offer" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test offer awards with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_offer_awards_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for OfferAward" in str(excinfo.value)
 
 
 def test_store_bid_awards_with_invalid_data():
+    """Test handling of invalid data format (list instead of dict)."""
     # nested list instead of dict
     invalid_data = {"data": [["not", "a", "dict"]]}
-    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+    with pytest.raises(ValueError, match="Invalid data record format for BidAward"):
         store_bid_awards_to_db(invalid_data, "test.db", None)
 
 
 def test_store_bid_awards_with_list_of_dicts():
+    """Test handling of invalid nested data structure."""
     # Simulate data with an inner list of records
     valid_record = {"deliveryDate": "2024-01-01",
                     "settlementPointName": "TEST"}
     data_with_list = {"data": [[valid_record, valid_record]]}
 
-    # Expect a ValueError due to missing required fields
-    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+    with pytest.raises(ValueError, match="Invalid data record format for BidAward"):
         store_bid_awards_to_db(data_with_list, "test.db", None)

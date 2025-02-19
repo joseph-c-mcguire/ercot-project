@@ -242,27 +242,43 @@ def store_prices_to_db(
     )
 
 
+def validate_model_data(data: dict, required_fields: set, model_name: str) -> None:
+    """Validate data structure against required fields."""
+    if not data or "data" not in data or not data["data"]:
+        raise ValueError(f"Invalid or empty data structure for {model_name}")
+
+    if not isinstance(data["data"], list):
+        raise ValueError(f"Data must be a list of records for {model_name}")
+
+    if not data["data"]:
+        raise ValueError(f"Empty data list for {model_name}")
+
+    first_record = data["data"][0]
+    if not isinstance(first_record, dict):
+        raise ValueError(f"Invalid data record format for {model_name}")
+
+    missing_fields = required_fields - set(first_record.keys())
+    if missing_fields:
+        raise ValueError(
+            f"Missing required fields for {model_name}: {missing_fields}")
+
+
 def store_bid_awards_to_db(
     data: dict[str, any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Store bid award data into the specified database.
-
-    This function acts as a thin wrapper around the lower-level function `store_data_to_db`
-    to persist bid awards data into a database table named "BID_AWARDS". The function uses a
-    predefined SQL insert query `BID_AWARDS_INSERT_QUERY` and a data model `BidAward` to perform
-    the insertion.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the bid awards data to be stored.
-        db_name (str, optional): Name of the database file. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None
-    """
+    """Store bid award data into the specified database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName",
+        "energyOnlyBidAwardInMW",
+        "settlementPointPrice",
+        "bidId"
+    }
+    validate_model_data(data, required_fields, "BidAward")
     store_data_to_db(
         data, db_name, "BID_AWARDS", BID_AWARDS_INSERT_QUERY, BidAward, qse_filter
     )
@@ -273,32 +289,15 @@ def store_bids_to_db(
     db_name: Optional[str] = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Stores bid data into the database by delegating to the generic data storage function.
-
-    This function takes a dictionary containing bid data and inserts it into the "BIDS"
-    table in the specified SQLite database. It wraps the call to a lower-level function
-    that performs the actual database insertion logic based on the provided SQL query
-    (BIDS_INSERT_QUERY) and the Bid model.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the bid data to be stored.
-        db_name (str, optional): The name of the SQLite database file. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None
-    """
-    logger.info("Starting to store bids to database")
-    if not data or "data" not in data:
-        logger.warning("No bid data to store")
-        return
-
-    logger.info(f"Preparing to store bids")
-
+    """Stores bid data into the database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName"
+    }
+    validate_model_data(data, required_fields, "Bid")
     store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
-
-    logger.info("Finished storing bids to database")
 
 
 def store_offers_to_db(
@@ -306,23 +305,14 @@ def store_offers_to_db(
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Stores offer data into the database.
-
-    This function abstracts the process of inserting offer-related data into the specified
-    database by calling the underlying helper function 'store_data_to_db'. The data is stored
-    in the 'OFFERS' table using a pre-defined SQL insert query and the corresponding ORM model.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the offer data to be stored. The structure
-                               of the dictionary should align with the expected schema for
-                               the 'OFFERS' table.
-        db_name (str, optional): The name of the SQLite database file. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None: This function does not return a value.
-    """
+    """Stores offer data into the database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName"
+    }
+    validate_model_data(data, required_fields, "Offer")
     store_data_to_db(data, db_name, "OFFERS",
                      OFFERS_INSERT_QUERY, Offer, qse_filter)
 
@@ -332,20 +322,17 @@ def store_offer_awards_to_db(
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Stores offer awards data to the specified database by calling the underlying store_data_to_db function.
-
-    This function takes a dictionary containing offer awards information and saves it into the "OFFER_AWARDS" table of the provided database.
-    It utilizes the pre-defined OFFER_AWARDS_INSERT_QUERY and the OfferAward model to structure and insert the data.
-
-    Parameters:
-        data (dict[str, any]): A dictionary with keys as strings and values of any type, containing the offer awards data.
-        db_name (str, optional): The name of the SQLite database file. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None
-    """
+    """Stores offer awards data to the specified database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName",
+        "energyOnlyOfferAwardInMW",
+        "settlementPointPrice",
+        "offerId"
+    }
+    validate_model_data(data, required_fields, "OfferAward")
     store_data_to_db(
         data, db_name, "OFFER_AWARDS", OFFER_AWARDS_INSERT_QUERY, OfferAward, qse_filter
     )

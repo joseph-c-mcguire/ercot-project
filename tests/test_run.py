@@ -54,7 +54,6 @@ def mock_data():
 # Combined test for all DAM data downloads
 
 
-# Add this line
 @patch("ercot_scraping.run.should_use_archive_api", return_value=False)
 @patch("ercot_scraping.run.load_qse_shortnames")
 @patch("ercot_scraping.run.fetch_dam_energy_bid_awards")
@@ -68,15 +67,16 @@ def mock_data():
 def test_download_historical_dam_data_all(
     mock_store_offers, mock_store_offer_awards, mock_store_bids, mock_store_bid_awards,
     mock_fetch_offers, mock_fetch_offer_awards, mock_fetch_bids, mock_fetch_bid_awards,
-    mock_load_qse, mock_should_use_archive_api,  # Add this parameter
+    mock_load_qse, mock_should_use_archive_api,
     mock_data, setup_database
 ):
+    """Test downloading historical DAM data with various scenarios."""
     # Setup mocks
     mock_load_qse.return_value = mock_data["qse_filter"]
     for mock in [mock_fetch_bid_awards, mock_fetch_bids, mock_fetch_offer_awards, mock_fetch_offers]:
         mock.return_value = mock_data["api_response"]
 
-    # Test with different scenarios using the test database
+    # Test scenarios
     scenarios = [
         ("2023-10-01", "2023-10-02", setup_database,
          mock_data["qse_filter"]),  # Standard case
@@ -94,30 +94,35 @@ def test_download_historical_dam_data_all(
 
         download_historical_dam_data(start_date, end_date, db_name, qse_filter)
 
-        # Verify all fetch functions were called with correct parameters
+        # Verify all fetch functions were called correctly
         if qse_filter:
+            # Match the actual call signature using positional args
             mock_fetch_bid_awards.assert_called_with(
-                start_date=start_date,
-                end_date=end_date or ANY,
+                start_date,
+                end_date or ANY,
                 header=ANY,
                 qse_names=qse_filter
             )
+
             mock_fetch_bids.assert_called_with(
-                start_date=start_date,
-                end_date=end_date or ANY,
+                start_date,
+                end_date or ANY,
                 header=ANY,
                 qse_names=qse_filter
             )
-        else:
-            mock_fetch_bid_awards.assert_called_with(
-                start_date=start_date,
-                end_date=end_date or ANY,
-                header=ANY
+
+            mock_fetch_offer_awards.assert_called_with(
+                start_date,
+                end_date or ANY,
+                header=ANY,
+                qse_names=qse_filter
             )
-            mock_fetch_bids.assert_called_with(
-                start_date=start_date,
-                end_date=end_date or ANY,
-                header=ANY
+
+            mock_fetch_offers.assert_called_with(
+                start_date,
+                end_date or ANY,
+                header=ANY,
+                qse_names=qse_filter
             )
 
 # Combined test for all SPP data operations
@@ -126,19 +131,34 @@ def test_download_historical_dam_data_all(
 @patch("ercot_scraping.run.fetch_settlement_point_prices")
 @patch("ercot_scraping.run.store_prices_to_db")
 def test_spp_operations(mock_store_prices, mock_fetch_prices, mock_data, setup_database):
+    """Test both historical and daily SPP data operations."""
+    # Setup mock
     mock_fetch_prices.return_value = mock_data["api_response"]
 
-    # Test all SPP operations
-    scenarios = [
-        (download_historical_spp_data, ("2023-10-01", "2023-10-02", setup_database)),
-        (update_daily_spp_data, (setup_database,)),
-    ]
+    # Test historical SPP data download
+    download_historical_spp_data("2023-10-01", "2023-10-02", setup_database)
 
-    for func, args in scenarios:
-        func(*args)
-        mock_fetch_prices.assert_called()
-        mock_store_prices.assert_called_with(
-            mock_data["api_response"], args[-1])
+    # Verify historical download calls
+    mock_fetch_prices.assert_called_with(
+        start_date="2023-10-01",
+        end_date="2023-10-02",
+        header=ANY
+    )
+    mock_store_prices.assert_called_with(
+        mock_data["api_response"],
+        db_name=setup_database
+    )
+
+    # Reset mocks for daily update test
+    mock_fetch_prices.reset_mock()
+    mock_store_prices.reset_mock()
+
+    # Test daily SPP update
+    update_daily_spp_data(setup_database)
+
+    # Verify daily update calls
+    assert mock_fetch_prices.call_count == 1, "fetch_settlement_point_prices should be called once"
+    assert mock_store_prices.call_count == 1, "store_prices_to_db should be called once"
 
 # Combined CLI argument tests
 

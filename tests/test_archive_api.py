@@ -182,6 +182,7 @@ def test_download_dam_archive_files_success(
     mock_logger, mock_get_table_name, mock_process_dam, mock_bytesio, mock_zipfile,
     mock_rate_limited_request
 ):
+    """Test successful download and processing of DAM archive files."""
     # Setup API response mock
     mock_response = mock.Mock()
     mock_response.ok = True
@@ -189,27 +190,33 @@ def test_download_dam_archive_files_success(
     mock_rate_limited_request.return_value = mock_response
 
     # Setup BytesIO mocks
-    mock_bytes_outer = mock.MagicMock()
-    mock_bytes_inner = mock.MagicMock()
-    mock_bytesio.side_effect = [mock_bytes_outer, mock_bytes_inner]
+    mock_bytes_outer = mock.MagicMock(name='outer_bytes')
+    mock_bytes_inner = mock.MagicMock(name='inner_bytes')
+    # Change from side_effect to return_value
+    mock_bytesio.return_value = mock_bytes_outer
 
     # Setup inner zip file structure with valid DAM filename
-    mock_inner_zip = mock.MagicMock()
+    mock_inner_zip = mock.MagicMock(name='inner_zip')
     mock_inner_zip.namelist.return_value = ['60d_DAM_file1.csv']
     mock_inner_zip.__enter__.return_value = mock_inner_zip
 
     # Setup outer zip structure
-    mock_outer_zip = mock.MagicMock()
+    mock_outer_zip = mock.MagicMock(name='outer_zip')
     mock_outer_zip.namelist.return_value = ['file1.zip']
     mock_outer_zip.__enter__.return_value = mock_outer_zip
 
     # Setup nested zip content
-    mock_nested_zip_content = mock.MagicMock()
+    mock_nested_zip_content = mock.MagicMock(name='nested_content')
     mock_nested_zip_content.read.return_value = b'nested_zip_content'
     mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
 
     # Configure ZipFile mock
-    mock_zipfile.side.effect = [mock_outer_zip, mock_inner_zip]
+    mock_zipfile.side_effect = [mock_outer_zip, mock_inner_zip]
+
+    # Setup inner zip file handle
+    mock_inner_zip_file = mock.MagicMock(name='inner_file')
+    mock_inner_zip_file.read.return_value = b'nested_zip_content'
+    mock_inner_zip.open.return_value.__enter__.return_value = mock_inner_zip_file
 
     # Setup table name mock
     mock_get_table_name.return_value = 'test_table'
@@ -217,11 +224,16 @@ def test_download_dam_archive_files_success(
     # Run the function
     download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
 
-    # Verify calls - fixed assertions
-    assert mock_bytesio.call_count == 2  # Changed from call.count to call_count
-    assert mock_zipfile.call_count == 2  # Changed from call.count to call_count
-    # Changed from call.count to call_count
-    assert mock_process_dam.call_count == 1
+    # Verify calls
+    assert mock_bytesio.call_count == 2, f"BytesIO was called {mock_bytesio.call_count} times"
+    assert mock_zipfile.call_count == 2, f"ZipFile was called {mock_zipfile.call_count} times"
+    assert mock_process_dam.call_count == 1, f"process_dam_file was called {mock_process_dam.call_count} times"
+
+    # Verify mock_bytesio was called correctly
+    mock_bytesio.assert_has_calls([
+        mock.call(b'zip_content'),  # First call with outer zip content
+        mock.call(b'nested_zip_content')  # Second call with inner zip content
+    ])
 
     # Verify logging calls in order
     mock_logger.info.assert_has_calls([
@@ -262,39 +274,34 @@ def test_download_dam_archive_files_failed_download(mock_logger, mock_zipfile, m
 def test_download_dam_archive_files_unrecognized_file_type(
     mock_logger, mock_get_table_name, mock_bytesio, mock_zipfile, mock_rate_limited_request
 ):
+    """Test handling of unrecognized DAM file types."""
     # Setup API response mock
-    mock_response = mock.Mock()
+    mock_response = MagicMock()
     mock_response.ok = True
     mock_response.content = b'zip_content'
     mock_rate_limited_request.return_value = mock_response
 
     # Setup BytesIO mocks
-    mock_bytes_outer = mock.MagicMock()
-    mock_bytes_inner = mock.MagicMock()
-    mock_bytesio.side_effect = [mock_bytes_outer, mock_bytes_inner]
+    mock_bytes_outer = MagicMock(name='outer_bytes')
+    mock_bytesio.return_value = mock_bytes_outer
 
-    # Setup inner zip file structure with valid DAM prefix but unrecognized type
-    mock_inner_zip = mock.MagicMock()
-    mock_inner_zip.namelist.return_value = ['60d_DAM_unknown.csv']
-    mock_inner_zip.__enter__.return_value = mock_inner_zip
-
-    # Setup outer zip file structure
-    mock_outer_zip = mock.MagicMock()
+    # Setup outer zip structure
+    mock_outer_zip = MagicMock(name='outer_zip')
     mock_outer_zip.namelist.return_value = ['file1.zip']
     mock_outer_zip.__enter__.return_value = mock_outer_zip
 
+    # Setup inner zip structure
+    mock_inner_zip = MagicMock(name='inner_zip')
+    mock_inner_zip.namelist.return_value = ['60d_DAM_unknown.csv']
+    mock_inner_zip.__enter__.return_value = mock_inner_zip
+
     # Setup nested zip content
-    mock_nested_zip_content = mock.MagicMock()
+    mock_nested_zip_content = MagicMock(name='nested_content')
     mock_nested_zip_content.read.return_value = b'nested_zip_content'
     mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
 
-    # Configure ZipFile mock to return appropriate zip objects
-    mock_zipfile.side.effect = [mock_outer_zip, mock_inner_zip]
-
-    # Setup inner zip file handle
-    mock_inner_zip_file = mock.MagicMock()
-    mock_inner_zip_file.read.return_value = b'nested_zip_content'
-    mock_inner_zip.open.return_value.__enter__.return_value = mock_inner_zip_file
+    # Configure zipfile mocks for both outer and inner zips
+    mock_zipfile.side_effect = [mock_outer_zip, mock_inner_zip]
 
     # Setup table name mock to return None for unrecognized file
     mock_get_table_name.return_value = None
@@ -302,9 +309,15 @@ def test_download_dam_archive_files_unrecognized_file_type(
     # Run the function
     download_dam_archive_files('product_id', [1, 2, 3], 'db_name')
 
+    # Verify expected interactions
+    mock_outer_zip.namelist.assert_called_once()
+    mock_inner_zip.namelist.assert_called_once()
+    mock_get_table_name.assert_called_once_with('60d_DAM_unknown.csv')
+
     # Verify the warning was logged
     mock_logger.warning.assert_called_once_with(
-        "Unrecognized DAM file type: 60d_DAM_unknown.csv")
+        "Unrecognized DAM file type: 60d_DAM_unknown.csv"
+    )
 
 
 @pytest.mark.parametrize(

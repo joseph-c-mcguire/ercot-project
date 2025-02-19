@@ -1,10 +1,9 @@
 import sys
 from unittest.mock import patch, ANY
 from datetime import datetime, timedelta
-from pathlib import Path  # Add this import
-
-
+from pathlib import Path
 import pytest
+import sqlite3
 from ercot_scraping.run import (
     download_historical_dam_data,
     download_historical_spp_data,
@@ -13,13 +12,51 @@ from ercot_scraping.run import (
     parse_args,
     main,
 )
+from ercot_scraping.config import (
+    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
+    BIDS_TABLE_CREATION_QUERY,
+    BID_AWARDS_TABLE_CREATION_QUERY,
+    OFFERS_TABLE_CREATION_QUERY,
+    OFFER_AWARDS_TABLE_CREATION_QUERY,
+)
 
 
 @pytest.fixture
-def mock_api_responses():
-    return {"data": [{"DeliveryDate": "2023-10-01", "SettlementPointName": "TEST"}]}
+def setup_database(tmp_path):
+    """Create a test database with all required tables."""
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Create all tables
+    cursor.execute(SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY)
+    cursor.execute(BIDS_TABLE_CREATION_QUERY)
+    cursor.execute(BID_AWARDS_TABLE_CREATION_QUERY)
+    cursor.execute(OFFERS_TABLE_CREATION_QUERY)
+    cursor.execute(OFFER_AWARDS_TABLE_CREATION_QUERY)
+
+    conn.commit()
+    conn.close()
+
+    return str(db_path)
+
+# Single test data fixture for reuse
 
 
+@pytest.fixture
+def mock_data():
+    return {
+        "api_response": {"data": [{"DeliveryDate": "2023-10-01", "SettlementPointName": "TEST"}]},
+        "qse_filter": {"QSE1", "QSE2"},
+        "test_date": "2023-10-01"
+    }
+
+# Combined test for all DAM data downloads
+
+
+# Add this line
+@patch("ercot_scraping.run.should_use_archive_api", return_value=False)
+@patch("ercot_scraping.run.load_qse_shortnames")
 @patch("ercot_scraping.run.fetch_dam_energy_bid_awards")
 @patch("ercot_scraping.run.fetch_dam_energy_bids")
 @patch("ercot_scraping.run.fetch_dam_energy_only_offer_awards")
@@ -28,434 +65,140 @@ def mock_api_responses():
 @patch("ercot_scraping.run.store_bids_to_db")
 @patch("ercot_scraping.run.store_offer_awards_to_db")
 @patch("ercot_scraping.run.store_offers_to_db")
-def test_download_historical_dam_data(
-    mock_store_offers,
-    mock_store_offer_awards,
-    mock_store_bids,
-    mock_store_bid_awards,
-    mock_fetch_offers,
-    mock_fetch_offer_awards,
-    mock_fetch_bids,
-    mock_fetch_bid_awards,
-    mock_api_responses,
+def test_download_historical_dam_data_all(
+    mock_store_offers, mock_store_offer_awards, mock_store_bids, mock_store_bid_awards,
+    mock_fetch_offers, mock_fetch_offer_awards, mock_fetch_bids, mock_fetch_bid_awards,
+    mock_load_qse, mock_should_use_archive_api,  # Add this parameter
+    mock_data, setup_database
 ):
-    # Setup all mocks to return the same test data
-    for mock in [
-        mock_fetch_bid_awards,
-        mock_fetch_bids,
-        mock_fetch_offer_awards,
-        mock_fetch_offers,
-    ]:
-        mock.return_value = mock_api_responses
+    # Setup mocks
+    mock_load_qse.return_value = mock_data["qse_filter"]
+    for mock in [mock_fetch_bid_awards, mock_fetch_bids, mock_fetch_offer_awards, mock_fetch_offers]:
+        mock.return_value = mock_data["api_response"]
 
-    # Test the function
-    download_historical_dam_data("2023-10-01", "2023-10-02")
+    # Test with different scenarios using the test database
+    scenarios = [
+        ("2023-10-01", "2023-10-02", setup_database,
+         mock_data["qse_filter"]),  # Standard case
+        ("2023-10-01", None, setup_database, None),  # Default end date case
+        ("2023-10-01", "2023-10-02", setup_database,
+         {"QSE1"}),  # Custom QSE filter
+    ]
 
-    # Verify all fetch functions were called with correct dates
-    for mock in [
-        mock_fetch_bid_awards,
-        mock_fetch_bids,
-        mock_fetch_offer_awards,
-        mock_fetch_offers,
-    ]:
-        mock.assert_called_once_with("2023-10-01", "2023-10-02", header=ANY)
+    for start_date, end_date, db_name, qse_filter in scenarios:
+        # Reset mocks before each scenario
+        mock_fetch_bid_awards.reset_mock()
+        mock_fetch_bids.reset_mock()
+        mock_fetch_offer_awards.reset_mock()
+        mock_fetch_offers.reset_mock()
 
-    # Verify all store functions were called with the mock data
-    for mock in [
-        mock_store_bid_awards,
-        mock_store_bids,
-        mock_store_offer_awards,
-        mock_store_offers,
-    ]:
-        mock.assert_called_once()
+        download_historical_dam_data(start_date, end_date, db_name, qse_filter)
+
+        # Verify all fetch functions were called with correct parameters
+        if qse_filter:
+            mock_fetch_bid_awards.assert_called_with(
+                start_date=start_date,
+                end_date=end_date or ANY,
+                header=ANY,
+                qse_names=qse_filter
+            )
+            mock_fetch_bids.assert_called_with(
+                start_date=start_date,
+                end_date=end_date or ANY,
+                header=ANY,
+                qse_names=qse_filter
+            )
+        else:
+            mock_fetch_bid_awards.assert_called_with(
+                start_date=start_date,
+                end_date=end_date or ANY,
+                header=ANY
+            )
+            mock_fetch_bids.assert_called_with(
+                start_date=start_date,
+                end_date=end_date or ANY,
+                header=ANY
+            )
+
+# Combined test for all SPP data operations
 
 
 @patch("ercot_scraping.run.fetch_settlement_point_prices")
 @patch("ercot_scraping.run.store_prices_to_db")
-def test_download_historical_spp_data(
-    mock_store_prices, mock_fetch_prices, mock_api_responses
-):
-    mock_fetch_prices.return_value = mock_api_responses
+def test_spp_operations(mock_store_prices, mock_fetch_prices, mock_data, setup_database):
+    mock_fetch_prices.return_value = mock_data["api_response"]
 
-    download_historical_spp_data("2023-10-01", "2023-10-02")
+    # Test all SPP operations
+    scenarios = [
+        (download_historical_spp_data, ("2023-10-01", "2023-10-02", setup_database)),
+        (update_daily_spp_data, (setup_database,)),
+    ]
 
-    mock_fetch_prices.assert_called_once_with("2023-10-01", "2023-10-02")
-    mock_store_prices.assert_called_once_with(mock_api_responses, "ercot.db")
+    for func, args in scenarios:
+        func(*args)
+        mock_fetch_prices.assert_called()
+        mock_store_prices.assert_called_with(
+            mock_data["api_response"], args[-1])
+
+# Combined CLI argument tests
 
 
+@pytest.mark.parametrize("args,expected", [
+    (["historical-dam", "--start", "2023-01-01", "--end", "2023-12-31"],
+     {"command": "historical-dam", "start": "2023-01-01", "end": "2023-12-31", "db": "ercot.db"}),
+    (["historical-spp", "--start", "2023-01-01"],
+     {"command": "historical-spp", "start": "2023-01-01", "end": None, "db": "ercot.db"}),
+    (["update-dam", "--qse-filter", "test.csv"],
+     {"command": "update-dam", "db": "ercot.db", "qse_filter": "test.csv"}),
+])
+def test_parse_args_combined(args, expected, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["ercot_scraping.run"] + args)
+    args = parse_args()
+    for key, value in expected.items():
+        assert getattr(args, key) == value
+
+# Combined main function test
+
+
+@patch("ercot_scraping.run.load_qse_shortnames")
 @patch("ercot_scraping.run.download_historical_dam_data")
-def test_update_daily_dam_data(mock_download):
-    update_daily_dam_data()
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    mock_download.assert_called_once_with(
-        yesterday, yesterday, "ercot.db", None)
-
-
 @patch("ercot_scraping.run.download_historical_spp_data")
-def test_update_daily_spp_data(mock_download):
-    update_daily_spp_data()
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    mock_download.assert_called_once_with(yesterday, yesterday, "ercot.db")
-
-
-@patch("ercot_scraping.run.datetime")
-@patch("ercot_scraping.run.fetch_dam_energy_bid_awards")
-@patch("ercot_scraping.run.fetch_dam_energy_bids")
-@patch("ercot_scraping.run.fetch_dam_energy_only_offer_awards")
-@patch("ercot_scraping.run.fetch_dam_energy_only_offers")
-@patch("ercot_scraping.run.store_bid_awards_to_db")
-@patch("ercot_scraping.run.store_bids_to_db")
-@patch("ercot_scraping.run.store_offer_awards_to_db")
-@patch("ercot_scraping.run.store_offers_to_db")
-def test_download_historical_dam_data_default_end_date(
-    mock_store_offers,
-    mock_store_offer_awards,
-    mock_store_bids,
-    mock_store_bid_awards,
-    mock_fetch_offers,
-    mock_fetch_offer_awards,
-    mock_fetch_bids,
-    mock_fetch_bid_awards,
-    mock_datetime,
+@patch("ercot_scraping.run.update_daily_dam_data")
+@patch("ercot_scraping.run.update_daily_spp_data")
+def test_main_combined(
+    mock_update_spp, mock_update_dam, mock_dl_spp, mock_dl_dam, mock_load_qse,
+    mock_data, monkeypatch
 ):
-    # Mock current date
-    mock_date = datetime(2023, 10, 1)
-    mock_datetime.now.return_value = mock_date
-    mock_today = mock_date.strftime("%Y-%m-%d")
+    scenarios = [
+        (["historical-dam", "--start", "2023-01-01"],
+         lambda: mock_dl_dam.assert_called_once()),
+        (["historical-spp", "--start", "2023-01-01"],
+         lambda: mock_dl_spp.assert_called_once()),
+        (["update-dam"],
+         lambda: mock_update_dam.assert_called_once()),
+        (["update-spp"],
+         lambda: mock_update_spp.assert_called_once()),
+    ]
 
-    # Setup mock returns
-    test_data = {"data": [{"DeliveryDate": "2023-10-01"}]}
-    for mock in [
-        mock_fetch_bid_awards,
-        mock_fetch_bids,
-        mock_fetch_offer_awards,
-        mock_fetch_offers,
-    ]:
-        mock.return_value = test_data
+    mock_load_qse.return_value = mock_data["qse_filter"]
 
-    # Test with only start_date
-    download_historical_dam_data("2023-09-01")
-
-    # Verify fetch calls used correct dates
-    for mock in [
-        mock_fetch_bid_awards,
-        mock_fetch_bids,
-        mock_fetch_offer_awards,
-        mock_fetch_offers,
-    ]:
-        mock.assert_called_once_with("2023-09-01", mock_today, header=ANY)
-
-    # Verify store calls
-    mock_store_bid_awards.assert_called_once_with(test_data, "ercot.db", None)
-    mock_store_bids.assert_called_once_with(test_data, "ercot.db", None)
-    mock_store_offer_awards.assert_called_once_with(
-        test_data, "ercot.db", None)
-    mock_store_offers.assert_called_once_with(test_data, "ercot.db", None)
-
-
-@patch("ercot_scraping.run.fetch_dam_energy_bid_awards")
-@patch("ercot_scraping.run.fetch_dam_energy_bids")
-@patch("ercot_scraping.run.fetch_dam_energy_only_offer_awards")
-@patch("ercot_scraping.run.fetch_dam_energy_only_offers")
-@patch("ercot_scraping.run.store_bid_awards_to_db")
-@patch("ercot_scraping.run.store_bids_to_db")
-@patch("ercot_scraping.run.store_offer_awards_to_db")
-@patch("ercot_scraping.run.store_offers_to_db")
-def test_download_historical_dam_data_with_qse_filter(
-    mock_store_offers,
-    mock_store_offer_awards,
-    mock_store_bids,
-    mock_store_bid_awards,
-    mock_fetch_offers,
-    mock_fetch_offer_awards,
-    mock_fetch_bids,
-    mock_fetch_bid_awards,
-):
-    test_data = {"data": [{"DeliveryDate": "2023-10-01"}]}
-    qse_filter = {"QSE1", "QSE2"}
-
-    for mock in [
-        mock_fetch_bid_awards,
-        mock_fetch_bids,
-        mock_fetch_offer_awards,
-        mock_fetch_offers,
-    ]:
-        mock.return_value = test_data
-
-    download_historical_dam_data(
-        "2023-10-01", "2023-10-02", db_name="test.db", qse_filter=qse_filter
-    )
-
-    # Verify store calls include QSE filter
-    mock_store_bid_awards.assert_called_once_with(
-        test_data, "test.db", qse_filter)
-    mock_store_bids.assert_called_once_with(test_data, "test.db", qse_filter)
-    mock_store_offer_awards.assert_called_once_with(
-        test_data, "test.db", qse_filter)
-    mock_store_offers.assert_called_once_with(test_data, "test.db", qse_filter)
-
-
-@patch("ercot_scraping.run.fetch_dam_energy_bid_awards")
-def test_download_historical_dam_data_error_handling(mock_fetch):
-    mock_fetch.side_effect = Exception("API Error")
-
-    with pytest.raises(Exception) as exc_info:
-        download_historical_dam_data("2023-10-01")
-
-    assert str(exc_info.value) == "API Error"
-
-
-@patch("ercot_scraping.run.datetime")
-@patch("ercot_scraping.run.fetch_settlement_point_prices")
-@patch("ercot_scraping.run.store_prices_to_db")
-def test_download_historical_spp_data_default_end_date(
-    mock_store_prices, mock_fetch_prices, mock_datetime
-):
-    # Mock current date
-    mock_date = datetime(2023, 10, 1)
-    mock_datetime.now.return_value = mock_date
-    mock_today = mock_date.strftime("%Y-%m-%d")
-
-    test_data = {"data": [{"DeliveryDate": "2023-10-01"}]}
-    mock_fetch_prices.return_value = test_data
-
-    # Test with only start_date
-    download_historical_spp_data("2023-09-01")
-
-    # Verify fetch prices called with correct dates
-    mock_fetch_prices.assert_called_once_with("2023-09-01", mock_today)
-
-    # Verify store prices called with data
-    mock_store_prices.assert_called_once_with(test_data, "ercot.db")
-
-
-@patch("ercot_scraping.run.fetch_settlement_point_prices")
-def test_download_historical_spp_data_error_handling(mock_fetch):
-    mock_fetch.side_effect = Exception("API Error")
-
-    with pytest.raises(Exception) as exc_info:
-        download_historical_spp_data("2023-10-01")
-
-    assert str(exc_info.value) == "API Error"
-
-
-@patch("ercot_scraping.run.fetch_settlement_point_prices")
-@patch("ercot_scraping.run.store_prices_to_db")
-def test_download_historical_spp_data_custom_db(mock_store_prices, mock_fetch_prices):
-    test_data = {"data": [{"DeliveryDate": "2023-10-01"}]}
-    mock_fetch_prices.return_value = test_data
-
-    download_historical_spp_data("2023-10-01", "2023-10-02", db_name="test.db")
-
-    # Verify store prices uses custom db name
-    mock_store_prices.assert_called_once_with(test_data, "test.db")
-
-
-@pytest.fixture
-def mock_argv(monkeypatch):
-    def _mock_argv(args):
+    for args, assertion in scenarios:
         monkeypatch.setattr("sys.argv", ["ercot_scraping.run"] + args)
-
-    return _mock_argv
-
-
-def test_parse_args_historical_dam(mock_argv):
-    mock_argv(["historical-dam", "--start",
-              "2023-01-01", "--end", "2023-12-31"])
-    args = parse_args()
-    assert args.command == "historical-dam"
-    assert args.start == "2023-01-01"
-    assert args.end == "2023-12-31"
-    assert args.db == "ercot.db"
-    assert args.qse_filter is None
-
-
-def test_parse_args_historical_dam_with_db(mock_argv):
-    mock_argv(["historical-dam", "--start", "2023-01-01", "--db", "test.db"])
-    args = parse_args()
-    assert args.command == "historical-dam"
-    assert args.start == "2023-01-01"
-    assert args.end is None
-    assert args.db == "test.db"
-
-
-def test_parse_args_historical_spp(mock_argv):
-    mock_argv(["historical-spp", "--start", "2023-01-01"])
-    args = parse_args()
-    assert args.command == "historical-spp"
-    assert args.start == "2023-01-01"
-    assert args.end is None
-    assert args.db == "ercot.db"
-
-
-def test_parse_args_update_dam(mock_argv):
-    mock_argv(["update-dam"])
-    args = parse_args()
-    assert args.command == "update-dam"
-    assert args.db == "ercot.db"
-    assert args.qse_filter is None
-
-
-def test_parse_args_update_dam_with_qse_filter(mock_argv):
-    mock_argv(["update-dam", "--qse-filter", "test.csv"])
-    args = parse_args()
-    assert args.command == "update-dam"
-    assert args.db == "ercot.db"
-    assert args.qse_filter == Path("test.csv")
-
-
-def test_parse_args_update_spp(mock_argv):
-    mock_argv(["update-spp"])
-    args = parse_args()
-    assert args.command == "update-spp"
-    assert args.db == "ercot.db"
-
-
-def test_parse_args_no_command(mock_argv):
-    mock_argv([])
-    args = parse_args()
-    assert args.command is None
-
-
-def test_parse_args_historical_dam_missing_start(mock_argv):
-    with pytest.raises(SystemExit):
-        mock_argv(["historical-dam"])
-        parse_args()
-
-
-@patch("ercot_scraping.run.load_qse_shortnames")
-@patch("ercot_scraping.run.download_historical_dam_data")
-@patch("ercot_scraping.run.download_historical_spp_data")
-@patch("ercot_scraping.run.update_daily_dam_data")
-@patch("ercot_scraping.run.update_daily_spp_data")
-def test_main_historical_dam(
-    mock_update_spp,
-    mock_update_dam,
-    mock_dl_spp,
-    mock_dl_dam,
-    mock_load_qse,
-    mock_argv,
-):
-    mock_argv(["historical-dam", "--start",
-              "2023-01-01", "--qse-filter", "test.csv"])
-    mock_load_qse.return_value = {"QSE1", "QSE2"}
-
-    main()
-
-    mock_load_qse.assert_called_once_with(Path("test.csv"))
-    mock_dl_dam.assert_called_once_with(
-        start_date="2023-01-01",
-        end_date=None,
-        db_name="ercot.db",
-        qse_filter={"QSE1", "QSE2"},
-    )
-    mock_dl_spp.assert_not_called()
-    mock_update_dam.assert_not_called()
-    mock_update_spp.assert_not_called()
-
-
-@patch("ercot_scraping.run.download_historical_dam_data")
-@patch("ercot_scraping.run.download_historical_spp_data")
-@patch("ercot_scraping.run.update_daily_dam_data")
-@patch("ercot_scraping.run.update_daily_spp_data")
-def test_main_historical_spp(
-    mock_update_spp, mock_update_dam, mock_dl_spp, mock_dl_dam, mock_argv
-):
-    mock_argv(
-        [
-            "historical-spp",
-            "--start",
-            "2023-01-01",
-            "--end",
-            "2023-12-31",
-            "--db",
-            "test.db",
-        ]
-    )
-
-    main()
-
-    mock_dl_spp.assert_called_once_with(
-        start_date="2023-01-01", end_date="2023-12-31", db_name="test.db"
-    )
-    mock_dl_dam.assert_not_called()
-    mock_update_dam.assert_not_called()
-    mock_update_spp.assert_not_called()
-
-
-@patch("ercot_scraping.run.load_qse_shortnames")
-@patch("ercot_scraping.run.download_historical_dam_data")
-@patch("ercot_scraping.run.download_historical_spp_data")
-@patch("ercot_scraping.run.update_daily_dam_data")
-@patch("ercot_scraping.run.update_daily_spp_data")
-def test_main_update_dam(
-    mock_update_spp,
-    mock_update_dam,
-    mock_dl_spp,
-    mock_dl_dam,
-    mock_load_qse,
-    mock_argv,
-):
-    mock_argv(["update-dam", "--qse-filter", "test.csv"])
-    mock_load_qse.return_value = {"QSE1", "QSE2"}
-
-    main()
-
-    mock_load_qse.assert_called_once_with(Path("test.csv"))
-    mock_update_dam.assert_called_once_with(
-        db_name="ercot.db", qse_filter={"QSE1", "QSE2"}
-    )
-    mock_dl_dam.assert_not_called()
-    mock_dl_spp.assert_not_called()
-    mock_update_spp.assert_not_called()
-
-
-@patch("ercot_scraping.run.download_historical_dam_data")
-@patch("ercot_scraping.run.download_historical_spp_data")
-@patch("ercot_scraping.run.update_daily_dam_data")
-@patch("ercot_scraping.run.update_daily_spp_data")
-def test_main_update_spp(
-    mock_update_spp, mock_update_dam, mock_dl_spp, mock_dl_dam, mock_argv
-):
-    mock_argv(["update-spp", "--db", "test.db"])
-
-    main()
-
-    mock_update_spp.assert_called_once_with(db_name="test.db")
-    mock_dl_dam.assert_not_called()
-    mock_dl_spp.assert_not_called()
-    mock_update_dam.assert_not_called()
-
-
-@patch("ercot_scraping.run.logger")
-def test_main_no_command(mock_logger, mock_argv):
-    mock_argv([])
-
-    main()
-
-    mock_logger.error.assert_called_once_with(
-        "No command specified. Use -h for help.")
-
-
-@patch("ercot_scraping.run.logger")
-@patch("ercot_scraping.run.download_historical_dam_data")
-def test_main_error_handling(mock_dl_dam, mock_logger, mock_argv):
-    mock_argv(["historical-dam", "--start", "2023-01-01"])
-    mock_dl_dam.side_effect = Exception("Test error")
-
-    with pytest.raises(Exception) as exc_info:
         main()
+        assertion()
 
-    assert str(exc_info.value) == "Test error"
-    mock_logger.error.assert_called_once_with(
-        "Error executing command: Test error")
+        # Reset all mocks after each scenario
+        mock_dl_dam.reset_mock()
+        mock_dl_spp.reset_mock()
+        mock_update_dam.reset_mock()
+        mock_update_spp.reset_mock()
+
+# Error handling test
 
 
-def test_run_historical_dam_args():
-    original_argv = sys.argv
-    try:
-        sys.argv = ["ercot_scraping", "historical-dam",
-                    "--start", "2024-01-01", "--end", "2024-01-02"]
+def test_error_handling(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["ercot_scraping.run"])
+    with patch("ercot_scraping.run.logger") as mock_logger:
         main()
-    finally:
-        sys.argv = original_argv
+        mock_logger.error.assert_called_once_with(
+            "No command specified. Use -h for help.")

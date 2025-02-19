@@ -7,7 +7,8 @@ from ercot_scraping.filters import (
     get_active_settlement_points,
     filter_by_settlement_points,
 )
-from ercot_scraping.ercot_api import validate_sql_query
+# Changed from ercot_api to utils
+from ercot_scraping.utils import validate_sql_query
 # Import constants
 from ercot_scraping.config import (
     FETCH_BID_SETTLEMENT_POINTS_QUERY,
@@ -28,8 +29,9 @@ from ercot_scraping.config import (
 
 
 def write_csv(tmp_path, filename, header, rows):
+    """Write test data to a CSV file."""
     file_path = tmp_path / filename
-    with file_path.open("w", newline="") as f:
+    with file_path.open("w", newline="", encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=header)
         writer.writeheader()
         for row in rows:
@@ -44,10 +46,12 @@ def write_csv(tmp_path, filename, header, rows):
             "name": "valid_data",
             "header": ["SHORT NAME", "OTHER"],
             "rows": [
+                # Leading/trailing spaces
                 {"SHORT NAME": " QSE1 ", "OTHER": "Value1"},
-                {"SHORT NAME": "QSE2", "OTHER": "Value2"},
-                {"SHORT NAME": "", "OTHER": "Ignore"},
-                {"SHORT NAME": "QSE3", "OTHER": "Value3"},
+                {"SHORT NAME": "QSE2", "OTHER": "Value2"},    # No spaces
+                {"SHORT NAME": "", "OTHER": "Ignore"},        # Empty name
+                {"SHORT NAME": " ", "OTHER": "Ignore"},       # Just whitespace
+                {"SHORT NAME": "QSE3", "OTHER": "Value3"},    # Normal entry
             ],
             "expected": {"QSE1", "QSE2", "QSE3"},
         },
@@ -69,11 +73,18 @@ def write_csv(tmp_path, filename, header, rows):
     ],
 )
 def test_load_qse_shortnames(tmp_path, test_case):
+    """Test QSE shortname loading with various input cases."""
     csv_file = write_csv(
         tmp_path, f"{test_case['name']}.csv", test_case["header"], test_case["rows"]
     )
+    # Print the contents of the file for debugging
+    with open(csv_file, 'r', encoding='utf-8') as f:
+        print(f"\nTest file contents for {test_case['name']}:")
+        print(f.read())
+
     result = load_qse_shortnames(str(csv_file))
-    assert result == test_case["expected"]
+    assert result == test_case["expected"], \
+        f"Failed for {test_case['name']}\nExpected: {test_case['expected']}\nGot: {result}"
 
 
 @pytest.mark.parametrize(

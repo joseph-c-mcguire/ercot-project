@@ -8,8 +8,6 @@ from ercot_scraping.data_models import (
     OfferAward,
 )
 
-from tests.testconf import TEST_DB
-
 
 @pytest.fixture(autouse=True)
 def cleanup():

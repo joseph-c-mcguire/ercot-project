@@ -2,24 +2,35 @@ import csv
 from typing import Set
 import sqlite3
 import pandas as pd
+from pathlib import Path
 
 from ercot_scraping.utils import get_field_name
 from ercot_scraping.config import COLUMN_MAPPINGS
 
 
-def load_qse_shortnames(csv_path: str) -> Set[str]:
-    """Load QSE short names from tracking list CSV."""
+def load_qse_shortnames(csv_file: str | Path) -> Set[str]:
+    """
+    Load QSE short names from a CSV file.
+
+    Args:
+        csv_file: Path to CSV file containing QSE short names
+
+    Returns:
+        Set of QSE short names
+    """
+    qse_names = set()
     try:
-        df = pd.read_csv(csv_path)
-        # Filter for only QSE market participant types and active participants
-        qses = df[
-            (df['MARKET PARTICIPANT TYPE'] == 'QSE') & 
-            (df['AW_FLAG_02'] == 1)
-        ]['SHORT NAME'].unique()
-        return set(qses)
-    except Exception as e:
-        print(f"Error loading QSE names: {e}")
+        with open(csv_file, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            if 'SHORT NAME' not in reader.fieldnames:
+                return set()
+            for row in reader:
+                name = row['SHORT NAME'].strip()
+                if name:  # Only add non-empty names
+                    qse_names.add(name)
+    except (FileNotFoundError, KeyError):
         return set()
+    return qse_names
 
 
 def filter_by_qse_names(data: dict, qse_names: Set[str]) -> dict:

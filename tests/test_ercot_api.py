@@ -115,14 +115,14 @@ def test_fetch_dam_energy_only_offers(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_default_params(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_default_params(mock_request):
     # Setup the mock response
     mock_response = Mock()
     expected_json = {"data": "default"}
     mock_response.status_code = 200
     mock_response.json.return_value = expected_json
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     # Call function with only endpoint
     endpoint = "test_endpoint"
@@ -130,20 +130,23 @@ def test_fetch_data_from_endpoint_default_params(mock_get):
 
     # Verify URL construction and default header usage
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
-    mock_get.assert_called_with(
-        url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params={}
+    mock_request.assert_called_with(
+        "GET",
+        url=expected_url,
+        headers=ERCOT_API_REQUEST_HEADERS,
+        params={}
     )
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_with_dates(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_with_dates(mock_request):
     # Setup the mock response
     mock_response = Mock()
     expected_json = {"data": "with_dates"}
     mock_response.status_code = 200
     mock_response.json.return_value = expected_json
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     # Call function with start_date and end_date
     endpoint = "test_endpoint"
@@ -156,20 +159,23 @@ def test_fetch_data_from_endpoint_with_dates(mock_get):
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
     expected_params = {"deliveryDateFrom": start_date,
                        "deliveryDateTo": end_date}
-    mock_get.assert_called_with(
-        url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params=expected_params
+    mock_request.assert_called_with(
+        "GET",
+        url=expected_url,
+        headers=ERCOT_API_REQUEST_HEADERS,
+        params=expected_params
     )
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_with_custom_header(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_with_custom_header(mock_request):
     # Setup the mock response
     mock_response = Mock()
     expected_json = {"data": "custom_header"}
     mock_response.status_code = 200
     mock_response.json.return_value = expected_json
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     # Call function with a custom header
     endpoint = "test_endpoint"
@@ -179,23 +185,43 @@ def test_fetch_data_from_endpoint_with_custom_header(mock_get):
     )
 
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
-    mock_get.assert_called_with(
-        url=expected_url, headers=custom_header, params={})
+    mock_request.assert_called_with(
+        "GET",
+        url=expected_url,
+        headers=custom_header,
+        params={}
+    )
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_http_error(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_http_error(mock_request):
     # Setup the mock response to simulate HTTP error
     mock_response = Mock()
     mock_response.status_code = 404
     mock_response.raise_for_status.side_effect = HTTPError("404 Client Error")
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     endpoint = "test_endpoint"
 
     with pytest.raises(HTTPError):
         fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
+
+
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_rate_limit(mock_request):
+    # First call returns 429 (Too Many Requests), then 200
+    responses = [
+        Mock(status_code=429),
+        Mock(status_code=200, json=Mock(return_value={"data": "success"}))
+    ]
+    mock_request.side_effect = responses
+
+    endpoint = "test_endpoint"
+    result = fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
+
+    assert result == {"data": "success"}
+    assert mock_request.call_count == 2
 
 
 def test_dam_base_url():

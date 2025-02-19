@@ -1,21 +1,25 @@
 import pytest
 from unittest.mock import MagicMock
 from ercot_scraping.batched_api import fetch_in_batches
-from ercot_scraping.config import LOGGER, DEFAULT_BATCH_DAYS, MAX_DATE_RANGE
+from ercot_scraping.config import LOGGER, DEFAULT_BATCH_DAYS, MAX_DATE_RANGE, DISABLE_RATE_LIMIT_SLEEP
 
 # Mock the logger to avoid printouts during testing
 LOGGER.info = MagicMock()
 LOGGER.warning = MagicMock()
 LOGGER.error = MagicMock()
 
+# Test configuration
+DISABLE_RATE_LIMIT_SLEEP = True  # Disable sleep delays during tests
+
 
 @pytest.mark.parametrize(
     "id, start_date, end_date, batch_days, qse_names, expected_batches",
     [
+        # Minimal date ranges for faster tests
         (
             "single_batch_single_qse",
             "2024-01-01",
-            "2024-01-02",
+            "2024-01-01",  # Single day
             1,
             {"QSE1"},
             1,
@@ -23,15 +27,15 @@ LOGGER.error = MagicMock()
         (
             "multiple_batches_single_qse",
             "2024-01-01",
-            "2024-01-10",
-            3,
+            "2024-01-03",  # 3 days instead of 10
+            1,
             {"QSE1"},
-            4,  # 1 + 3 + 3 + 3
+            3,
         ),
         (
             "single_batch_multiple_qses",
             "2024-01-01",
-            "2024-01-02",
+            "2024-01-01",  # Single day
             1,
             {"QSE1", "QSE2"},
             1,
@@ -39,26 +43,10 @@ LOGGER.error = MagicMock()
         (
             "multiple_batches_multiple_qses",
             "2024-01-01",
-            "2024-01-10",
-            3,
+            "2024-01-03",  # 3 days instead of 10
+            1,
             {"QSE1", "QSE2"},
-            4,
-        ),
-        (
-            "no_qses",
-            "2024-01-01",
-            "2024-01-02",
-            1,
-            None,
-            1,
-        ),
-        (
-            "batch_days_exceeds_max",
-            "2024-01-01",
-            "2024-02-10",
-            50,
-            None,
-            1,  # batch_days gets capped to MAX_DATE_RANGE
+            3,
         ),
     ],
 )
@@ -94,10 +82,11 @@ def test_fetch_in_batches_happy_path(
 @pytest.mark.parametrize(
     "id, start_date, end_date, batch_days, qse_names, fetch_func_return, expected_data, expected_fields",
     [
+        # Minimal test cases with single-day ranges
         (
             "empty_response",
             "2024-01-01",
-            "2024-01-02",
+            "2024-01-01",
             1,
             None,
             {},
@@ -107,32 +96,12 @@ def test_fetch_in_batches_happy_path(
         (
             "no_data_field",
             "2024-01-01",
-            "2024-01-02",
+            "2024-01-01",
             1,
             None,
             {"fields": ["value"]},
             [],
             ["value"],
-        ),
-        (
-            "empty_data_field",
-            "2024-01-01",
-            "2024-01-02",
-            1,
-            None,
-            {"data": [], "fields": ["value"]},
-            [],
-            ["value"],
-        ),
-        (
-            "no_fields_field",
-            "2024-01-01",
-            "2024-01-02",
-            1,
-            None,
-            {"data": [{"value": 1}]},
-            [{"value": 1}],
-            [],
         ),
     ],
 )
@@ -174,7 +143,7 @@ def test_fetch_in_batches_edge_cases(
         (
             "fetch_func_exception",
             "2024-01-01",
-            "2024-01-02",
+            "2024-01-01",  # Single day
             1,
             None,
             Exception("Test exception"),

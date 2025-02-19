@@ -57,7 +57,7 @@ API_RATE_LIMIT_INTERVAL = 60
 DEFAULT_BATCH_DAYS = 1
 MAX_DATE_RANGE = 100  # example value; tests assume a high cap
 # New flag to disable sleep during tests to reduce runtime
-DISABLE_RATE_LIMIT_SLEEP = False
+DISABLE_RATE_LIMIT_SLEEP = True
 API_MAX_ARCHIVE_FILES = 1000
 API_CUTOFF_DATE = "2023-12-11"
 REQUEST_TIMEOUT = 30

@@ -70,7 +70,7 @@ def fetch_in_batches(
     LOGGER.info(f"Processing {total_batches} batches for {total_qses} QSEs")
 
     combined_data = []
-    fields = []
+    fields = None  # Initialize as None instead of empty list
     empty_batches = []
     failed_batches = []
 
@@ -120,7 +120,7 @@ def fetch_in_batches(
                                 f"Got {len(records)} records from page {current_page-1}")
 
                         # Grab fields from first page if not already set
-                        if not fields and "fields" in batch_data:
+                        if fields is None and "fields" in batch_data:
                             fields = batch_data["fields"]
 
                     # After all pages, process the batch results
@@ -178,7 +178,7 @@ def fetch_in_batches(
                             f"Got {len(records)} records from page {current_page-1}")
 
                     # Grab fields from first page if not already set
-                    if not fields and "fields" in batch_data:
+                    if fields is None and "fields" in batch_data:
                         fields = batch_data["fields"]
 
                 # After all pages, process the batch results
@@ -210,7 +210,11 @@ def fetch_in_batches(
         f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
     )
 
-    return {"data": combined_data, "fields": fields}
+    return {
+        "data": combined_data,
+        # Return empty list if no fields found
+        "fields": fields if fields is not None else []
+    }
 
 
 @sleep_and_retry

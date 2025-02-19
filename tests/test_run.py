@@ -18,6 +18,7 @@ from ercot_scraping.config import (
     BID_AWARDS_TABLE_CREATION_QUERY,
     OFFERS_TABLE_CREATION_QUERY,
     OFFER_AWARDS_TABLE_CREATION_QUERY,
+    ERCOT_DB_NAME,
 )
 
 
@@ -166,11 +167,11 @@ def test_spp_operations(mock_store_prices, mock_fetch_prices, mock_should_use_ar
 
 @pytest.mark.parametrize("args,expected", [
     (["historical-dam", "--start", "2023-01-01", "--end", "2023-12-31"],
-     {"command": "historical-dam", "start": "2023-01-01", "end": "2023-12-31", "db": "ercot.db"}),
+     {"command": "historical-dam", "start": "2023-01-01", "end": "2023-12-31", "db": ERCOT_DB_NAME}),  # Updated to use config value
     (["historical-spp", "--start", "2023-01-01"],
-     {"command": "historical-spp", "start": "2023-01-01", "end": None, "db": "ercot.db"}),
+     {"command": "historical-spp", "start": "2023-01-01", "end": None, "db": ERCOT_DB_NAME}),  # Updated to use config value
     (["update-dam", "--qse-filter", "test.csv"],
-     {"command": "update-dam", "db": "ercot.db", "qse_filter": "test.csv"}),
+     {"command": "update-dam", "db": ERCOT_DB_NAME, "qse_filter": Path("test.csv")}),  # Updated to expect Path object
 ])
 def test_parse_args_combined(args, expected, monkeypatch):
     monkeypatch.setattr("sys.argv", ["ercot_scraping.run"] + args)

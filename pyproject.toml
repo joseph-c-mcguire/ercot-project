@@ -38,10 +38,19 @@ branch = true
 source = ["ercot_scraping"]
 
 [tool.coverage.report]
+# Which files to exclude in the report
+omit = [
+    "*/site-packages/*",
+    "*/tests/*",
+    "*/__init__.py",
+    "*/__main__.py",
+    "*/config.py
+]
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "pass",
+    ""
 ]

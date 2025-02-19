@@ -4,7 +4,7 @@ import os
 import logging
 from unittest.mock import patch, Mock, call, ANY
 from requests.exceptions import HTTPError
-from ercot_scraping.ercot_api import (
+from ercot_scraping.apis.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
     fetch_dam_energy_bids,
@@ -12,7 +12,7 @@ from ercot_scraping.ercot_api import (
     fetch_dam_energy_only_offers,
     fetch_data_from_endpoint,
 )
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,

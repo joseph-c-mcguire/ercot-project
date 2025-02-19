@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from ratelimit import limits, sleep_and_retry
 
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     API_RATE_LIMIT_REQUESTS,
     API_RATE_LIMIT_INTERVAL,
     LOGGER,
@@ -69,7 +69,7 @@ def fetch_in_batches(
     LOGGER.info(f"Processing {total_batches} batches for {total_qses} QSEs")
 
     combined_data = []
-    fields = []
+    fields = None  # Initialize fields as None
     empty_batches = []
     failed_batches = []
 
@@ -95,10 +95,15 @@ def fetch_in_batches(
                             **kwargs
                         )
 
-                        if not batch_data or "data" not in batch_data:
-                            LOGGER.warning(
-                                f"Invalid response for page {current_page}/{total_pages}")
+                        # Update fields if they're in the response and not set yet
+                        if fields is None and "fields" in batch_data:
+                            fields = batch_data["fields"]
+
+                        if not batch_data:
                             break
+
+                        if "data" in batch_data and batch_data["data"]:
+                            batch_records.extend(batch_data["data"])
 
                         # Update pagination info
                         if "_meta" in batch_data:
@@ -117,10 +122,6 @@ def fetch_in_batches(
                             batch_records.extend(records)
                             LOGGER.info(
                                 f"Got {len(records)} records from page {current_page-1}")
-
-                        # Grab fields from first page if not already set
-                        if not fields and "fields" in batch_data:
-                            fields = batch_data["fields"]
 
                     # After all pages, process the batch results
                     if batch_records:
@@ -158,10 +159,15 @@ def fetch_in_batches(
                         **kwargs
                     )
 
-                    if not batch_data or "data" not in batch_data:
-                        LOGGER.warning(
-                            f"Invalid response for page {current_page}/{total_pages}")
+                    # Update fields if they're in the response and not set yet
+                    if fields is None and "fields" in batch_data:
+                        fields = batch_data["fields"]
+
+                    if not batch_data:
                         break
+
+                    if "data" in batch_data and batch_data["data"]:
+                        batch_records.extend(batch_data["data"])
 
                     # Update pagination info
                     if "_meta" in batch_data:
@@ -176,8 +182,8 @@ def fetch_in_batches(
                         LOGGER.info(
                             f"Got {len(records)} records from page {current_page-1}")
 
-                    # Grab fields from first page if not already set
-                    if not fields and "fields" in batch_data:
+                    # Update fields only if not set yet
+                    if fields is None and "fields" in batch_data:
                         fields = batch_data["fields"]
 
                 # After all pages, process the batch results
@@ -209,7 +215,11 @@ def fetch_in_batches(
         f"Average records per successful batch: {total_records / successful_batches if successful_batches > 0 else 0:.2f}"
     )
 
-    return {"data": combined_data, "fields": fields}
+    return {
+        "data": combined_data,
+        # Return fields if set, empty list otherwise
+        "fields": fields if fields is not None else []
+    }
 
 
 @sleep_and_retry

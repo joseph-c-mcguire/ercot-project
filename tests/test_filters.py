@@ -1,19 +1,20 @@
+from typing import Any, Literal, LiteralString
 import csv
 import sqlite3
 import pytest
 import os
 from pathlib import Path
 
-from ercot_scraping.filters import (
+from ercot_scraping.utils.filters import (
     load_qse_shortnames,
     filter_by_qse_names,
     get_active_settlement_points,
     filter_by_settlement_points,
 )
 # Changed from ercot_api to utils
-from ercot_scraping.utils import validate_sql_query
+from ercot_scraping.utils.utils import validate_sql_query
 # Import constants
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     FETCH_BID_SETTLEMENT_POINTS_QUERY,
     CHECK_EXISTING_TABLES_QUERY,
     FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
@@ -29,6 +30,7 @@ from ercot_scraping.config import (
     OFFER_AWARDS_TABLE_CREATION_QUERY,
     GET_ACTIVE_SETTLEMENT_POINTS_QUERY
 )
+from tests.testconf import close_all_db_connections, ERCOT_DATA_DB
 
 
 def write_csv(tmp_path, filename, header, rows):
@@ -45,7 +47,6 @@ def write_csv(tmp_path, filename, header, rows):
 @pytest.fixture(autouse=True)
 def cleanup():
     """Clean up test databases before and after each test."""
-    from tests.testconf import close_all_db_connections, ERCOT_DATA_DB
 
     # Cleanup before test
     if os.path.exists(ERCOT_DATA_DB):
@@ -62,7 +63,7 @@ def cleanup():
         close_all_db_connections(file)
         try:
             os.remove(file)
-        except (PermissionError, OSError):
+        except OSError:
             print(f"Warning: Could not remove {file}")
 
 
@@ -99,7 +100,7 @@ def cleanup():
         },
     ],
 )
-def test_load_qse_shortnames(tmp_path, test_case):
+def test_load_qse_shortnames(tmp_path: Path, test_case: dict[str, str | list[str] | list[dict[str, str]] | set[str]] | dict[str, str | list[str] | set] | dict[str, str | list[str] | list[dict[str, str]] | set]):
     """Test QSE shortname loading with various input cases."""
     csv_file = write_csv(
         tmp_path, f"{test_case['name']}.csv", test_case["header"], test_case["rows"]
@@ -160,7 +161,7 @@ def test_load_qse_shortnames(tmp_path, test_case):
         },
     ],
 )
-def test_filter_by_qse_names(test_case):
+def test_filter_by_qse_names(test_case: dict[str, str | dict[str, list[dict[str, Any] | dict[str, int]]] | set[str] | dict[str, list[dict[str, Any]]]] | dict[str, str | dict[str, list[Any]] | set[str]] | dict[str, str | dict[str, list[dict[str, Any]]] | set | dict[str, list[Any]]]):
     result = filter_by_qse_names(test_case["data"], test_case["qse_names"])
     assert result == test_case["expected"]
 
@@ -173,7 +174,7 @@ def test_filter_by_qse_names(test_case):
         FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
     ],
 )
-def test_sql_queries_are_valid(sql_query):
+def test_sql_queries_are_valid(sql_query: Literal['SELECT SettlementPoint FROM BID_AWARDS'] | LiteralString | Literal['SELECT SettlementPoint FROM OFFER_AWARDS']):
     """Test that SQL queries are valid."""
     assert validate_sql_query(sql_query)
 
@@ -198,7 +199,7 @@ def test_sql_queries_are_valid(sql_query):
         },
     ],
 )
-def test_settlement_points_queries(tmp_path, test_data):
+def test_settlement_points_queries(tmp_path: Path, test_data: dict[str, list[tuple[str]] | set[str]]):
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
@@ -220,7 +221,7 @@ def test_settlement_points_queries(tmp_path, test_data):
     assert points == test_data["expected_points"]
 
 
-def test_get_active_settlement_points(tmp_path):
+def test_get_active_settlement_points(tmp_path: Path):
     # Create a temporary test database
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
@@ -255,7 +256,7 @@ def test_get_active_settlement_points(tmp_path):
     assert points == {"POINT1", "POINT2", "POINT3"}
 
 
-def test_get_active_settlement_points_missing_tables(tmp_path):
+def test_get_active_settlement_points_missing_tables(tmp_path: Path):
     # Test with a database that doesn't have the required tables
     db_file = str(tmp_path / "empty_test.db")
     conn = sqlite3.connect(db_file)
@@ -265,7 +266,7 @@ def test_get_active_settlement_points_missing_tables(tmp_path):
     assert points == set()
 
 
-def test_get_active_settlement_points_partial_tables(tmp_path):
+def test_get_active_settlement_points_partial_tables(tmp_path: Path):
     # Test with a database that only has one of the tables
     db_file = str(tmp_path / "partial_test.db")
     conn = sqlite3.connect(db_file)
@@ -343,7 +344,7 @@ def test_get_active_settlement_points_partial_tables(tmp_path):
         },
     ],
 )
-def test_filter_by_settlement_points(test_case):
+def test_filter_by_settlement_points(test_case: dict[str, str | dict[str, list[dict[str, Any] | dict[str, int]]] | set[str] | dict[str, list[dict[str, Any]]]] | dict[str, str | dict[str, list[dict[str, Any]]] | set[str]] | dict[str, str | dict[str, list[Any]] | set[str]] | dict[str, str | dict[str, list[dict[str, Any]]] | set[str] | dict[str, list[Any]]]):
     """Test filtering data by settlement points with various input cases."""
     result = filter_by_settlement_points(
         test_case["data"], test_case["settlement_points"])
@@ -351,7 +352,7 @@ def test_filter_by_settlement_points(test_case):
         f"Failed for {test_case['name']}\nExpected: {test_case['expected']}\nGot: {result}"
 
 
-def test_check_existing_tables_query(tmp_path):
+def test_check_existing_tables_query(tmp_path: Path):
     """Test CHECK_EXISTING_TABLES_QUERY returns correct table names."""
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
@@ -369,7 +370,7 @@ def test_check_existing_tables_query(tmp_path):
     assert tables == {"BID_AWARDS", "OFFER_AWARDS"}
 
 
-def test_fetch_bid_settlement_points_query(tmp_path):
+def test_fetch_bid_settlement_points_query(tmp_path: Path):
     """Test FETCH_BID_SETTLEMENT_POINTS_QUERY returns correct points."""
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
@@ -389,7 +390,7 @@ def test_fetch_bid_settlement_points_query(tmp_path):
     assert points == {"POINT1", "POINT2"}
 
 
-def test_fetch_offer_settlement_points_query(tmp_path):
+def test_fetch_offer_settlement_points_query(tmp_path: Path):
     """Test FETCH_OFFER_SETTLEMENT_POINTS_QUERY returns correct points."""
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
@@ -410,7 +411,7 @@ def test_fetch_offer_settlement_points_query(tmp_path):
     assert points == {"POINT3", "POINT4"}
 
 
-def test_get_active_settlement_points_uses_constants(tmp_path):
+def test_get_active_settlement_points_uses_constants(tmp_path: Path):
     """Test that get_active_settlement_points uses the defined SQL constants."""
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
@@ -442,7 +443,7 @@ def test_get_active_settlement_points_uses_constants(tmp_path):
     assert points == {"POINT1", "POINT2", "POINT3"}
 
 
-def test_combined_queries_integration(tmp_path):
+def test_combined_queries_integration(tmp_path: Path):
     """Test all SQL queries working together in a realistic scenario."""
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)
@@ -503,7 +504,7 @@ def test_combined_queries_integration(tmp_path):
         ("SELECT * FROM; BAD SYNTAX", False),  # Bad syntax
     ],
 )
-def test_validate_sql_query(query, expected):
+def test_validate_sql_query(query: None | LiteralString | Literal['SELECT SettlementPoint FROM BID_AWARDS'] | Literal['SELECT SettlementPoint FROM OFFER_AWARDS'] | LiteralString | Literal['SELECT * FROM NONEXISTENT_TABLE'] | Literal['INVALID SQL QUERY'] | Literal['NOT A VALID COMMAND'] | Literal['DROP TABLE IF EXISTS TEST;'] | Literal['SELEC * FROM table'] | Literal[''] | Literal['SELECT * FROM; BAD SYNTAX'], expected: bool):
     """Test SQL query validation with various types of queries."""
     assert validate_sql_query(query) == expected
 
@@ -549,7 +550,7 @@ def test_sql_query_constants_are_valid():
             query), f"Create query failed validation: {query}"
 
 
-def test_individual_query_functionality(tmp_path):
+def test_individual_query_functionality(tmp_path: Path):
     """Test each SQL query produces expected results when executed."""
     db_file = str(tmp_path / "test.db")
     conn = sqlite3.connect(db_file)

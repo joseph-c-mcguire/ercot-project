@@ -6,14 +6,14 @@ from pathlib import Path
 import argparse
 
 from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_DB_NAME, ERCOT_ARCHIVE_PRODUCT_IDS, QSE_FILTER_CSV
-from ercot_scraping.ercot_api import (
+from ercot_scraping.apis.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
     fetch_dam_energy_bids,
     fetch_dam_energy_only_offers,
     fetch_dam_energy_only_offer_awards,
 )
-from ercot_scraping.store_data import (
+from ercot_scraping.database.store_data import (
     store_prices_to_db,
     store_bid_awards_to_db,
     store_bids_to_db,
@@ -21,13 +21,13 @@ from ercot_scraping.store_data import (
     store_offer_awards_to_db,
 )
 from ercot_scraping.utils import should_use_archive_api
-from ercot_scraping.filters import load_qse_shortnames
-from ercot_scraping.archive_api import (
+from ercot_scraping.utils.filters import load_qse_shortnames
+from ercot_scraping.apis.archive_api import (
     get_archive_document_ids,
     download_dam_archive_files,
     download_spp_archive_files
 )
-from ercot_scraping.merge_data import merge_data
+from ercot_scraping.database.merge_data import merge_data
 
 # Configure logging
 logging.basicConfig(

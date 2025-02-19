@@ -4,14 +4,14 @@ import json
 import logging
 import pandas as pd
 
-from ercot_scraping.data_models import (
+from ercot_scraping.database.data_models import (
     SettlementPointPrice,
     Bid,
     BidAward,
     Offer,
     OfferAward,
 )
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     SETTLEMENT_POINT_PRICES_INSERT_QUERY,
     BID_AWARDS_INSERT_QUERY,
     BIDS_INSERT_QUERY,
@@ -19,12 +19,12 @@ from ercot_scraping.config import (
     OFFER_AWARDS_INSERT_QUERY,
     ERCOT_DB_NAME
 )
-from ercot_scraping.filters import (
+from ercot_scraping.utils.filters import (
     get_active_settlement_points,
     filter_by_settlement_points,
     filter_by_qse_names
 )
-from ercot_scraping.utils import normalize_data
+from ercot_scraping.utils.utils import normalize_data
 
 
 # Configure logging

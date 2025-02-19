@@ -16,7 +16,7 @@ from typing import Optional
 import requests
 
 
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
     ERCOT_API_REQUEST_HEADERS,
@@ -25,8 +25,8 @@ from ercot_scraping.config import (
     LOGGER,
     DEFAULT_BATCH_DAYS
 )
-from ercot_scraping.batched_api import fetch_in_batches, rate_limited_request
-from ercot_scraping.utils import refresh_access_token
+from ercot_scraping.apis.batched_api import fetch_in_batches, rate_limited_request
+from ercot_scraping.utils.utils import refresh_access_token
 
 
 def fetch_data_from_endpoint(

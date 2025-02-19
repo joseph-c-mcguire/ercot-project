@@ -2,11 +2,12 @@ import os
 import sqlite3
 import pytest
 
-from ercot_scraping.create_ercot_tables import (
+from ercot_scraping.database.create_ercot_tables import (
     create_ercot_tables,
 )  # Adjust the import as needed
 
 
+# sourcery skip: dont-import-test-modules
 from tests.testconf import TEST_DB
 
 

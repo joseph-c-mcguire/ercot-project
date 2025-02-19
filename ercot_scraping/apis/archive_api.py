@@ -4,10 +4,10 @@ import io
 import zipfile
 from io import BytesIO
 
-from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING, COLUMN_MAPPINGS
-from ercot_scraping.batched_api import rate_limited_request
-from ercot_scraping.utils import get_table_name
-from ercot_scraping.store_data import store_data_to_db
+from ercot_scraping.config.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING, COLUMN_MAPPINGS
+from ercot_scraping.apis.batched_api import rate_limited_request
+from ercot_scraping.utils.utils import get_table_name
+from ercot_scraping.database.store_data import store_data_to_db
 
 
 def download_spp_archive_files(

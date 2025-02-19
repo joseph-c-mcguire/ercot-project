@@ -1,7 +1,9 @@
 import sqlite3
 import pytest
-from ercot_scraping.merge_data import merge_data
-from ercot_scraping.queries import (
+import tempfile
+import os
+from ercot_scraping.database.merge_data import merge_data
+from ercot_scraping.config.queries import (
     BID_AWARDS_TABLE_CREATION_QUERY,
     BIDS_TABLE_CREATION_QUERY,
     SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY
@@ -45,8 +47,7 @@ def test_db():
 
 def test_merge_data(test_db):
     """Test that data is correctly merged into the FINAL table."""
-    # Execute merge
-    merge_data(test_db)
+    merge_data(test_db)  # Pass the connection directly
 
     # Verify results
     cursor = test_db.cursor()
@@ -72,6 +73,65 @@ def test_merge_data(test_db):
     assert bid_price == 45.0
     assert bid_size == 100.0
     assert block_curve == 'V'
+
+
+def test_merge_data_with_path():
+    """Test merge_data with a database path."""
+    # Create a temporary database file
+    with tempfile.NamedTemporaryFile(delete=False) as temp_db:
+        db_path = temp_db.name
+
+    try:
+        # Create and populate database
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Create required tables
+        cursor.execute(BID_AWARDS_TABLE_CREATION_QUERY)
+        cursor.execute(BIDS_TABLE_CREATION_QUERY)
+        cursor.execute(SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY)
+
+        # Insert test data
+        cursor.execute("""
+            INSERT INTO BID_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName, 
+                                  EnergyOnlyBidAwardMW, SettlementPointPrice, BidId)
+            VALUES ('2024-01-19', 1, 'TEST_POINT', 'TEST_QSE', 100.0, 50.0, 'BID001')
+        """)
+
+        # Insert corresponding BIDS record
+        cursor.execute("""
+            INSERT INTO BIDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
+                            EnergyOnlyBidMW1, EnergyOnlyBidPrice1, EnergyOnlyBidID,
+                            BlockCurveIndicator)
+            VALUES ('2024-01-19', 1, 'TEST_POINT', 'TEST_QSE', 100.0, 45.0, 'BID001', 'V')
+        """)
+
+        # Insert corresponding SPP record
+        cursor.execute("""
+            INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, SettlementPointName,
+                                               SettlementPointPrice)
+            VALUES ('2024-01-19', 1, 'TEST_POINT', 52.0)
+        """)
+
+        conn.commit()
+        conn.close()
+
+        # Test merge_data with path
+        merge_data(db_path)
+
+        # Verify results
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM FINAL")
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        assert count > 0, "No data was merged into FINAL table"
+
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(db_path):
+            os.unlink(db_path)
 
 
 def test_merge_data_missing_bid(test_db):

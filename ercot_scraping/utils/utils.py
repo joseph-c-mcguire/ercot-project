@@ -6,8 +6,8 @@ import logging
 
 import chardet
 
-from ercot_scraping.config import API_CUTOFF_DATE, AUTH_URL, DEFAULT_BATCH_DAYS, MAX_DATE_RANGE
-from ercot_scraping.column_mappings import COLUMN_MAPPINGS
+from ercot_scraping.config.config import API_CUTOFF_DATE, AUTH_URL, DEFAULT_BATCH_DAYS, MAX_DATE_RANGE
+from ercot_scraping.config.column_mappings import COLUMN_MAPPINGS
 
 
 def detect_encoding(content: bytes) -> str:

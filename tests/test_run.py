@@ -9,7 +9,7 @@ from ercot_scraping.run import (
     parse_args,
     main,
 )
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
     BIDS_TABLE_CREATION_QUERY,
     BID_AWARDS_TABLE_CREATION_QUERY,

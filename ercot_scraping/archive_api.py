@@ -73,9 +73,22 @@ def download_spp_archive_files(
                                 nested_zip, nested_filename, "SETTLEMENT_POINT_PRICES", db_name)
 
 
-def process_spp_file(zip_folder, filename, table_name, db_name):
+def process_spp_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str, db_name: str) -> None:
     """
-    Process a single SPP file and store its data in the database.
+    Processes a CSV file from a zip folder, normalizes its content, and stores it in a database.
+    Args:
+        zip_folder (zipfile.ZipFile): The zip folder containing the CSV file.
+        filename (str): The name of the CSV file to process.
+        table_name (str): The name of the database table to store the data.
+        db_name (str): The name of the database.
+    Returns:
+        None
+    Raises:
+        None
+    Logs:
+        - A warning if no headers are found in the CSV file.
+        - An info message indicating the number of rows stored in the database.
+        - A warning if no data mapping is found for the specified table.
     """
     with zip_folder.open(filename) as csv_file:
         csv_content = csv_file.read().decode('utf-8')
@@ -86,10 +99,10 @@ def process_spp_file(zip_folder, filename, table_name, db_name):
             return
 
         mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
-        rows = []
+        rows: List[dict] = []
 
         for row in reader:
-            normalized_row = {}
+            normalized_row: dict = {}
             for key, value in row.items():
                 if not key:
                     continue

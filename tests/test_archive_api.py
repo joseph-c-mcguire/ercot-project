@@ -3,6 +3,12 @@ from unittest import mock
 from ercot_scraping.archive_api import download_spp_archive_files
 from ercot_scraping.config import LOGGER, ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES
 from ercot_scraping.batched_api import rate_limited_request
+import zipfile
+import io
+import csv
+from ercot_scraping.archive_api import process_spp_file
+from ercot_scraping.config import LOGGER, COLUMN_MAPPINGS, DAM_TABLE_DATA_MAPPING
+from ercot_scraping.store_data import store_data_to_db
 
 
 @mock.patch('ercot_scraping.archive_api.rate_limited_request')
@@ -85,3 +91,67 @@ def test_download_spp_archive_files_failed_download(mock_logger, mock_zipfile, m
 
     mock_logger.error.assert_called_once_with(
         "Failed to download SPP batch. Status: 500")
+
+
+@mock.patch('ercot_scraping.archive_api.store_data_to_db')
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_process_spp_file_no_headers(mock_logger, mock_store_data):
+    # Setup mock file with binary content - empty CSV file
+    mock_zipfile = mock.MagicMock()
+    mock_csv_file = mock.MagicMock()
+    mock_csv_file.read.return_value = b"\n"  # Empty CSV file
+    mock_zipfile.open.return_value.__enter__.return_value = mock_csv_file
+
+    process_spp_file(mock_zipfile, 'test.csv', 'test_table', 'test_db')
+
+    mock_logger.warning.assert_called_once_with("No headers found in test.csv")
+    mock_store_data.assert_not_called()
+
+
+@mock.patch('ercot_scraping.archive_api.store_data_to_db')
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_process_spp_file_with_data(mock_logger, mock_store_data):
+    # Setup mock file with binary content
+    mock_zipfile = mock.MagicMock()
+    mock_csv_file = mock.MagicMock()
+    mock_csv_file.read.return_value = b"header1,header2\nvalue1,value2\nvalue3,value4"
+    mock_zipfile.open.return_value.__enter__.return_value = mock_csv_file
+
+    COLUMN_MAPPINGS['test_table'] = {
+        'header1': 'mapped_header1', 'header2': 'mapped_header2'}
+    DAM_TABLE_DATA_MAPPING['test_table'] = {
+        "model_class": mock.Mock(),
+        "insert_query": "INSERT INTO test_table (mapped_header1, mapped_header2) VALUES (:mapped_header1, :mapped_header2)"
+    }
+
+    process_spp_file(mock_zipfile, 'test.csv', 'test_table', 'test_db')
+
+    mock_logger.info.assert_called_once_with(
+        "Storing 2 rows to test_table")
+    mock_store_data.assert_called_once_with(
+        data={"data": [
+            {'mapped_header1': 'value1', 'mapped_header2': 'value2'},
+            {'mapped_header1': 'value3', 'mapped_header2': 'value4'}
+        ]},
+        db_name='test_db',
+        table_name='test_table',
+        model_class=DAM_TABLE_DATA_MAPPING['test_table']["model_class"],
+        insert_query=DAM_TABLE_DATA_MAPPING['test_table']["insert_query"]
+    )
+
+
+@mock.patch('ercot_scraping.archive_api.store_data_to_db')
+@mock.patch('ercot_scraping.archive_api.LOGGER')
+def test_process_spp_file_no_data_mapping(mock_logger, mock_store_data):
+    # Setup mock file with binary content
+    mock_zipfile = mock.MagicMock()
+    mock_csv_file = mock.MagicMock()
+    mock_csv_file.read.return_value = b"header1,header2\nvalue1,value2\nvalue3,value4"
+    mock_zipfile.open.return_value.__enter__.return_value = mock_csv_file
+
+    process_spp_file(mock_zipfile, 'test.csv',
+                     'unknown_table', 'test_db')
+
+    mock_logger.warning.assert_called_once_with(
+        "No data mapping found for table: unknown_table")
+    mock_store_data.assert_not_called()

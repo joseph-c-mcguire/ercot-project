@@ -29,21 +29,28 @@ test = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=ercot_scraping --cov-report=xml --cov-report=term-missing"
-python_files = ["test_*.py", "*_test.py", "test.py", "tests.py"]
-python_functions = ["test_*","test"]
+addopts = "--cov=ercot_scraping --cov-report=xml --cov-report=term-missing -v"
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
 
 [tool.coverage.run]
 branch = true
 source = ["ercot_scraping"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "*/__pycache__/*",
+    "*/setup.py",
+    "*/conftest.py", 
+    "*/__main__.py",
+]
 
 [tool.coverage.report]
-# Which files to exclude in the report
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
-    "pass",
-    ""
+    "pass"
 ]
+fail_under = 80

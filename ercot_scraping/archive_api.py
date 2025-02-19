@@ -281,7 +281,18 @@ def get_archive_document_ids(
     end_date: str,
 ) -> List[int]:
     """
-    Get document IDs for the specified date range from the archive API.
+    Retrieves a list of document IDs for a given product from the ERCOT archive API.
+    The function queries the API with specified start and end dates, handling pagination to retrieve all available IDs.
+    Args:
+        product_id (str): The ID of the product for which to retrieve document IDs.
+        start_date (str): The start date for the document search (YYYY-MM-DD format).
+        end_date (str): The end date for the document search (YYYY-MM-DD format).
+    Returns:
+        List[int]: A list of document IDs.
+    Raises:
+        None
+    Logs:
+        None
     """
     url = f"{ERCOT_ARCHIVE_API_BASE_URL}/{product_id}"
     params = {

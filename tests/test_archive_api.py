@@ -1,16 +1,18 @@
-import pytest
 from unittest import mock
+from unittest.mock import patch, MagicMock
+import zipfile
+from io import BytesIO
+
+import pytest
+
+from ercot_scraping.config import COLUMN_MAPPINGS, DAM_TABLE_DATA_MAPPING
 from ercot_scraping.archive_api import (
     download_spp_archive_files,
     download_dam_archive_files,
     process_spp_file,
-    process_dam_file
+    process_dam_file,
+    get_archive_document_ids
 )
-import zipfile
-from io import BytesIO
-from unittest.mock import patch
-
-from ercot_scraping.config import COLUMN_MAPPINGS, DAM_TABLE_DATA_MAPPING
 
 
 @mock.patch('ercot_scraping.archive_api.rate_limited_request')
@@ -423,3 +425,53 @@ def test_process_dam_file_no_table_mapping(mock_logger_warning, mock_store_data)
     # Assert
     mock_logger_warning.assert_called_once()
     mock_store_data.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "test_id, product_id, start_date, end_date, mock_responses, expected_doc_ids",
+    [
+        (
+            "happy_path_single_page",
+            "1",
+            "2024-07-01",
+            "2024-07-01",
+            [{"archives": [{"docId": 1}, {"docId": 2}], "_meta": {"totalPages": 1}}],
+            [1, 2],
+        ),
+        (
+            "happy_path_multiple_pages",
+            "1",
+            "2024-07-01",
+            "2024-07-02",
+            [
+                {"archives": [{"docId": 1}, {"docId": 2}],
+                    "_meta": {"totalPages": 2}},
+                {"archives": [{"docId": 3}, {"docId": 4}],
+                    "_meta": {"totalPages": 2}},
+            ],
+            [1, 2, 3, 4],
+        ),
+        (
+            "edge_case_no_archives",
+            "1",
+            "2024-07-01",
+            "2024-07-01",
+            [{"archives": [], "_meta": {"totalPages": 1}}],
+            [],
+        ),
+
+    ],
+)
+def test_get_archive_document_ids(
+    test_id, product_id, start_date, end_date, mock_responses, expected_doc_ids
+):
+    # Arrange
+    mock_response = MagicMock()
+    mock_response.json.side_effect = mock_responses
+    with patch("ercot_scraping.archive_api.rate_limited_request", return_value=mock_response) as mock_request:
+
+        # Act
+        doc_ids = get_archive_document_ids(product_id, start_date, end_date)
+
+        # Assert
+        assert doc_ids == expected_doc_ids

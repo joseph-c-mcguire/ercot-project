@@ -1,14 +1,14 @@
 import os
 import sqlite3
 import pytest
-from ercot_scraping.store_data import (
+from ercot_scraping.database.store_data import (
     store_prices_to_db,
     store_offer_awards_to_db,
     store_bid_awards_to_db,
     store_bids_to_db,
     store_offers_to_db,
 )
-from ercot_scraping.data_models import (
+from ercot_scraping.database.data_models import (
     SettlementPointPrice,
     OfferAward,
     BidAward,
@@ -16,7 +16,7 @@ from ercot_scraping.data_models import (
     Offer,
 )
 from tests.testconf import TEST_DB, SETTLEMENT_POINT_PRICE_SAMPLE, SAMPLE_BID_AWARDS, SAMPLE_BIDS, SAMPLE_OFFERS, SAMPLE_OFFER_AWARDS
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
     BIDS_TABLE_CREATION_QUERY,
     BID_AWARDS_TABLE_CREATION_QUERY,

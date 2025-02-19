@@ -4,7 +4,7 @@ import os
 import logging
 from unittest.mock import patch, Mock, call, ANY
 from requests.exceptions import HTTPError
-from ercot_scraping.ercot_api import (
+from ercot_scraping.apis.ercot_api import (
     fetch_settlement_point_prices,
     fetch_dam_energy_bid_awards,
     fetch_dam_energy_bids,
@@ -12,7 +12,7 @@ from ercot_scraping.ercot_api import (
     fetch_dam_energy_only_offers,
     fetch_data_from_endpoint,
 )
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
@@ -31,7 +31,7 @@ def cleanup():
         os.remove(TEST_DB)
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
+@patch("ercot_scraping.apis.ercot_api.requests.get")
 def test_fetch_settlement_point_prices(mock_get):
     mock_response = {
         "data": [
@@ -56,7 +56,7 @@ def test_fetch_settlement_point_prices(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
+@patch("ercot_scraping.apis.ercot_api.requests.get")
 def test_fetch_dam_energy_bid_awards(mock_get):
     mock_response = {
         "data": [{"DeliveryDate": "2023-10-01", "SettlementPointName": "ABC"}]
@@ -71,7 +71,7 @@ def test_fetch_dam_energy_bid_awards(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
+@patch("ercot_scraping.apis.ercot_api.requests.get")
 def test_fetch_dam_energy_bids(mock_get):
     mock_response = {
         "data": [{"DeliveryDate": "2023-10-01", "SettlementPointName": "DEF"}]
@@ -85,7 +85,7 @@ def test_fetch_dam_energy_bids(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
+@patch("ercot_scraping.apis.ercot_api.requests.get")
 def test_fetch_dam_energy_only_offer_awards(mock_get):
     mock_response = {
         "data": [{"DeliveryDate": "2023-10-01", "SettlementPointName": "GHI"}]
@@ -100,7 +100,7 @@ def test_fetch_dam_energy_only_offer_awards(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
+@patch("ercot_scraping.apis.ercot_api.requests.get")
 def test_fetch_dam_energy_only_offers(mock_get):
     mock_response = {
         "data": [{"DeliveryDate": "2023-10-01", "SettlementPointName": "JKL"}]
@@ -115,7 +115,7 @@ def test_fetch_dam_energy_only_offers(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.rate_limited_request")
+@patch("ercot_scraping.apis.ercot_api.rate_limited_request")
 def test_fetch_data_from_endpoint_default_params(mock_request):
     # Setup the mock response
     mock_response = Mock()
@@ -139,7 +139,7 @@ def test_fetch_data_from_endpoint_default_params(mock_request):
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.rate_limited_request")
+@patch("ercot_scraping.apis.ercot_api.rate_limited_request")
 def test_fetch_data_from_endpoint_with_dates(mock_request):
     # Setup the mock response
     mock_response = Mock()
@@ -168,7 +168,7 @@ def test_fetch_data_from_endpoint_with_dates(mock_request):
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.rate_limited_request")
+@patch("ercot_scraping.apis.ercot_api.rate_limited_request")
 def test_fetch_data_from_endpoint_with_custom_header(mock_request):
     # Setup the mock response
     mock_response = Mock()
@@ -194,7 +194,7 @@ def test_fetch_data_from_endpoint_with_custom_header(mock_request):
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.rate_limited_request")
+@patch("ercot_scraping.apis.ercot_api.rate_limited_request")
 def test_fetch_data_from_endpoint_http_error(mock_request):
     # Setup the mock response to simulate HTTP error
     mock_response = Mock()
@@ -208,7 +208,7 @@ def test_fetch_data_from_endpoint_http_error(mock_request):
         fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
 
 
-@patch("ercot_scraping.ercot_api.rate_limited_request")
+@patch("ercot_scraping.apis.ercot_api.rate_limited_request")
 def test_fetch_data_from_endpoint_rate_limit(mock_request):
     """Test handling of rate limits with 429 responses."""
     # Create properly mocked responses

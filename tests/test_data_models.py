@@ -1,12 +1,13 @@
 import os
 import pytest
-from ercot_scraping.data_models import (
+from ercot_scraping.database.data_models import (
     SettlementPointPrice,
     Bid,
     BidAward,
     Offer,
     OfferAward,
 )
+# sourcery skip: dont-import-test-modules
 from tests.testconf import TEST_DB  # Add this import
 
 

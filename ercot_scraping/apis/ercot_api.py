@@ -16,21 +16,17 @@ from typing import Optional
 import requests
 
 
-from ercot_scraping.config import (
+from ercot_scraping.config.config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_API_REQUEST_HEADERS,
     QSE_FILTER_CSV,
-    ERCOT_ARCHIVE_PRODUCT_IDS,
     LOGGER,
-    ERCOT_DB_NAME,
     DEFAULT_BATCH_DAYS
 )
-from ercot_scraping.filters import load_qse_shortnames
-from ercot_scraping.batched_api import fetch_in_batches, rate_limited_request
-from ercot_scraping.utils import refresh_access_token, should_use_archive_api
-from ercot_scraping.archive_api import get_archive_document_ids, download_spp_archive_files
+from ercot_scraping.apis.batched_api import fetch_in_batches, rate_limited_request
+from ercot_scraping.utils.utils import refresh_access_token
 
 
 def fetch_data_from_endpoint(

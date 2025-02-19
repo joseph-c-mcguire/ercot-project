@@ -1,8 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
-from ercot_scraping.batched_api import fetch_in_batches
-from ercot_scraping.config import LOGGER, DEFAULT_BATCH_DAYS, MAX_DATE_RANGE, DISABLE_RATE_LIMIT_SLEEP
-
+from ercot_scraping.apis.batched_api import fetch_in_batches
+from ercot_scraping.config.config import LOGGER
 # Mock the logger to avoid printouts during testing
 LOGGER.info = MagicMock()
 LOGGER.warning = MagicMock()
@@ -91,7 +90,7 @@ def test_fetch_in_batches_happy_path(
             None,
             {},
             [],
-            [],
+            [],  # Empty response should have empty fields
         ),
         (
             "no_data_field",
@@ -101,7 +100,7 @@ def test_fetch_in_batches_happy_path(
             None,
             {"fields": ["value"]},
             [],
-            ["value"],
+            ["value"],  # Response with fields but no data should preserve fields
         ),
     ],
 )
@@ -134,7 +133,7 @@ def test_fetch_in_batches_edge_cases(
 
     # Assert
     assert result["data"] == expected_data
-    assert result["fields"] == expected_fields
+    assert result["fields"] == expected_fields, f"Fields mismatch for case: {id}"
 
 
 @pytest.mark.parametrize(

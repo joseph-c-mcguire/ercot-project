@@ -1,11 +1,8 @@
+import contextlib
 import csv
 from typing import Set
 import sqlite3
-import pandas as pd
 from pathlib import Path
-
-from ercot_scraping.utils import get_field_name
-from ercot_scraping.config import COLUMN_MAPPINGS
 
 
 def load_qse_shortnames(csv_file: str | Path) -> Set[str]:
@@ -25,8 +22,7 @@ def load_qse_shortnames(csv_file: str | Path) -> Set[str]:
             if 'SHORT NAME' not in reader.fieldnames:
                 return set()
             for row in reader:
-                name = row['SHORT NAME'].strip()
-                if name:  # Only add non-empty names
+                if name := row['SHORT NAME'].strip():
                     qse_names.add(name)
     except (FileNotFoundError, KeyError):
         return set()
@@ -79,13 +75,9 @@ def get_active_settlement_points(db_name: str) -> Set[str]:
     ]
 
     for query in queries:
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):
             cursor.execute(query)
             points.update(row[0] for row in cursor.fetchall())
-        except sqlite3.OperationalError:
-            # Table might not exist yet, ignore
-            pass
-
     conn.close()
     return points
 
@@ -113,13 +105,10 @@ def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict
     ]
 
     for record in data["data"]:
-        # Try each possible field name
-        point_name = None
-        for field in field_variations:
-            if field in record:
-                point_name = record[field]
-                break
-
+        point_name = next(
+            (record[field] for field in field_variations if field in record),
+            None,
+        )
         if point_name and point_name in settlement_points:
             filtered_records.append(record)
 

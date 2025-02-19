@@ -63,7 +63,8 @@ def download_historical_dam_data(
             logger.warning("No QSEs found in tracking list")
             return
 
-    logger.info(f"Downloading historical DAM data from {start_date} to {end_date}")
+    logger.info(
+        f"Downloading historical DAM data from {start_date} to {end_date}")
     logger.info(f"Filtering for QSEs: {sorted(qse_filter)}")
 
     try:
@@ -83,22 +84,24 @@ def download_historical_dam_data(
         else:
             logger.info("Using regular API for historical DAM data")
             # Fetch and store bid awards with QSE filter
-            logger.info(f"Fetching bid awards for {start_date} to {end_date}...")
+            logger.info(
+                f"Fetching bid awards for {start_date} to {end_date}...")
             bid_awards = fetch_dam_energy_bid_awards(
-                start_date, end_date, 
+                start_date, end_date,
                 header=ERCOT_API_REQUEST_HEADERS,
                 qse_names=qse_filter
             )
             if not bid_awards or "data" not in bid_awards:
                 logger.error("No bid awards data found.")
             else:
-                logger.info(f"Found {len(bid_awards.get('data', []))} bid awards")
+                logger.info(
+                    f"Found {len(bid_awards.get('data', []))} bid awards")
                 store_bid_awards_to_db(bid_awards, db_name, qse_filter)
 
             # Fetch and store bids with QSE filter
             logger.info(f"Fetching bids for {start_date} to {end_date}...")
             bids = fetch_dam_energy_bids(
-                start_date, end_date, 
+                start_date, end_date,
                 header=ERCOT_API_REQUEST_HEADERS,
                 qse_names=qse_filter
             )
@@ -109,14 +112,16 @@ def download_historical_dam_data(
                 logger.error("No bids data found.")
 
             # Fetch and store offer awards with QSE filter
-            logger.info(f"Fetching offer awards for {start_date} to {end_date}...")
+            logger.info(
+                f"Fetching offer awards for {start_date} to {end_date}...")
             offer_awards = fetch_dam_energy_only_offer_awards(
-                start_date, end_date, 
+                start_date, end_date,
                 header=ERCOT_API_REQUEST_HEADERS,
                 qse_names=qse_filter
             )
             if offer_awards and "data" in offer_awards:
-                logger.info(f"Found {len(offer_awards.get('data', []))} offer awards")
+                logger.info(
+                    f"Found {len(offer_awards.get('data', []))} offer awards")
                 store_offer_awards_to_db(offer_awards, db_name, qse_filter)
             else:
                 logger.error("No offer awards data found.")
@@ -124,7 +129,7 @@ def download_historical_dam_data(
             # Fetch and store offers with QSE filter
             logger.info(f"Fetching offers for {start_date} to {end_date}...")
             offers = fetch_dam_energy_only_offers(
-                start_date, end_date, 
+                start_date, end_date,
                 header=ERCOT_API_REQUEST_HEADERS,
                 qse_names=qse_filter
             )
@@ -157,17 +162,27 @@ def download_historical_spp_data(
 
     logger.info(
         f"Downloading historical SPP data from {start_date} to {end_date}")
-    if should_use_archive_api(start_date, end_date):
+
+    try:
+        # Archive API check
+        if should_use_archive_api(start_date, end_date):
             doc_ids = get_archive_document_ids(
                 ERCOT_ARCHIVE_PRODUCT_IDS["SPP"],
                 start_date,
                 end_date
             )
-            download_spp_archive_files(ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids, db_name=ERCOT_DB_NAME)
+            download_spp_archive_files(
+                ERCOT_ARCHIVE_PRODUCT_IDS["SPP"], doc_ids, db_name=db_name)  # Changed to use keyword arg
             return
-    try:
-        prices = fetch_settlement_point_prices(start_date, end_date)
-        store_prices_to_db(prices, db_name)
+
+        # Use regular API with headers
+        prices = fetch_settlement_point_prices(
+            start_date,
+            end_date,
+            header=ERCOT_API_REQUEST_HEADERS
+        )
+        # Changed to use keyword arg
+        store_prices_to_db(prices, db_name=db_name)
         logger.info("Historical SPP data download completed successfully")
         return
     except Exception as e:

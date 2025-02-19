@@ -2,50 +2,22 @@ import os
 import sqlite3
 from pathlib import Path
 
-# Test configuration
-TEST_DB = "test.db"
-LOG_FILE = "test.log"
+# Test database path
+TEST_DB = os.path.join(os.path.dirname(__file__), "test.db")
+
+# Test log file path
+LOG_FILE = os.path.join(os.path.dirname(__file__), "test.log")
+
 ERCOT_DATA_DB = Path("_data/ercot_data.db")
 
 
-def close_all_db_connections(db_path: str | Path) -> None:
-    """Force close any open connections to the specified database."""
-    if not os.path.exists(db_path):
-        return
-
+def close_all_db_connections(db_path):
+    """Close any open connections to the database."""
     try:
-        # Create a new connection and immediately close it
-        # This helps identify if the database is locked
-        test_conn = sqlite3.connect(db_path)
-        test_conn.close()
-
-        # If we can connect, try to close any remaining connections
         conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # This pragma helps identify open connections
-        cursor.execute("PRAGMA database_list")
-
-        # Force checkpoint and close
-        cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        cursor.close()
-        conn.commit()
         conn.close()
-
-    except sqlite3.OperationalError as e:
-        # If we get a "database is locked" error, try more aggressive cleanup
-        if "database is locked" in str(e):
-            # Wait for any write operations to complete
-            import time
-            time.sleep(1)
-
-            try:
-                # Try to force close with a timeout
-                conn = sqlite3.connect(db_path, timeout=5)
-                conn.close()
-            except sqlite3.OperationalError:
-                # If still locked, log the error but continue
-                print(f"Warning: Could not close connections to {db_path}")
+    except sqlite3.Error:
+        pass  # Database might not exist or be already closed
 
 
 SETTLEMENT_POINT_PRICE_SAMPLE = {

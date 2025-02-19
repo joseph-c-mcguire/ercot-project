@@ -128,9 +128,10 @@ def test_download_historical_dam_data_all(
 # Combined test for all SPP data operations
 
 
+@patch("ercot_scraping.run.should_use_archive_api", return_value=False)
 @patch("ercot_scraping.run.fetch_settlement_point_prices")
 @patch("ercot_scraping.run.store_prices_to_db")
-def test_spp_operations(mock_store_prices, mock_fetch_prices, mock_data, setup_database):
+def test_spp_operations(mock_store_prices, mock_fetch_prices, mock_should_use_archive, mock_data, setup_database):
     """Test both historical and daily SPP data operations."""
     # Setup mock
     mock_fetch_prices.return_value = mock_data["api_response"]
@@ -140,8 +141,8 @@ def test_spp_operations(mock_store_prices, mock_fetch_prices, mock_data, setup_d
 
     # Verify historical download calls
     mock_fetch_prices.assert_called_with(
-        start_date="2023-10-01",
-        end_date="2023-10-02",
+        "2023-10-01",
+        "2023-10-02",
         header=ANY
     )
     mock_store_prices.assert_called_with(

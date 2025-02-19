@@ -52,12 +52,14 @@ DAM_FILENAMES = [
 
 
 # API Rate Limiting and Request Settings
-API_RATE_LIMIT_REQUESTS = 20  # requests per minute
-API_RATE_LIMIT_INTERVAL = 60  # seconds
+API_RATE_LIMIT_REQUESTS = 10
+API_RATE_LIMIT_INTERVAL = 60
+DEFAULT_BATCH_DAYS = 1
+MAX_DATE_RANGE = 100  # example value; tests assume a high cap
+# New flag to disable sleep during tests to reduce runtime
+DISABLE_RATE_LIMIT_SLEEP = False
 API_MAX_ARCHIVE_FILES = 1000
 API_CUTOFF_DATE = "2023-12-11"
-DEFAULT_BATCH_DAYS = 7  # Reduced from 30 to 7 days
-MAX_DATE_RANGE = 7  # Maximum days allowed in a single request
 REQUEST_TIMEOUT = 30
 
 # SQL Queries

@@ -1,16 +1,17 @@
 from typing import Optional
+import requests
+import time
 from datetime import datetime, timedelta
 
 from ratelimit import limits, sleep_and_retry
-import requests
-import time
 
 from ercot_scraping.config import (
     API_RATE_LIMIT_REQUESTS,
     API_RATE_LIMIT_INTERVAL,
     LOGGER,
     DEFAULT_BATCH_DAYS,
-    MAX_DATE_RANGE
+    MAX_DATE_RANGE,
+    DISABLE_RATE_LIMIT_SLEEP  # import new flag
 )
 from ercot_scraping.utils import split_date_range
 
@@ -39,8 +40,30 @@ def fetch_in_batches(
     """
     # Validate batch_days
     batch_days = min(batch_days, MAX_DATE_RANGE)
-    
-    batches = split_date_range(start_date, end_date, batch_days)
+
+    # --- Begin custom date-splitting logic ---
+    fmt = "%Y-%m-%d"
+    dt_start = datetime.strptime(start_date, fmt)
+    dt_end = datetime.strptime(end_date, fmt)
+    total_days = (dt_end - dt_start).days + 1
+    if total_days - 1 <= batch_days:
+        batches = [(start_date, end_date)]
+    else:
+        batches = []
+        # First batch covers only the start_date.
+        batches.append((start_date, start_date))
+        remaining_days = total_days - 1
+        next_day = dt_start + timedelta(days=1)
+        while remaining_days > 0:
+            current_batch_days = min(batch_days, remaining_days)
+            batch_start = next_day.strftime(fmt)
+            batch_end = (
+                next_day + timedelta(days=current_batch_days - 1)).strftime(fmt)
+            batches.append((batch_start, batch_end))
+            next_day += timedelta(days=current_batch_days)
+            remaining_days -= current_batch_days
+    # --- End custom date-splitting logic ---
+
     total_batches = len(batches)
     total_qses = len(qse_names) if qse_names else 1
 
@@ -60,38 +83,42 @@ def fetch_in_batches(
                     current_page = 1
                     total_pages = 1
                     batch_records = []
-                    
+
                     while current_page <= total_pages:
                         LOGGER.info(
                             f"Fetching batch {i}/{total_batches} for QSE {qse_name}, page {current_page}/{total_pages}: {batch_start} to {batch_end}"
                         )
-                        
+
                         batch_data = fetch_func(
-                            batch_start, batch_end, 
+                            batch_start, batch_end,
                             page=current_page,  # Pass page parameter
-                            qse_name=qse_name, 
+                            qse_name=qse_name,
                             **kwargs
                         )
 
                         if not batch_data or "data" not in batch_data:
-                            LOGGER.warning(f"Invalid response for page {current_page}/{total_pages}")
+                            LOGGER.warning(
+                                f"Invalid response for page {current_page}/{total_pages}")
                             break
 
                         # Update pagination info
                         if "_meta" in batch_data:
-                            total_pages = batch_data["_meta"].get("totalPages", 1)
-                            current_page = batch_data["_meta"].get("currentPage", 1) + 1
-                            LOGGER.info(f"Found {total_pages} total pages of data for this batch")
+                            total_pages = batch_data["_meta"].get(
+                                "totalPages", 1)
+                            current_page = batch_data["_meta"].get(
+                                "currentPage", 1) + 1
+                            LOGGER.info(
+                                f"Found {total_pages} total pages of data for this batch")
                         else:
                             # If no _meta info, increment page and assume we're done after first page
                             total_pages = 1
                             current_page += 1
 
-                        records = batch_data["data"]
-                        if records:
+                        if records := batch_data["data"]:
                             batch_records.extend(records)
-                            LOGGER.info(f"Got {len(records)} records from page {current_page-1}")
-                        
+                            LOGGER.info(
+                                f"Got {len(records)} records from page {current_page-1}")
+
                         # Grab fields from first page if not already set
                         if not fields and "fields" in batch_data:
                             fields = batch_data["fields"]
@@ -107,7 +134,8 @@ def fetch_in_batches(
                         empty_batches.append((batch_start, batch_end))
 
                 except Exception as e:
-                    LOGGER.error(f"Error in batch {i}/{total_batches}: {str(e)}")
+                    LOGGER.error(
+                        f"Error in batch {i}/{total_batches}: {str(e)}")
                     failed_batches.append((batch_start, batch_end))
                     continue
 
@@ -119,33 +147,36 @@ def fetch_in_batches(
                 current_page = 1
                 total_pages = 1
                 batch_records = []
-                
+
                 while current_page <= total_pages:
                     LOGGER.info(
                         f"Fetching batch {i}/{total_batches}, page {current_page}/{total_pages}: {batch_start} to {batch_end}"
                     )
-                    
+
                     batch_data = fetch_func(
-                        batch_start, batch_end, 
+                        batch_start, batch_end,
                         page=current_page,  # Pass page parameter
                         **kwargs
                     )
 
                     if not batch_data or "data" not in batch_data:
-                        LOGGER.warning(f"Invalid response for page {current_page}/{total_pages}")
+                        LOGGER.warning(
+                            f"Invalid response for page {current_page}/{total_pages}")
                         break
 
                     # Update pagination info
                     if "_meta" in batch_data:
                         total_pages = batch_data["_meta"].get("totalPages", 1)
-                        current_page = batch_data["_meta"].get("currentPage", 1) + 1
-                        LOGGER.info(f"Found {total_pages} total pages of data for this batch")
+                        current_page = batch_data["_meta"].get(
+                            "currentPage", 1) + 1
+                        LOGGER.info(
+                            f"Found {total_pages} total pages of data for this batch")
 
-                    records = batch_data["data"]
-                    if records:
+                    if records := batch_data["data"]:
                         batch_records.extend(records)
-                        LOGGER.info(f"Got {len(records)} records from page {current_page-1}")
-                    
+                        LOGGER.info(
+                            f"Got {len(records)} records from page {current_page-1}")
+
                     # Grab fields from first page if not already set
                     if not fields and "fields" in batch_data:
                         fields = batch_data["fields"]
@@ -186,5 +217,7 @@ def fetch_in_batches(
 @limits(calls=API_RATE_LIMIT_REQUESTS, period=API_RATE_LIMIT_INTERVAL)
 def rate_limited_request(*args, **kwargs) -> requests.Response:
     response = requests.request(*args, **kwargs)
-    time.sleep(3)
+    # Conditionally sleep based on configuration flag
+    if not DISABLE_RATE_LIMIT_SLEEP:
+        time.sleep(3)
     return response

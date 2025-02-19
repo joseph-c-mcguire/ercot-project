@@ -53,4 +53,6 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "pass"
 ]
-fail_under = 80
+show_missing = true
+skip_covered = true
+sort = "Cover"

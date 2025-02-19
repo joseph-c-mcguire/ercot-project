@@ -1,6 +1,9 @@
 import csv
 import sqlite3
 import pytest
+import os
+from pathlib import Path
+
 from ercot_scraping.filters import (
     load_qse_shortnames,
     filter_by_qse_names,
@@ -37,6 +40,30 @@ def write_csv(tmp_path, filename, header, rows):
         for row in rows:
             writer.writerow(row)
     return file_path
+
+
+@pytest.fixture(autouse=True)
+def cleanup():
+    """Clean up test databases before and after each test."""
+    from tests.testconf import close_all_db_connections, ERCOT_DATA_DB
+
+    # Cleanup before test
+    if os.path.exists(ERCOT_DATA_DB):
+        close_all_db_connections(ERCOT_DATA_DB)
+
+    yield
+
+    # Cleanup after test
+    if os.path.exists(ERCOT_DATA_DB):
+        close_all_db_connections(ERCOT_DATA_DB)
+
+    # Clean up any other test databases in the current directory
+    for file in Path().glob("*.db"):
+        close_all_db_connections(file)
+        try:
+            os.remove(file)
+        except (PermissionError, OSError):
+            print(f"Warning: Could not remove {file}")
 
 
 @pytest.mark.parametrize(

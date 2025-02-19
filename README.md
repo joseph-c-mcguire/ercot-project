@@ -1,132 +1,72 @@
-# ercot_scraping
-## Description
-A python module to scrape data from the ERCOT(Electric Reliability Council of Texas) API for pulling all Day Ahead Market data and Settlement Point Prices data both historical as well as enabling daily updates. 
+# Get ERCOT Data
 
+This tool allows you to fetch historical and current ERCOT market data including Day Ahead Market (DAM) energy bids/offers and Settlement Point Prices (SPP).
 
-## Setting up Git LFS
+## Getting Started
 
-To track .csv files with Git LFS, run the following commands:
-
-```sh
-git lfs install
-git lfs track "*.csv"
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
-Remember to commit the changes to the .gitattributes file:
-
-```sh
-git add .gitattributes
-git commit -m "Track .csv files with Git LFS"
-```
-
-## Setting up the SQLite Database
-
-To set up the SQLite database with the required tables, run the following script:
-
-```sh
-python src/setup-database.py
-```
-
-## Fetching and Storing Settlement Point Prices
-
-To fetch settlement point prices from the ERCOT API and store them in the SQLite database, you need to set up your API key and URL in a `.env` file.
-
-1. Create a `.env` file in the root directory of the project.
-2. Add your ERCOT API key and URL to the `.env` file:
-
+2. Create a secret file called `.env` and put these three passwords in it:
 ```env
-ERCOT_API_SUBSCRIPTION_KEY=your_api_key_here
-ERCOT_API_BASE_URL=https://api.ercot.com/api/public-reports/np6-905-cd/spp_node_zone_hub
+ERCOT_API_USERNAME=your_username
+ERCOT_API_PASSWORD=your_password 
+ERCOT_API_SUBSCRIPTION_KEY=your_subscription_key
 ```
 
-Ensure that the API key is valid and has the necessary permissions.
+## How to Use It
 
-Then, run the following script:
+You can do three fun things with this tool:
 
-```sh
-python -m ercot_scraping
+### 1. Get Market Data 🏪
+
+This gets information about who wants to buy and sell electricity:
+
+```bash
+python main.py historical-dam --start 2024-01-01 --end 2024-01-02
 ```
 
-## Fetching Data from New Endpoints
+### 2. Get Price Data 💰
 
-To fetch data from the new ERCOT API endpoints, you can use the following functions:
+This shows how much electricity costs:
 
-- `fetch_dam_energy_bid_awards(start_date, end_date)`
-- `fetch_dam_energy_bids(start_date, end_date)`
-- `fetch_dam_energy_only_offer_awards(start_date, end_date)`
-- `fetch_dam_energy_only_offers(start_date, end_date)`
-
-Example usage:
-
-```python
-from ercot_scraping.ercot_api import (
-    fetch_dam_energy_bid_awards,
-    fetch_dam_energy_bids,
-    fetch_dam_energy_only_offer_awards,
-    fetch_dam_energy_only_offers,
-)
-
-data_bid_awards = fetch_dam_energy_bid_awards(start_date="2023-10-01", end_date="2023-10-02")
-data_bids = fetch_dam_energy_bids(start_date="2023-10-01", end_date="2023-10-02")
-data_offer_awards = fetch_dam_energy_only_offer_awards(start_date="2023-10-01", end_date="2023-10-02")
-data_offers = fetch_dam_energy_only_offers(start_date="2023-10-01", end_date="2023-10-02")
+```bash
+python main.py historical-spp --start 2024-01-01 --end 2024-01-02
 ```
-<<<<<<< HEAD
 
-## Command Line Interface (CLI)
+### 3. Put Everything Together 🧩
 
-The package provides a command-line interface with four main commands for downloading and updating ERCOT data.
+This combines all the information into one place:
 
-### Installation
+```bash
+python main.py merge-data
+```
 
-After installation, you can use the CLI in two ways:
+## What You Get
 
-1. Using the installed script:
-   ```sh
-   ercot-scraping <command> [options]
-   ```
+The tool will create a special box (database) that holds:
+- How much electricity costs
+- Who wants to buy electricity
+- Who wants to sell electricity
+- Who got to buy electricity
+- Who got to sell electricity
 
-2. Running as a module:
-   ```sh
-   python -m ercot_scraping <command> [options]
-   ```
+## Need Help?
 
-### Available Commands
+If you want to see more details about what's happening, add `--debug` to any command:
 
-- `download-historical-dam`: Download Historical DAM Data
-- `download-historical-spp`: Download Historical SPP Data
-- `update-daily-dam`: Update Daily DAM Data
-- `update-daily-spp`: Update Daily SPP Data
+```bash
+python main.py historical-dam --start 2024-01-01 --end 2024-01-02 --debug
+```
 
-### Examples
+## Secret Passwords You Need
 
-- Download one month of historical DAM data:
-  ```sh
-  ercot-scraping download-historical-dam --start-date 2023-01-01 --end-date 2023-01-31
-  ```
+You need three special passwords to make this work:
 
-- Download historical SPP data with custom database:
-  ```sh
-  ercot-scraping download-historical-spp --start-date 2023-01-01 --end-date 2023-01-31 --database custom.db
-  ```
+1. Username (like your name for a game)
+2. Password (like a secret word to get in)
+3. Special Key (like a magic key to open the door)
 
-- Update daily DAM data with QSE filtering:
-  ```sh
-  ercot-scraping update-daily-dam --qse-filter qse_filter.csv
-  ```
-
-- Update daily SPP data:
-  ```sh
-  ercot-scraping update-daily-spp
-  ```
-
-### QSE Filtering
-
-The --qse-filter option allows you to filter DAM data by QSE (Qualified Scheduling Entity) names. The filter file should be a CSV with a "SHORT NAME" column containing the QSE short names to include:
-
-Only data for the listed QSEs will be downloaded and stored in the database.
-
-// ...existing code...
-
-=======
->>>>>>> origin/main
+Ask your friendly ERCOT helper for these passwords! 🗝️

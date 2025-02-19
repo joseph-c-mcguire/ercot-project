@@ -2,7 +2,7 @@ import pytest
 import requests
 import os
 import logging
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, call, ANY
 from requests.exceptions import HTTPError
 from ercot_scraping.ercot_api import (
     fetch_settlement_point_prices,
@@ -18,8 +18,7 @@ from ercot_scraping.config import (
     ERCOT_API_BASE_URL_SETTLEMENT,
 )
 
-TEST_DB = "test_ercot.db"
-LOG_FILE = "test_ercot_api.log"
+from tests.testconf import TEST_DB, LOG_FILE
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE, filemode="w")
 logger = logging.getLogger(__name__)
@@ -116,14 +115,14 @@ def test_fetch_dam_energy_only_offers(mock_get):
     assert "data" in response
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_default_params(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_default_params(mock_request):
     # Setup the mock response
     mock_response = Mock()
     expected_json = {"data": "default"}
     mock_response.status_code = 200
     mock_response.json.return_value = expected_json
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     # Call function with only endpoint
     endpoint = "test_endpoint"
@@ -131,20 +130,23 @@ def test_fetch_data_from_endpoint_default_params(mock_get):
 
     # Verify URL construction and default header usage
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
-    mock_get.assert_called_with(
-        url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params={}
+    mock_request.assert_called_with(
+        "GET",
+        url=expected_url,
+        headers=ERCOT_API_REQUEST_HEADERS,
+        params={}
     )
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_with_dates(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_with_dates(mock_request):
     # Setup the mock response
     mock_response = Mock()
     expected_json = {"data": "with_dates"}
     mock_response.status_code = 200
     mock_response.json.return_value = expected_json
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     # Call function with start_date and end_date
     endpoint = "test_endpoint"
@@ -157,20 +159,23 @@ def test_fetch_data_from_endpoint_with_dates(mock_get):
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
     expected_params = {"deliveryDateFrom": start_date,
                        "deliveryDateTo": end_date}
-    mock_get.assert_called_with(
-        url=expected_url, headers=ERCOT_API_REQUEST_HEADERS, params=expected_params
+    mock_request.assert_called_with(
+        "GET",
+        url=expected_url,
+        headers=ERCOT_API_REQUEST_HEADERS,
+        params=expected_params
     )
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_with_custom_header(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_with_custom_header(mock_request):
     # Setup the mock response
     mock_response = Mock()
     expected_json = {"data": "custom_header"}
     mock_response.status_code = 200
     mock_response.json.return_value = expected_json
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     # Call function with a custom header
     endpoint = "test_endpoint"
@@ -180,18 +185,22 @@ def test_fetch_data_from_endpoint_with_custom_header(mock_get):
     )
 
     expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
-    mock_get.assert_called_with(
-        url=expected_url, headers=custom_header, params={})
+    mock_request.assert_called_with(
+        "GET",
+        url=expected_url,
+        headers=custom_header,
+        params={}
+    )
     assert result == expected_json
 
 
-@patch("ercot_scraping.ercot_api.requests.get")
-def test_fetch_data_from_endpoint_http_error(mock_get):
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_http_error(mock_request):
     # Setup the mock response to simulate HTTP error
     mock_response = Mock()
     mock_response.status_code = 404
     mock_response.raise_for_status.side_effect = HTTPError("404 Client Error")
-    mock_get.return_value = mock_response
+    mock_request.return_value = mock_response
 
     endpoint = "test_endpoint"
 
@@ -199,9 +208,57 @@ def test_fetch_data_from_endpoint_http_error(mock_get):
         fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
 
 
+@patch("ercot_scraping.ercot_api.rate_limited_request")
+def test_fetch_data_from_endpoint_rate_limit(mock_request):
+    """Test handling of rate limits with 429 responses."""
+    # Create properly mocked responses
+    response_429 = Mock()
+    response_429.status_code = 429
+    response_429.raise_for_status.side_effect = HTTPError(
+        "429 Too Many Requests")
+
+    response_200 = Mock()
+    response_200.status_code = 200
+    response_200.raise_for_status.return_value = None
+    response_200.json.return_value = {"data": "success"}
+
+    # Set up the sequence of responses
+    mock_request.side_effect = [response_429, response_200]
+
+    endpoint = "test_endpoint"
+    result = fetch_data_from_endpoint(ERCOT_API_BASE_URL_SETTLEMENT, endpoint)
+
+    # Verify the results
+    assert result == {"data": "success"}
+    assert mock_request.call_count == 2
+
+    # Verify the calls were made with correct parameters
+    expected_url = f"{ERCOT_API_BASE_URL_SETTLEMENT}/{endpoint}"
+    mock_request.assert_has_calls([
+        call("GET", url=expected_url, headers=ANY, params={}),
+        call("GET", url=expected_url, headers=ANY, params={})
+    ])
+
+
 def test_dam_base_url():
-    response = requests.get(ERCOT_API_BASE_URL_DAM,
-                            headers=ERCOT_API_REQUEST_HEADERS)
+    import time
+
+    def get_with_retries(url, headers, retries=5, backoff_factor=1):
+        for attempt in range(retries):
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                wait_time = backoff_factor * (2 ** attempt)
+                logger.warning(
+                    f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                response.raise_for_status()
+        return response
+
+    response = get_with_retries(
+        ERCOT_API_BASE_URL_DAM, headers=ERCOT_API_REQUEST_HEADERS)
     logger.info(
         f"Response status code for DAM base URL: {response.status_code}")
     logger.info(f"Response text for DAM base URL: {response.text}")
@@ -218,7 +275,23 @@ def test_settlement_base_url():
 
 
 def test_subscription_key_validity():
-    response = requests.get(
+    import time
+
+    def get_with_retries(url, headers, retries=5, backoff_factor=1):
+        for attempt in range(retries):
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                wait_time = backoff_factor * (2 ** attempt)
+                logger.warning(
+                    f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                response.raise_for_status()
+        return response
+
+    response = get_with_retries(
         f"{ERCOT_API_BASE_URL_SETTLEMENT}/spp_node_zone_hub",
         headers=ERCOT_API_REQUEST_HEADERS,
     )

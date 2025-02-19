@@ -2,6 +2,7 @@ import sqlite3
 from typing import Optional, Set
 import json
 import logging
+import pandas as pd
 
 from ercot_scraping.create_ercot_tables import create_ercot_tables
 from ercot_scraping.data_models import (
@@ -17,8 +18,14 @@ from ercot_scraping.config import (
     BIDS_INSERT_QUERY,
     OFFERS_INSERT_QUERY,
     OFFER_AWARDS_INSERT_QUERY,
+    ERCOT_DB_NAME
 )
-from ercot_scraping.filters import filter_by_qse_names
+from ercot_scraping.filters import (
+    get_active_settlement_points,
+    filter_by_settlement_points,
+    filter_by_qse_names
+)
+from ercot_scraping.utils import normalize_data
 
 
 # Configure logging
@@ -32,6 +39,7 @@ def store_data_to_db(
     insert_query: str,
     model_class: type,
     qse_filter: Optional[Set[str]] = None,
+    normalize: bool = True,
 ) -> None:
     """
     Stores data into the specified SQLite database and table.
@@ -51,77 +59,179 @@ def store_data_to_db(
                             the record's dictionary keys and must provide an as_tuple() method to return the data
                             in tuple format compatible with the insert query.
         qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
+        normalize (bool): If True, normalize the data before storing.
 
     Raises:
         ValueError: If the data provided cannot be used to instantiate an instance of model_class due to a TypeError,
                     indicating invalid or missing data fields.
     """
+    if normalize:
+        data = normalize_data(data, table_name=table_name.lower())
+
     if qse_filter is not None:
         data = filter_by_qse_names(data, qse_filter)
 
+    if not data or "data" not in data:
+        logger.warning(f"No data to store in {table_name}")
+        return
+
+    # Log unique dates in the data
+    if hasattr(model_class, "deliveryDate"):
+        unique_dates = {record.get("deliveryDate", "unknown")
+                        for record in data["data"]}
+        logger.info(
+            f"Storing {table_name} data for dates: {sorted(unique_dates)}")
+
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
-    # Check if the table exists; initialize if not
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (
-            table_name,)
-    )
-    if not cursor.fetchone():
-        create_ercot_tables(db_name)
 
+    # Check existing dates in the table
+    try:
+        cursor.execute(f"SELECT DISTINCT DeliveryDate FROM {table_name}")
+        existing_dates = {row[0] for row in cursor.fetchall()}
+        logger.info(
+            f"Existing dates in {table_name}: {sorted(existing_dates)}")
+    except sqlite3.OperationalError:
+        logger.info(f"Table {table_name} does not exist yet")
+        existing_dates = set()
+
+    # Filter out records with dates that already exist
+    filtered_rows = []
     for record in data["data"]:
         try:
-            # If the record is already a dict, use it directly
             if isinstance(record, dict):
                 record_dict = record
-            # If we have fields defined, use them to create the dict
             elif "fields" in data:
                 fields = [field["name"] for field in data["fields"]]
                 record_dict = dict(zip(fields, record))
             else:
-                raise ValueError(
-                    f"Invalid data for {model_class.__name__}: Record must be a dictionary or have fields defined")
+                continue
 
-            instance = model_class(**record_dict)
-        except TypeError as e:
-            missing_fields = [
-                field for field in model_class.__annotations__ if field not in record_dict
-            ]
-            logger.error(
-                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
-            )
-            raise ValueError(
-                f"Invalid data for {model_class.__name__}: {e}. Missing fields: {missing_fields}"
-            )
-        cursor.execute(insert_query, instance.as_tuple())
+            delivery_date = record_dict.get('deliveryDate')
+            if delivery_date:
+                # Normalize the date format to YYYY-MM-DD
+                try:
+                    if '/' in delivery_date:
+                        # Convert MM/DD/YYYY to YYYY-MM-DD
+                        mm, dd, yyyy = delivery_date.split('/')
+                        delivery_date = f"{yyyy}-{mm:0>2}-{dd:0>2}"
 
-    conn.commit()
+                    # Skip if this date is already in the database
+                    if delivery_date not in existing_dates:
+                        filtered_rows.append(record_dict)
+                except ValueError as e:
+                    logger.error(f"Error parsing date {delivery_date}: {e}")
+                    continue
+
+        except (TypeError, ValueError) as e:
+            logger.error(f"Error processing record: {e}")
+            continue
+
+    logger.info(f"Found {len(filtered_rows)} new records to insert")
+
+    if filtered_rows:
+        for record in filtered_rows:
+            try:
+                instance = model_class(**record)
+                cursor.execute(insert_query, instance.as_tuple())
+            except (TypeError, ValueError) as e:
+                logger.error(f"Error inserting record: {e}")
+                continue
+
+        conn.commit()
+
     conn.close()
+
+
+def validate_spp_data(data: dict) -> None:
+    """Validate settlement point price data structure."""
+    required_fields = {
+        "deliveryDate",
+        "deliveryHour",
+        "deliveryInterval",
+        "settlementPointName",
+        "settlementPointType",
+        "settlementPointPrice",
+        "dstFlag"
+    }
+
+    if not data or "data" not in data or not data["data"]:
+        raise ValueError("Invalid or empty data structure")
+
+    if not isinstance(data["data"], list):
+        raise ValueError("Data must be a list of records")
+
+    first_record = data["data"][0]
+    missing_fields = required_fields - set(first_record.keys())
+    if missing_fields:
+        raise ValueError(f"Missing required fields: {missing_fields}")
+
+
+def aggregate_spp_data(data: dict) -> dict:
+    """
+    Aggregate settlement point price data by delivery date and hour.
+
+    Args:
+        data (dict): Dictionary containing settlement point price data
+
+    Returns:
+        dict: Aggregated data dictionary
+    """
+    if not data or "data" not in data:
+        return data
+
+    validate_spp_data(data)  # Add validation before processing
+
+    df = pd.DataFrame(data["data"])
+
+    # Use lowercase column names to match the model field names
+    groupby_cols = ["deliveryDate", "deliveryHour"]
+
+    grouped_df = df.groupby(
+        groupby_cols,
+        as_index=False,
+        dropna=False
+    ).agg({
+        "deliveryInterval": "first",
+        "settlementPointName": "first",
+        "settlementPointType": "first",
+        "settlementPointPrice": "mean",
+        "dstFlag": "first"
+    })
+
+    return {"data": grouped_df.to_dict("records")}
 
 
 # Delegation functions for different models using local constants:
 def store_prices_to_db(
-    data: dict[str, any], db_name: str = "ercot.db", filter_by_awards: bool = True
+    data: dict[str, any], db_name: str = ERCOT_DB_NAME, filter_by_awards: bool = True
 ) -> None:
     """
     Stores settlement point prices data into the database.
 
     Args:
         data (dict[str, any]): Settlement point price data
-        db_name (str): Database name, defaults to "ercot.db"
+        db_name (str): Database name, defaults to ERCOT_DB_NAME
         filter_by_awards (bool): If True, only store prices for settlement points
                                that appear in bid/offer awards. If award tables don't
                                exist, stores all prices.
-    """
-    if filter_by_awards:
-        from ercot_scraping.filters import (
-            get_active_settlement_points,
-            filter_by_settlement_points,
-        )
 
+    Raises:
+        ValueError: If the data structure is invalid or missing required fields
+    """
+    try:
+        validate_spp_data(data)  # Validate before any processing
+    except ValueError as e:
+        logger.error(f"Invalid settlement point price data: {e}")
+        raise
+
+    if filter_by_awards:
         active_points = get_active_settlement_points(db_name)
         if active_points:  # Only filter if we found active points
             data = filter_by_settlement_points(data, active_points)
+
+    # Aggregate the data before storing
+    data = aggregate_spp_data(data)
 
     store_data_to_db(
         data,
@@ -132,27 +242,43 @@ def store_prices_to_db(
     )
 
 
+def validate_model_data(data: dict, required_fields: set, model_name: str) -> None:
+    """Validate data structure against required fields."""
+    if not data or "data" not in data or not data["data"]:
+        raise ValueError(f"Invalid or empty data structure for {model_name}")
+
+    if not isinstance(data["data"], list):
+        raise ValueError(f"Data must be a list of records for {model_name}")
+
+    if not data["data"]:
+        raise ValueError(f"Empty data list for {model_name}")
+
+    first_record = data["data"][0]
+    if not isinstance(first_record, dict):
+        raise ValueError(f"Invalid data record format for {model_name}")
+
+    missing_fields = required_fields - set(first_record.keys())
+    if missing_fields:
+        raise ValueError(
+            f"Missing required fields for {model_name}: {missing_fields}")
+
+
 def store_bid_awards_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Store bid award data into the specified database.
-
-    This function acts as a thin wrapper around the lower-level function `store_data_to_db`
-    to persist bid awards data into a database table named "BID_AWARDS". The function uses a
-    predefined SQL insert query `BID_AWARDS_INSERT_QUERY` and a data model `BidAward` to perform
-    the insertion.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the bid awards data to be stored.
-        db_name (str, optional): Name of the database file. Defaults to "ercot.db".
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None
-    """
+    """Store bid award data into the specified database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName",
+        "energyOnlyBidAwardInMW",
+        "settlementPointPrice",
+        "bidId"
+    }
+    validate_model_data(data, required_fields, "BidAward")
     store_data_to_db(
         data, db_name, "BID_AWARDS", BID_AWARDS_INSERT_QUERY, BidAward, qse_filter
     )
@@ -160,73 +286,53 @@ def store_bid_awards_to_db(
 
 def store_bids_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: Optional[str] = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Stores bid data into the database by delegating to the generic data storage function.
-
-    This function takes a dictionary containing bid data and inserts it into the "BIDS"
-    table in the specified SQLite database. It wraps the call to a lower-level function
-    that performs the actual database insertion logic based on the provided SQL query
-    (BIDS_INSERT_QUERY) and the Bid model.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the bid data to be stored.
-        db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None
-    """
+    """Stores bid data into the database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName"
+    }
+    validate_model_data(data, required_fields, "Bid")
     store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
 
 
 def store_offers_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Stores offer data into the database.
-
-    This function abstracts the process of inserting offer-related data into the specified
-    database by calling the underlying helper function 'store_data_to_db'. The data is stored
-    in the 'OFFERS' table using a pre-defined SQL insert query and the corresponding ORM model.
-
-    Parameters:
-        data (dict[str, any]): A dictionary containing the offer data to be stored. The structure
-                               of the dictionary should align with the expected schema for
-                               the 'OFFERS' table.
-        db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None: This function does not return a value.
-    """
+    """Stores offer data into the database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName"
+    }
+    validate_model_data(data, required_fields, "Offer")
     store_data_to_db(data, db_name, "OFFERS",
                      OFFERS_INSERT_QUERY, Offer, qse_filter)
 
 
 def store_offer_awards_to_db(
     data: dict[str, any],
-    db_name: str = "ercot.db",
+    db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
-    """
-    Stores offer awards data to the specified database by calling the underlying store_data_to_db function.
-
-    This function takes a dictionary containing offer awards information and saves it into the "OFFER_AWARDS" table of the provided database.
-    It utilizes the pre-defined OFFER_AWARDS_INSERT_QUERY and the OfferAward model to structure and insert the data.
-
-    Parameters:
-        data (dict[str, any]): A dictionary with keys as strings and values of any type, containing the offer awards data.
-        db_name (str, optional): The name of the SQLite database file. Defaults to "ercot.db".
-        qse_filter (Optional[Set[str]]): Set of QSE names to filter by.
-
-    Returns:
-        None
-    """
+    """Stores offer awards data to the specified database."""
+    required_fields = {
+        "deliveryDate",
+        "hourEnding",
+        "settlementPointName",
+        "qseName",
+        "energyOnlyOfferAwardInMW",
+        "settlementPointPrice",
+        "offerId"
+    }
+    validate_model_data(data, required_fields, "OfferAward")
     store_data_to_db(
         data, db_name, "OFFER_AWARDS", OFFER_AWARDS_INSERT_QUERY, OfferAward, qse_filter
     )

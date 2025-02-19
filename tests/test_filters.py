@@ -1,13 +1,17 @@
 import csv
 import sqlite3
 import pytest
+import os
+from pathlib import Path
+
 from ercot_scraping.filters import (
     load_qse_shortnames,
     filter_by_qse_names,
     get_active_settlement_points,
     filter_by_settlement_points,
 )
-from ercot_scraping.ercot_api import validate_sql_query
+# Changed from ercot_api to utils
+from ercot_scraping.utils import validate_sql_query
 # Import constants
 from ercot_scraping.config import (
     FETCH_BID_SETTLEMENT_POINTS_QUERY,
@@ -28,13 +32,38 @@ from ercot_scraping.config import (
 
 
 def write_csv(tmp_path, filename, header, rows):
+    """Write test data to a CSV file."""
     file_path = tmp_path / filename
-    with file_path.open("w", newline="") as f:
+    with file_path.open("w", newline="", encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=header)
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
     return file_path
+
+
+@pytest.fixture(autouse=True)
+def cleanup():
+    """Clean up test databases before and after each test."""
+    from tests.testconf import close_all_db_connections, ERCOT_DATA_DB
+
+    # Cleanup before test
+    if os.path.exists(ERCOT_DATA_DB):
+        close_all_db_connections(ERCOT_DATA_DB)
+
+    yield
+
+    # Cleanup after test
+    if os.path.exists(ERCOT_DATA_DB):
+        close_all_db_connections(ERCOT_DATA_DB)
+
+    # Clean up any other test databases in the current directory
+    for file in Path().glob("*.db"):
+        close_all_db_connections(file)
+        try:
+            os.remove(file)
+        except (PermissionError, OSError):
+            print(f"Warning: Could not remove {file}")
 
 
 @pytest.mark.parametrize(
@@ -44,10 +73,12 @@ def write_csv(tmp_path, filename, header, rows):
             "name": "valid_data",
             "header": ["SHORT NAME", "OTHER"],
             "rows": [
+                # Leading/trailing spaces
                 {"SHORT NAME": " QSE1 ", "OTHER": "Value1"},
-                {"SHORT NAME": "QSE2", "OTHER": "Value2"},
-                {"SHORT NAME": "", "OTHER": "Ignore"},
-                {"SHORT NAME": "QSE3", "OTHER": "Value3"},
+                {"SHORT NAME": "QSE2", "OTHER": "Value2"},    # No spaces
+                {"SHORT NAME": "", "OTHER": "Ignore"},        # Empty name
+                {"SHORT NAME": " ", "OTHER": "Ignore"},       # Just whitespace
+                {"SHORT NAME": "QSE3", "OTHER": "Value3"},    # Normal entry
             ],
             "expected": {"QSE1", "QSE2", "QSE3"},
         },
@@ -69,11 +100,18 @@ def write_csv(tmp_path, filename, header, rows):
     ],
 )
 def test_load_qse_shortnames(tmp_path, test_case):
+    """Test QSE shortname loading with various input cases."""
     csv_file = write_csv(
         tmp_path, f"{test_case['name']}.csv", test_case["header"], test_case["rows"]
     )
+    # Print the contents of the file for debugging
+    with open(csv_file, 'r', encoding='utf-8') as f:
+        print(f"\nTest file contents for {test_case['name']}:")
+        print(f.read())
+
     result = load_qse_shortnames(str(csv_file))
-    assert result == test_case["expected"]
+    assert result == test_case["expected"], \
+        f"Failed for {test_case['name']}\nExpected: {test_case['expected']}\nGot: {result}"
 
 
 @pytest.mark.parametrize(
@@ -249,25 +287,68 @@ def test_get_active_settlement_points_partial_tables(tmp_path):
     assert points == {"POINT1"}
 
 
-def test_filter_by_settlement_points():
-    """Test filtering data by settlement points."""
-    data = {
-        "data": [
-            {"settlementPointName": "POINT1", "value": 10},
-            {"settlementPointName": "POINT2", "value": 20},
-            {"settlementPointName": "OTHER", "value": 30},
-            {"value": 40},  # Record missing settlementPointName
-        ]
-    }
-    settlement_points = {"POINT1", "POINT2"}
-    result = filter_by_settlement_points(data, settlement_points)
-    expected = {
-        "data": [
-            {"settlementPointName": "POINT1", "value": 10},
-            {"settlementPointName": "POINT2", "value": 20},
-        ]
-    }
-    assert result == expected
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        {
+            "name": "standard_field_name",
+            "data": {
+                "data": [
+                    {"settlementPointName": "POINT1", "value": 10},
+                    {"settlementPointName": "POINT2", "value": 20},
+                    {"settlementPointName": "OTHER", "value": 30},
+                    {"value": 40},  # Record missing settlementPointName
+                ]
+            },
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {
+                "data": [
+                    {"settlementPointName": "POINT1", "value": 10},
+                    {"settlementPointName": "POINT2", "value": 20},
+                ]
+            },
+        },
+        {
+            "name": "alternative_field_name",
+            "data": {
+                "data": [
+                    {"SettlementPointName": "POINT1", "value": 10},
+                    {"SettlementPoint": "POINT2", "value": 20},
+                ]
+            },
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {
+                "data": [
+                    {"SettlementPointName": "POINT1", "value": 10},
+                    {"SettlementPoint": "POINT2", "value": 20},
+                ]
+            },
+        },
+        {
+            "name": "empty_data",
+            "data": {"data": []},
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {"data": []},
+        },
+        {
+            "name": "no_matching_points",
+            "data": {
+                "data": [
+                    {"settlementPointName": "OTHER1", "value": 10},
+                    {"settlementPointName": "OTHER2", "value": 20},
+                ]
+            },
+            "settlement_points": {"POINT1", "POINT2"},
+            "expected": {"data": []},
+        },
+    ],
+)
+def test_filter_by_settlement_points(test_case):
+    """Test filtering data by settlement points with various input cases."""
+    result = filter_by_settlement_points(
+        test_case["data"], test_case["settlement_points"])
+    assert result == test_case["expected"], \
+        f"Failed for {test_case['name']}\nExpected: {test_case['expected']}\nGot: {result}"
 
 
 def test_check_existing_tables_query(tmp_path):

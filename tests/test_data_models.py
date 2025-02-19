@@ -7,8 +7,7 @@ from ercot_scraping.data_models import (
     Offer,
     OfferAward,
 )
-
-TEST_DB = "test_ercot.db"
+from tests.testconf import TEST_DB  # Add this import
 
 
 @pytest.fixture(autouse=True)

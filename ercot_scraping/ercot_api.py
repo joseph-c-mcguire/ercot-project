@@ -3,7 +3,7 @@ and store them into a SQLite database.
 Functions:
     fetch_settlement point prices(start_date=None, end_date=None):
         Fetches settlement point prices from the ERCOT API and returns the JSON response.
-    store_prices_to_db(data, db_name='ercot.db'):
+    store_prices_to_db(data, db_name=ERCOT_DB_NAME):
         Stores settlement point prices data into a SQLite database.
 Environment Variables:
     ERCOT_API_URL: The URL of the ERCOT API.
@@ -14,106 +14,23 @@ Environment Variables:
 import os
 from typing import Optional
 import requests
-import sqlite3
-import logging
+
+
 from ercot_scraping.config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_API_REQUEST_HEADERS,
-    AUTH_URL
+    QSE_FILTER_CSV,
+    ERCOT_ARCHIVE_PRODUCT_IDS,
+    LOGGER,
+    ERCOT_DB_NAME,
+    DEFAULT_BATCH_DAYS
 )
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
-# Ensure environment variables are loaded correctly
-logger.info(f"ERCOT_API_BASE_URL_DAM: {ERCOT_API_BASE_URL_DAM}")
-logger.info(f"ERCOT_API_BASE_URL_SETTLEMENT: {ERCOT_API_BASE_URL_SETTLEMENT}")
-
-
-def refresh_access_token() -> str:
-    """
-    Refresh the access token using the provided username and password.
-
-    Returns:
-        str: The new access token.
-    """
-    auth_response = requests.post(AUTH_URL)
-    auth_response.raise_for_status()
-    return auth_response.json().get("id_token")
-
-
-def validate_sql_query(query: str) -> bool:
-    """
-    Validates an SQL query by attempting to execute it in a transaction and rolling back.
-    Handles complex queries including subqueries, UNION operations, and INSERT statements.
-
-    Args:
-        query (str): The SQL query to validate
-
-    Returns:
-        bool: True if query is valid, False otherwise
-    """
-    # Handle None and empty queries
-    if query is None or not query.strip():
-        return False
-
-    # Early return for INSERT statements
-    if query.lstrip().upper().startswith("INSERT"):
-        return True
-
-    try:
-        conn = sqlite3.connect(":memory:")
-        cursor = conn.cursor()
-        cursor.execute("BEGIN TRANSACTION;")
-
-        # Basic SQL syntax validation
-        try:
-            first_word = query.lstrip().split()[0].upper()
-        except IndexError:
-            return False
-
-        if first_word not in {
-            "SELECT",
-            "CREATE",
-            "DROP",
-            "ALTER",
-            "UPDATE",
-            "DELETE",
-            "INSERT",
-        }:
-            return False
-
-        # Create temporary tables for any referenced tables in complex queries
-        if "BID_AWARDS" in query:
-            cursor.execute("CREATE TABLE BID_AWARDS (SettlementPoint TEXT)")
-        if "OFFER_AWARDS" in query:
-            cursor.execute("CREATE TABLE OFFER_AWARDS (SettlementPoint TEXT)")
-
-        # Try executing the query
-        try:
-            cursor.execute(query)
-        except sqlite3.OperationalError as e:
-            if "no such table" in str(e):
-                # If error is about missing tables, those were handled above
-                # So this must be a different table - query is invalid
-                cursor.execute("ROLLBACK;")
-                conn.close()
-                return False
-            else:
-                # Other operational errors indicate invalid SQL
-                return False
-        except sqlite3.Error:
-            # Any other SQLite error indicates invalid SQL
-            return False
-
-        cursor.execute("ROLLBACK;")
-        conn.close()
-        return True
-
-    except sqlite3.Error:
-        return False
+from ercot_scraping.filters import load_qse_shortnames
+from ercot_scraping.batched_api import fetch_in_batches, rate_limited_request
+from ercot_scraping.utils import refresh_access_token, should_use_archive_api
+from ercot_scraping.archive_api import get_archive_document_ids, download_spp_archive_files
 
 
 def fetch_data_from_endpoint(
@@ -123,6 +40,8 @@ def fetch_data_from_endpoint(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     retries: int = 3,
+    qse_name: Optional[str] = None,  # Changed from qse_names to qse_name
+    page: Optional[int] = None,  # Add page parameter
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering.
@@ -145,38 +64,48 @@ def fetch_data_from_endpoint(
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
+    if qse_name:  # Changed from qse_names to qse_name
+        # No need for formatting, just use the single name
+        params["qseName"] = qse_name
+    if page is not None:  # Add page to params if provided
+        params["page"] = page
 
     url = f"{base_url}/{endpoint}"
-    logger.info(
+    LOGGER.debug(
         f"Fetching data from endpoint: {url} with params: {params} and headers: {header}"
     )
 
     for attempt in range(retries):
-        response = requests.get(url=url, headers=header, params=params)
+        response = rate_limited_request(
+            "GET",
+            url=url,
+            headers=header,
+            params=params
+        )
         if response.status_code == 401:
-            logger.warning("Unauthorized. Refreshing access token.")
+            LOGGER.warning("Unauthorized. Refreshing access token.")
             id_token = refresh_access_token()
             header["Authorization"] = f"Bearer {id_token}"
             os.environ["ERCOT_ID_TOKEN"] = id_token
         else:
             try:
                 response.raise_for_status()
-                logger.info(f"Data fetched successfully from endpoint: {url}")
+                LOGGER.info(f"Data fetched successfully from endpoint: {url}")
                 response_json = response.json()
                 # Add this line
-                logger.debug(f"Response data: {response_json}")
+                LOGGER.debug(f"Response data: {response_json}")
                 if "data" not in response_json:
-                    logger.error(
+                    LOGGER.error(
                         f"Unexpected response format: {response_json}")
                     return {}
                 return response_json
             except requests.exceptions.HTTPError as e:
                 if attempt < retries - 1:
-                    logger.warning(
+                    LOGGER.warning(
                         f"Request failed. Retrying... ({attempt + 1}/{retries})"
                     )
                 else:
-                    logger.error(f"Request failed after {retries} attempts.")
+                    LOGGER.error(f"Request failed after {retries} attempts.")
                     raise e
     return {}
 
@@ -184,7 +113,10 @@ def fetch_data_from_endpoint(
 def fetch_dam_energy_bid_awards(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = None,
+    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetches DAM energy bid awards data from the specified endpoint.
@@ -200,21 +132,30 @@ def fetch_dam_energy_bid_awards(
     Raises:
         Exception: Propagates any exception raised during the API request process.
     """
-    logger.info(
-        f"Fetching DAM energy bid awards from {start_date} to {end_date}")
-    return fetch_data_from_endpoint(
-        ERCOT_API_BASE_URL_DAM,
-        "60_dam_energy_bid_awards",
+    return fetch_in_batches(
+        lambda s, e, **kw: fetch_data_from_endpoint(
+            ERCOT_API_BASE_URL_DAM,
+            "60_dam_energy_bid_awards",
+            s,
+            e,
+            header=header,
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page')
+        ),
         start_date,
         end_date,
-        header,
+        batch_days,
+        qse_names=qse_names
     )
 
 
 def fetch_dam_energy_bids(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = None,
+    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetches DAM energy bids data from the specified API endpoint.
@@ -235,16 +176,30 @@ def fetch_dam_energy_bids(
         The data retrieved from the "60_dam_energy_bids" endpoint, formatted as returned by
         fetch_data_from_endpoint.
     """
-    logger.info(f"Fetching DAM energy bids from {start_date} to {end_date}")
-    return fetch_data_from_endpoint(
-        ERCOT_API_BASE_URL_DAM, "60_dam_energy_bids", start_date, end_date, header
+    return fetch_in_batches(
+        lambda s, e, **kw: fetch_data_from_endpoint(
+            ERCOT_API_BASE_URL_DAM,
+            "60_dam_energy_bids",
+            s,
+            e,
+            header=header,
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page')
+        ),
+        start_date,
+        end_date,
+        batch_days,
+        qse_names=qse_names
     )
 
 
 def fetch_dam_energy_only_offer_awards(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = None,
+    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetch DAM energy only offer awards data from the API endpoint.
@@ -265,22 +220,30 @@ def fetch_dam_energy_only_offer_awards(
         The data retrieved from the "60_dam_energy_only_offer_awards" endpoint as processed by the
         fetch_data_from_endpoint function. The exact format or type of the returned data depends on the endpoint's response.
     """
-    logger.info(
-        f"Fetching DAM energy only offer awards from {start_date} to {end_date}"
-    )
-    return fetch_data_from_endpoint(
-        ERCOT_API_BASE_URL_DAM,
-        "60_dam_energy_only_offer_awards",
+    return fetch_in_batches(
+        lambda s, e, **kw: fetch_data_from_endpoint(
+            ERCOT_API_BASE_URL_DAM,
+            "60_dam_energy_only_offer_awards",
+            s,
+            e,
+            header=header,
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page'),
+        ),
         start_date,
         end_date,
-        header,
+        batch_days,
+        qse_names=qse_names
     )
 
 
 def fetch_dam_energy_only_offers(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = None,
+    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None
 ) -> dict[str, any]:
     """
     Fetches Demand Aggregated Market (DAM) energy only offers data.
@@ -303,21 +266,29 @@ def fetch_dam_energy_only_offers(
         dict[str, any]: A dictionary containing the data fetched from the DAM energy only
                         offers endpoint.
     """
-    logger.info(
-        f"Fetching DAM energy only offers from {start_date} to {end_date}")
-    return fetch_data_from_endpoint(
-        ERCOT_API_BASE_URL_DAM,
-        "60_dam_energy_only_offers",
+    return fetch_in_batches(
+        lambda s, e, **kw: fetch_data_from_endpoint(
+            ERCOT_API_BASE_URL_DAM,
+            "60_dam_energy_only_offers",
+            s,
+            e,
+            header=header,
+            qse_name=kw.get('qse_name'),
+            page=kw.get('page')
+        ),
         start_date,
         end_date,
-        header,
+        batch_days,
+        qse_names=qse_names
     )
 
 
 def fetch_settlement_point_prices(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = None,
+    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
+    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    batch_days: int = DEFAULT_BATCH_DAYS
 ) -> dict[str, any]:
     """
     The function retrieves real-time settlement point prices for nodes, zones, and hubs
@@ -342,12 +313,18 @@ def fetch_settlement_point_prices(
         APIError: If the ERCOT API request fails
         ValueError: If the date format is invalid
     """
-    logger.info(
+    # Load QSE names from tracking list
+    LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
-    return fetch_data_from_endpoint(
-        ERCOT_API_BASE_URL_SETTLEMENT,
-        "spp_node_zone_hub",
+    return fetch_in_batches(
+        lambda s, e, **kw: fetch_data_from_endpoint(
+            ERCOT_API_BASE_URL_SETTLEMENT,
+            "spp_node_zone_hub",
+            s, e,
+            header=header,
+            page=kw.get('page')
+        ),
         start_date,
         end_date,
-        header,
+        batch_days,
     )

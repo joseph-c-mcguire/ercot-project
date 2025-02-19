@@ -10,6 +10,9 @@ dependencies = [
     "requests",
     "logging",
     "python-dotenv",
+    "ratelimit>=2.2.1",
+    "python-dateutil==2.9.0.post0",
+    "chardet>=5.0.0"
 ]
 requires-python = "==3.11.9 "
 
@@ -21,18 +24,26 @@ test = [
     "pytest>=6.2.4",
     "pytest-cov>=4.1.0",  # Updated version
     "coverage>=7.4.1",    # Updated version
-    "pytest-mock>=3.12.0" # Added for better mocking support
+    "pytest-mock>=3.12.0", # Added for better mocking support
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=ercot_scraping --cov-report=xml --cov-report=term-missing"
-python_files = ["test_*.py", "*_test.py", "test.py", "tests.py"]
-python_functions = ["test_*","test"]
+addopts = "--cov=ercot_scraping --cov-report=xml --cov-report=term-missing -v"
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
 
 [tool.coverage.run]
 branch = true
 source = ["ercot_scraping"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "*/__pycache__/*",
+    "*/setup.py",
+    "*/conftest.py", 
+    "*/__main__.py",
+]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -40,5 +51,8 @@ exclude_lines = [
     "def __repr__",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
-    "pass",
+    "pass"
 ]
+show_missing = true
+skip_covered = true
+sort = "Cover"

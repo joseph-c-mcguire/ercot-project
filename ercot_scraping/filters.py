@@ -1,31 +1,36 @@
 import csv
 from typing import Set
 import sqlite3
+import pandas as pd
+from pathlib import Path
 
-from ercot_scraping.config import (
-    FETCH_BID_SETTLEMENT_POINTS_QUERY,
-    CHECK_EXISTING_TABLES_QUERY,
-    FETCH_OFFER_SETTLEMENT_POINTS_QUERY,
-)
+from ercot_scraping.utils import get_field_name
+from ercot_scraping.config import COLUMN_MAPPINGS
 
 
-def load_qse_shortnames(csv_path: str) -> Set[str]:
+def load_qse_shortnames(csv_file: str | Path) -> Set[str]:
     """
-    Load QSE short names from a CSV file into a set.
+    Load QSE short names from a CSV file.
 
     Args:
-        csv_path (str): Path to the CSV file containing QSE short names
+        csv_file: Path to CSV file containing QSE short names
 
     Returns:
-        Set[str]: Set of QSE short names
+        Set of QSE short names
     """
-    shortnames = set()
-    with open(csv_path, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if "SHORT NAME" in row and row["SHORT NAME"]:
-                shortnames.add(row["SHORT NAME"].strip())
-    return shortnames
+    qse_names = set()
+    try:
+        with open(csv_file, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            if 'SHORT NAME' not in reader.fieldnames:
+                return set()
+            for row in reader:
+                name = row['SHORT NAME'].strip()
+                if name:  # Only add non-empty names
+                    qse_names.add(name)
+    except (FileNotFoundError, KeyError):
+        return set()
+    return qse_names
 
 
 def filter_by_qse_names(data: dict, qse_names: Set[str]) -> dict:
@@ -85,11 +90,6 @@ def get_active_settlement_points(db_name: str) -> Set[str]:
     return points
 
 
-def get_field_name(record: dict, field_names: list[str]) -> str:
-    """Helper function to find the correct field name in a record."""
-    return next((name for name in field_names if name in record), None)
-
-
 def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict:
     """
     Filter data to only include records matching the given settlement points.
@@ -101,22 +101,41 @@ def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict
     Returns:
         dict: Filtered data dictionary containing only records matching settlement_points
     """
-    # Common variations of settlement point field names
-    point_field_names = [
+    if not data or "data" not in data:
+        return {"data": []}
+
+    filtered_records = []
+    field_variations = [
         "settlementPointName",
-        "settlementPoint",
         "SettlementPointName",
-        "SettlementPoint"
+        "SettlementPoint",
+        "settlementPoint"
     ]
 
-    filtered_data = {"data": []}
     for record in data["data"]:
-        field_name = get_field_name(record, point_field_names)
-        if field_name and record[field_name] in settlement_points:
-            filtered_data["data"].append(record)
+        # Try each possible field name
+        point_name = None
+        for field in field_variations:
+            if field in record:
+                point_name = record[field]
+                break
 
-    # Preserve other fields if they exist
-    if "fields" in data:
-        filtered_data["fields"] = data["fields"]
+        if point_name and point_name in settlement_points:
+            filtered_records.append(record)
 
-    return filtered_data
+    return {"data": filtered_records}
+
+
+def format_qse_filter_param(qse_names: Set[str]) -> str:
+    """
+    Format QSE names for API query parameter.
+
+    Args:
+        qse_names (Set[str]): Set of QSE short names
+
+    Returns:
+        str: Formatted string for API query (e.g., "QABCD,QXYZ1")
+    """
+    # Filter for only QSE names (starting with 'Q')
+    qse_names = {name for name in qse_names if name.startswith('Q')}
+    return ','.join(sorted(qse_names))

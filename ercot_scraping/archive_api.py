@@ -1,0 +1,321 @@
+from typing import List
+import csv
+import io
+import zipfile
+from io import BytesIO
+
+from ercot_scraping.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING, COLUMN_MAPPINGS
+from ercot_scraping.batched_api import rate_limited_request
+from ercot_scraping.utils import get_table_name
+from ercot_scraping.store_data import store_data_to_db
+
+
+def download_spp_archive_files(
+    product_id: str,
+    doc_ids: list[int],
+    db_name: str
+) -> None:
+    """
+    Downloads and processes SPP archive files from the ERCOT archive API.
+    Args:
+        product_id (str): The product ID for the SPP documents to be downloaded.
+        doc_ids (list[int]): A list of document IDs to be downloaded.
+        db_name (str): The name of the database where the processed files will be stored.
+    Returns:
+        None
+    Logs:
+        - A warning if no document IDs are provided.
+        - Information about the number of documents being downloaded.
+        - Errors if the download of any batch fails.
+        - Information about each SPP file being processed.
+    Raises:
+        - Any exceptions raised by the `rate_limited_request` function.
+        - Any exceptions raised during the processing of the zip files.
+    """
+    if not doc_ids:
+        LOGGER.warning(f"No document IDs found for SPP product {product_id}")
+        return
+
+    url = f"{ERCOT_ARCHIVE_API_BASE_URL}/{product_id}/download"
+    LOGGER.info(f"Downloading {len(doc_ids)} SPP documents from archive API")
+
+    for i in range(0, len(doc_ids), API_MAX_ARCHIVE_FILES):
+        batch = doc_ids[i:i + API_MAX_ARCHIVE_FILES]
+        payload = {"docIds": batch}
+
+        response = rate_limited_request(
+            "POST",
+            url,
+            headers=ERCOT_API_REQUEST_HEADERS,
+            json=payload,
+            stream=True
+        )
+
+        if not response.ok:
+            LOGGER.error(
+                f"Failed to download SPP batch. Status: {response.status_code}")
+            continue
+
+        content = response.content
+        with zipfile.ZipFile(BytesIO(content)) as zip_folder:
+            for filename in zip_folder.namelist():
+
+                with zip_folder.open(filename) as nested_zip_file:
+                    nested_content = nested_zip_file.read()
+                    with zipfile.ZipFile(BytesIO(nested_content)) as nested_zip:
+                        for nested_filename in nested_zip.namelist():
+
+                            if not nested_filename.endswith('.csv'):
+                                continue
+                            LOGGER.info(
+                                f"Processing SPP file: {nested_filename}")
+                            process_spp_file(
+                                nested_zip, nested_filename, "SETTLEMENT_POINT_PRICES", db_name)
+
+
+def process_spp_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str, db_name: str) -> None:
+    """
+    Processes a CSV file from a zip folder, normalizes its content, and stores it in a database.
+    Args:
+        zip_folder (zipfile.ZipFile): The zip folder containing the CSV file.
+        filename (str): The name of the CSV file to process.
+        table_name (str): The name of the database table to store the data.
+        db_name (str): The name of the database.
+    Returns:
+        None
+    Raises:
+        None
+    Logs:
+        - A warning if no headers are found in the CSV file.
+        - An info message indicating the number of rows stored in the database.
+        - A warning if no data mapping is found for the specified table.
+    """
+    with zip_folder.open(filename) as csv_file:
+        csv_content = csv_file.read().decode('utf-8')
+        csv_buffer = io.StringIO(csv_content)
+        # Check if the file is empty or has no valid headers
+        first_line = csv_buffer.readline().strip()
+        if not first_line or ',' not in first_line:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        # Reset buffer position and create reader
+        csv_buffer.seek(0)
+        reader = csv.DictReader(csv_buffer)
+
+        if not reader.fieldnames:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
+        rows: List[dict] = []
+
+        for row in reader:
+            normalized_row: dict = {}
+            for key, value in row.items():
+                if not key:
+                    continue
+                norm_key = key.lower().strip().replace(' ', '_')
+                final_key = mapping.get(norm_key, norm_key)
+                normalized_row[final_key] = value.strip() if value else None
+            rows.append(normalized_row)
+
+        if rows:
+            LOGGER.info(f"Storing {len(rows)} rows to {table_name}")
+            if table_name in DAM_TABLE_DATA_MAPPING:
+                model_class = DAM_TABLE_DATA_MAPPING[table_name]["model_class"]
+                insert_query = DAM_TABLE_DATA_MAPPING[table_name]["insert_query"]
+                store_data_to_db(
+                    data={"data": rows}, db_name=db_name, table_name=table_name, model_class=model_class, insert_query=insert_query)
+            else:
+                LOGGER.warning(
+                    f"No data mapping found for table: {table_name}")
+
+
+def download_dam_archive_files(
+    product_id: str,
+    doc_ids: list[int],
+    db_name: str
+) -> None:
+    """
+    Downloads and processes DAM (Day-Ahead Market) archive files from the ERCOT API.
+    This function retrieves batches of document IDs, downloads the corresponding
+    zip files from the ERCOT archive API, and processes the nested zip files
+    containing CSV files. The CSV files are then processed and stored in the
+    specified database.
+    Args:
+        product_id (str): The product ID for the DAM product.
+        doc_ids (list[int]): A list of document IDs to download.
+        db_name (str): The name of the database where the processed files will be stored.
+    Returns:
+        None
+    Raises:
+        None
+    Logs:
+        - Warnings if no document IDs are found or if unrecognized DAM file types are encountered.
+        - Errors if the download of a DAM batch fails.
+        - Info messages for the number of documents being downloaded and the processing of each DAM file.
+    """
+
+    if not doc_ids:
+        LOGGER.warning(f"No document IDs found for DAM product {product_id}")
+        return
+
+    url = f"{ERCOT_ARCHIVE_API_BASE_URL}/{product_id}/download"
+    LOGGER.info(f"Downloading {len(doc_ids)} DAM documents from archive API")
+
+    for i in range(0, len(doc_ids), API_MAX_ARCHIVE_FILES):
+        batch = doc_ids[i:i + API_MAX_ARCHIVE_FILES]
+        payload = {"docIds": batch}
+
+        response = rate_limited_request(
+            "POST",
+            url,
+            headers=ERCOT_API_REQUEST_HEADERS,
+            json=payload,
+            stream=True
+        )
+
+        if not response.ok:
+            LOGGER.error(
+                f"Failed to download DAM batch. Status: {response.status_code}")
+            continue
+
+        content = response.content
+        with zipfile.ZipFile(BytesIO(content)) as zip_folder:
+            for filename in zip_folder.namelist():
+
+                with zip_folder.open(filename) as nested_zip_file:
+                    nested_content = nested_zip_file.read()
+                    with zipfile.ZipFile(BytesIO(nested_content)) as nested_zip:
+                        for nested_filename in nested_zip.namelist():
+
+                            table_name = get_table_name(nested_filename)
+                            if not any(nested_filename.startswith(prefix) for prefix in DAM_FILENAMES):
+                                continue
+                            if not table_name:
+                                LOGGER.warning(
+                                    f"Unrecognized DAM file type: {nested_filename}")
+                                continue
+                            if not nested_filename.endswith('.csv'):
+                                continue
+                            LOGGER.info(
+                                f"Processing DAM file: {nested_filename}")
+                            process_dam_file(
+                                nested_zip, nested_filename, table_name, db_name)
+
+
+def process_dam_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str, db_name: str) -> None:
+    """
+    Processes a single DAM file from a zip folder, normalizes its content, and stores it in a database.
+    Args:
+        zip_folder (zipfile.ZipFile): The zip folder containing the DAM file.
+        filename (str): The name of the DAM file to process.
+        table_name (str): The name of the database table to store the data.
+        db_name (str): The name of the database.
+    Returns:
+        None
+    Raises:
+        None
+    Logs:
+        - A warning if no headers are found in the CSV file.
+        - An info message indicating the number of rows stored in the database.
+        - A warning if no data mapping is found for the specified table.
+    """
+    with zip_folder.open(filename) as csv_file:
+        csv_content = csv_file.read().decode('utf-8')
+        csv_buffer = io.StringIO(csv_content)
+
+        # Read and check the first line
+        first_line = csv_buffer.readline().strip()
+        if not first_line or ',' not in first_line:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        # Reset and create reader
+        csv_buffer.seek(0)
+        reader = csv.DictReader(csv_buffer)
+
+        if not reader.fieldnames:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        # Read all data rows
+        rows = list(reader)
+        # If no data rows and header does not start with 'col', then warn.
+        if not rows and not first_line.lower().startswith("col"):
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
+        normalized_rows = []
+        for row in rows:
+            normalized_row = {}
+            for key, value in row.items():
+                if not key:
+                    continue
+                norm_key = key.lower().strip().replace(' ', '_')
+                final_key = mapping.get(norm_key, norm_key)
+                normalized_row[final_key] = value.strip() if value else None
+            normalized_rows.append(normalized_row)
+
+        if normalized_rows:
+            LOGGER.info(f"Storing {len(normalized_rows)} rows to {table_name}")
+            if table_name in DAM_TABLE_DATA_MAPPING:
+                model_class = DAM_TABLE_DATA_MAPPING[table_name]["model_class"]
+                insert_query = DAM_TABLE_DATA_MAPPING[table_name]["insert_query"]
+                store_data_to_db(
+                    data={"data": normalized_rows},
+                    db_name=db_name,
+                    table_name=table_name,
+                    model_class=model_class,
+                    insert_query=insert_query)
+            else:
+                LOGGER.warning(
+                    f"No data mapping found for table: {table_name}")
+
+
+def get_archive_document_ids(
+    product_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[int]:
+    """
+    Retrieves a list of document IDs for a given product from the ERCOT archive API.
+    The function queries the API with specified start and end dates, handling pagination to retrieve all available IDs.
+    Args:
+        product_id (str): The ID of the product for which to retrieve document IDs.
+        start_date (str): The start date for the document search (YYYY-MM-DD format).
+        end_date (str): The end date for the document search (YYYY-MM-DD format).
+    Returns:
+        List[int]: A list of document IDs.
+    Raises:
+        None
+    Logs:
+        None
+    """
+    url = f"{ERCOT_ARCHIVE_API_BASE_URL}/{product_id}"
+    params = {
+        "postDatetimeFrom": f"{start_date}T00:00:00.000",
+        "postDatetimeTo": f"{end_date}T23:59:59.999",
+    }
+
+    doc_ids = []
+    page = 1
+    while True:
+        params["page"] = page
+        response = rate_limited_request(
+            "GET", url, headers=ERCOT_API_REQUEST_HEADERS, params=params)
+        data = response.json()
+
+        if not data.get("archives"):
+            break
+
+        doc_ids.extend(archive["docId"] for archive in data["archives"])
+
+        if page >= data["_meta"]["totalPages"]:
+            break
+
+        page += 1
+
+    return doc_ids

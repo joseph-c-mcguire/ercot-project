@@ -15,124 +15,35 @@ from ercot_scraping.data_models import (
     Bid,
     Offer,
 )
-from tests.testconf import TEST_DB
-
-SETTLEMENT_POINT_PRICE_SAMPLE = {
-    "data": [
-        {
-            "deliveryDate": "2023-10-01",
-            "deliveryHour": 1,
-            "deliveryInterval": 15,
-            "settlementPointName": "ABC",
-            "settlementPointType": "Type1",
-            "settlementPointPrice": 25.5,
-            "dstFlag": "N",
-        }
-    ]
-}
-
-SAMPLE_OFFER_AWARDS = {
-    "data": [
-        {
-            "deliveryDate": "2023-10-01",
-            "hourEnding": 1,
-            "settlementPointName": "XYZ",
-            "qseName": "Test QSE",
-            "energyOnlyOfferAwardInMW": 50.0,
-            "settlementPointPrice": 30.5,
-            "offerId": "101",  # Changed to string
-        }
-    ]
-}
-
-SAMPLE_BID_AWARDS = {
-    "data": [
-        {
-            "deliveryDate": "2023-10-01",
-            "hourEnding": 1,
-            "settlementPointName": "XYZ",
-            "qseName": "Test QSE",
-            "energyOnlyBidAwardInMW": 45.0,
-            "settlementPointPrice": 28.5,
-            "bidId": "201",  # Changed to string
-        }
-    ]
-}
-
-SAMPLE_BIDS = {
-    "data": [
-        {
-            "deliveryDate": "2023-10-01",
-            "hourEnding": 1,
-            "settlementPointName": "XYZ",
-            "qseName": "Test QSE",
-            "energyOnlyBidMw1": 10.0,
-            "energyOnlyBidPrice1": 25.0,
-            "energyOnlyBidMw2": 15.0,
-            "energyOnlyBidPrice2": 26.0,
-            "energyOnlyBidMw3": 0.0,
-            "energyOnlyBidPrice3": 0.0,
-            "energyOnlyBidMw4": 0.0,
-            "energyOnlyBidPrice4": 0.0,
-            "energyOnlyBidMw5": 0.0,
-            "energyOnlyBidPrice5": 0.0,
-            "energyOnlyBidMw6": 0.0,
-            "energyOnlyBidPrice6": 0.0,
-            "energyOnlyBidMw7": 0.0,
-            "energyOnlyBidPrice7": 0.0,
-            "energyOnlyBidMw8": 0.0,
-            "energyOnlyBidPrice8": 0.0,
-            "energyOnlyBidMw9": 0.0,
-            "energyOnlyBidPrice9": 0.0,
-            "energyOnlyBidMw10": 0.0,
-            "energyOnlyBidPrice10": 0.0,
-            "bidId": "201",  # Changed to string
-            "multiHourBlock": "N",
-            "blockCurve": "N",
-        }
-    ]
-}
-
-SAMPLE_OFFERS = {
-    "data": [
-        {
-            "deliveryDate": "2023-10-01",
-            "hourEnding": 1,
-            "settlementPointName": "XYZ",
-            "qseName": "Test QSE",
-            "energyOnlyOfferMW1": 20.0,
-            "energyOnlyOfferPrice1": 30.0,
-            "energyOnlyOfferMW2": 25.0,
-            "energyOnlyOfferPrice2": 32.0,
-            "energyOnlyOfferMW3": 0.0,
-            "energyOnlyOfferPrice3": 0.0,
-            "energyOnlyOfferMW4": 0.0,
-            "energyOnlyOfferPrice4": 0.0,
-            "energyOnlyOfferMW5": 0.0,
-            "energyOnlyOfferPrice5": 0.0,
-            "energyOnlyOfferMW6": 0.0,
-            "energyOnlyOfferPrice6": 0.0,
-            "energyOnlyOfferMW7": 0.0,
-            "energyOnlyOfferPrice7": 0.0,
-            "energyOnlyOfferMW8": 0.0,
-            "energyOnlyOfferPrice8": 0.0,
-            "energyOnlyOfferMW9": 0.0,
-            "energyOnlyOfferPrice9": 0.0,
-            "energyOnlyOfferMW10": 0.0,
-            "energyOnlyOfferPrice10": 0.0,
-            "offerId": "101",
-            "multiHourBlock": "N",
-            "blockCurve": "N",
-        }
-    ]
-}
+from tests.testconf import TEST_DB, SETTLEMENT_POINT_PRICE_SAMPLE, SAMPLE_BID_AWARDS, SAMPLE_BIDS, SAMPLE_OFFERS, SAMPLE_OFFER_AWARDS
+from ercot_scraping.config import (
+    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
+    BIDS_TABLE_CREATION_QUERY,
+    BID_AWARDS_TABLE_CREATION_QUERY,
+    OFFERS_TABLE_CREATION_QUERY,
+    OFFER_AWARDS_TABLE_CREATION_QUERY,
+)
 
 
 @pytest.fixture(autouse=True)
-def cleanup():
-    # Setup - nothing needed
+def setup_database():
+    """Create test database with required tables."""
+    conn = sqlite3.connect(TEST_DB)
+    cursor = conn.cursor()
+
+    # Create all required tables
+    cursor.execute(SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY)
+    cursor.execute(BIDS_TABLE_CREATION_QUERY)
+    cursor.execute(BID_AWARDS_TABLE_CREATION_QUERY)
+    cursor.execute(OFFERS_TABLE_CREATION_QUERY)
+    cursor.execute(OFFER_AWARDS_TABLE_CREATION_QUERY)
+
+    conn.commit()
+    conn.close()
+
     yield
-    # Teardown - ensure any open connections are closed before removing file
+
+    # Cleanup
     try:
         # Create a temporary connection and close it to ensure no other connections are active
         conn = sqlite3.connect(TEST_DB)
@@ -210,23 +121,36 @@ def test_store_prices_to_db_with_award_filtering():
     store_bid_awards_to_db(SAMPLE_BID_AWARDS, db_name=TEST_DB)
     store_offer_awards_to_db(SAMPLE_OFFER_AWARDS, db_name=TEST_DB)
 
-    # Create sample price data that includes both matching and non-matching settlement points
+    conn = sqlite3.connect(TEST_DB)
+    cursor = conn.cursor()
+
+    # BidAward and OfferAward models use settlementPointName
+    cursor.execute("SELECT SettlementPoint FROM BID_AWARDS")
+    bid_points = {row[0] for row in cursor.fetchall()}
+    cursor.execute("SELECT SettlementPoint FROM OFFER_AWARDS")
+    offer_points = {row[0] for row in cursor.fetchall()}
+    conn.close()
+
+    print(f"Bid points in DB: {bid_points}")
+    print(f"Offer points in DB: {offer_points}")
+
+    # Create sample price data matching SettlementPointPrice model fields
     test_prices = {
         "data": [
             {
-                "deliveryDate": "2023-10-01",
-                "deliveryHour": 1,
-                "deliveryInterval": 15,
-                "settlementPointName": "XYZ",  # Matches award settlement point
-                "settlementPointType": "Type1",
-                "settlementPointPrice": 25.5,
-                "dstFlag": "N",
+                "deliveryDate": "2023-10-01",  # lowercase per model
+                "deliveryHour": 1,             # lowercase per model
+                "deliveryInterval": 15,         # lowercase per model
+                "settlementPointName": "XYZ",   # lowercase per model
+                "settlementPointType": "Type1",  # lowercase per model
+                "settlementPointPrice": 25.5,   # lowercase per model
+                "dstFlag": "N",                # lowercase per model
             },
             {
                 "deliveryDate": "2023-10-01",
                 "deliveryHour": 1,
                 "deliveryInterval": 15,
-                "settlementPointName": "ABC",  # Does not match any award
+                "settlementPointName": "ABC",
                 "settlementPointType": "Type1",
                 "settlementPointPrice": 30.5,
                 "dstFlag": "N",
@@ -237,48 +161,62 @@ def test_store_prices_to_db_with_award_filtering():
     # Store prices with filtering enabled
     store_prices_to_db(test_prices, db_name=TEST_DB, filter_by_awards=True)
 
+    # Verify results using the correct field name from the model
     conn = sqlite3.connect(TEST_DB)
     cursor = conn.cursor()
     cursor.execute("SELECT SettlementPointName FROM SETTLEMENT_POINT_PRICES")
     points = {row[0] for row in cursor.fetchall()}
     conn.close()
 
-    # Should only contain the settlement point that matches awards
-    assert points == {"XYZ"}
+    print(f"Points stored in settlement prices: {points}")
+    assert points == {"XYZ"}, f"Expected only 'XYZ' but got {points}"
 
 
 def test_invalid_data():
+    """Test validation of invalid data for each store function."""
+    # Test data with missing required fields
     invalid_data = {"data": [{"InvalidField": "value"}]}
 
-    with pytest.raises(ValueError):
+    # Test settlement point prices with specific validation
+    with pytest.raises(ValueError) as excinfo:
         store_prices_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test bid awards with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_bid_awards_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for BidAward" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test bids with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_bids_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for Bid" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test offers with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_offers_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for Offer" in str(excinfo.value)
 
-    with pytest.raises(ValueError):
+    # Test offer awards with missing required fields
+    with pytest.raises(ValueError) as excinfo:
         store_offer_awards_to_db(invalid_data, db_name=TEST_DB)
+    assert "Missing required fields for OfferAward" in str(excinfo.value)
 
 
 def test_store_bid_awards_with_invalid_data():
+    """Test handling of invalid data format (list instead of dict)."""
     # nested list instead of dict
     invalid_data = {"data": [["not", "a", "dict"]]}
-    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+    with pytest.raises(ValueError, match="Invalid data record format for BidAward"):
         store_bid_awards_to_db(invalid_data, "test.db", None)
 
 
 def test_store_bid_awards_with_list_of_dicts():
+    """Test handling of invalid nested data structure."""
     # Simulate data with an inner list of records
     valid_record = {"deliveryDate": "2024-01-01",
                     "settlementPointName": "TEST"}
     data_with_list = {"data": [[valid_record, valid_record]]}
 
-    # Expect a ValueError due to missing required fields
-    with pytest.raises(ValueError, match="Invalid data for BidAward"):
+    with pytest.raises(ValueError, match="Invalid data record format for BidAward"):
         store_bid_awards_to_db(data_with_list, "test.db", None)

@@ -24,11 +24,12 @@ from ercot_scraping.config import (
     BIDS_TABLE_CREATION_QUERY,
     BID_AWARDS_TABLE_CREATION_QUERY,
     OFFERS_TABLE_CREATION_QUERY,
-    OFFER_AWARDS_TABLE_CREATION_QUERY
+    OFFER_AWARDS_TABLE_CREATION_QUERY,
+    ERCOT_DB_NAME
 )
 
 
-def create_ercot_tables(save_path: str = "ercot_data.db") -> None:
+def create_ercot_tables(save_path: str = ERCOT_DB_NAME) -> None:
     """
     Create tables in the SQLite database for ERCOT project.
     This function connects to an SQLite database (or creates it if it doesn't exist)

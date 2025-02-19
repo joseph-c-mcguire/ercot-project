@@ -92,7 +92,16 @@ def process_spp_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str
     """
     with zip_folder.open(filename) as csv_file:
         csv_content = csv_file.read().decode('utf-8')
-        reader = csv.DictReader(io.StringIO(csv_content))
+        csv_buffer = io.StringIO(csv_content)
+        # Check if the file is empty or has no valid headers
+        first_line = csv_buffer.readline().strip()
+        if not first_line or ',' not in first_line:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        # Reset buffer position and create reader
+        csv_buffer.seek(0)
+        reader = csv.DictReader(csv_buffer)
 
         if not reader.fieldnames:
             LOGGER.warning(f"No headers found in {filename}")
@@ -196,22 +205,51 @@ def download_dam_archive_files(
                                 nested_zip, nested_filename, table_name, db_name)
 
 
-def process_dam_file(zip_folder, filename, table_name, db_name):
+def process_dam_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str, db_name: str) -> None:
     """
-    Process a single DAM file and store its data in the database.
+    Processes a single DAM file from a zip folder, normalizes its content, and stores it in a database.
+    Args:
+        zip_folder (zipfile.ZipFile): The zip folder containing the DAM file.
+        filename (str): The name of the DAM file to process.
+        table_name (str): The name of the database table to store the data.
+        db_name (str): The name of the database.
+    Returns:
+        None
+    Raises:
+        None
+    Logs:
+        - A warning if no headers are found in the CSV file.
+        - An info message indicating the number of rows stored in the database.
+        - A warning if no data mapping is found for the specified table.
     """
     with zip_folder.open(filename) as csv_file:
         csv_content = csv_file.read().decode('utf-8')
-        reader = csv.DictReader(io.StringIO(csv_content))
+        csv_buffer = io.StringIO(csv_content)
+
+        # Read and check the first line
+        first_line = csv_buffer.readline().strip()
+        if not first_line or ',' not in first_line:
+            LOGGER.warning(f"No headers found in {filename}")
+            return
+
+        # Reset and create reader
+        csv_buffer.seek(0)
+        reader = csv.DictReader(csv_buffer)
 
         if not reader.fieldnames:
             LOGGER.warning(f"No headers found in {filename}")
             return
 
-        mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
-        rows = []
+        # Read all data rows
+        rows = list(reader)
+        # If no data rows and header does not start with 'col', then warn.
+        if not rows and not first_line.lower().startswith("col"):
+            LOGGER.warning(f"No headers found in {filename}")
+            return
 
-        for row in reader:
+        mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
+        normalized_rows = []
+        for row in rows:
             normalized_row = {}
             for key, value in row.items():
                 if not key:
@@ -219,15 +257,19 @@ def process_dam_file(zip_folder, filename, table_name, db_name):
                 norm_key = key.lower().strip().replace(' ', '_')
                 final_key = mapping.get(norm_key, norm_key)
                 normalized_row[final_key] = value.strip() if value else None
-            rows.append(normalized_row)
+            normalized_rows.append(normalized_row)
 
-        if rows:
-            LOGGER.info(f"Storing {len(rows)} rows to {table_name}")
+        if normalized_rows:
+            LOGGER.info(f"Storing {len(normalized_rows)} rows to {table_name}")
             if table_name in DAM_TABLE_DATA_MAPPING:
                 model_class = DAM_TABLE_DATA_MAPPING[table_name]["model_class"]
                 insert_query = DAM_TABLE_DATA_MAPPING[table_name]["insert_query"]
                 store_data_to_db(
-                    data={"data": rows}, db_name=db_name, table_name=table_name, model_class=model_class, insert_query=insert_query)
+                    data={"data": normalized_rows},
+                    db_name=db_name,
+                    table_name=table_name,
+                    model_class=model_class,
+                    insert_query=insert_query)
             else:
                 LOGGER.warning(
                     f"No data mapping found for table: {table_name}")

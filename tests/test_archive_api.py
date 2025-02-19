@@ -16,27 +16,60 @@ def test_download_spp_archive_files_no_doc_ids(mock_logger, mock_zipfile, mock_r
 
 @mock.patch('ercot_scraping.archive_api.rate_limited_request')
 @mock.patch('ercot_scraping.archive_api.zipfile.ZipFile')
+@mock.patch('ercot_scraping.archive_api.BytesIO')
+@mock.patch('ercot_scraping.archive_api.process_spp_file')
 @mock.patch('ercot_scraping.archive_api.LOGGER')
-def test_download_spp_archive_files_success(mock_logger, mock_zipfile, mock_rate_limited_request):
+def test_download_spp_archive_files_success(mock_logger, mock_process_spp, mock_bytesio, mock_zipfile, mock_rate_limited_request):
+    # Setup API response mock
     mock_response = mock.Mock()
     mock_response.ok = True
     mock_response.content = b'zip_content'
     mock_rate_limited_request.return_value = mock_response
 
-    mock_zip = mock.Mock()
-    mock_zip.namelist.return_value = ['file1.zip']
-    mock_zipfile.return_value.__enter__.return_value = mock_zip
+    # Setup BytesIO mocks
+    mock_bytes_outer = mock.MagicMock()
+    mock_bytes_inner = mock.MagicMock()
+    mock_bytesio.side_effect = [mock_bytes_outer, mock_bytes_inner]
 
-    nested_zip = mock.Mock()
-    nested_zip.namelist.return_value = ['file1.csv']
-    mock_zip.open.return_value.__enter__.return_value.read.return_value = b'nested_zip_content'
-    mock_zipfile.side_effect = [mock_zip, nested_zip]
+    # Setup inner zip file structure
+    mock_inner_zip = mock.MagicMock()
+    mock_inner_zip.namelist.return_value = ['file1.csv']
+    mock_inner_zip.__enter__.return_value = mock_inner_zip
 
+    # Setup outer zip file structure
+    mock_outer_zip = mock.MagicMock()
+    mock_outer_zip.namelist.return_value = ['file1.zip']
+    mock_outer_zip.__enter__.return_value = mock_outer_zip
+
+    # Setup nested zip content
+    mock_nested_zip_content = mock.MagicMock()
+    mock_nested_zip_content.read.return_value = b'nested_zip_content'
+    mock_outer_zip.open.return_value.__enter__.return_value = mock_nested_zip_content
+
+    # Configure ZipFile mock to return appropriate zip objects
+    mock_zipfile.side_effect = [mock_outer_zip, mock_inner_zip]
+
+    # Run the function
     download_spp_archive_files('product_id', [1, 2, 3], 'db_name')
 
-    mock_logger.info.assert_any_call(
-        "Downloading 3 SPP documents from archive API")
-    mock_logger.info.assert_any_call("Processing SPP file: file1.csv")
+    # Verify the entire chain of calls
+    assert mock_bytesio.call_count == 2
+    assert mock_zipfile.call_count == 2
+    assert mock_process_spp.call_count == 1
+
+    # Verify logging calls in order
+    mock_logger.info.assert_has_calls([
+        mock.call("Downloading 3 SPP documents from archive API"),
+        mock.call("Processing SPP file: file1.csv")
+    ])
+
+    # Verify process_spp_file was called correctly
+    mock_process_spp.assert_called_once_with(
+        mock_inner_zip,
+        'file1.csv',
+        'SETTLEMENT_POINT_PRICES',
+        'db_name'
+    )
 
 
 @mock.patch('ercot_scraping.archive_api.rate_limited_request')

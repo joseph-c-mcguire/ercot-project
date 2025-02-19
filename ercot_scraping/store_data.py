@@ -4,7 +4,6 @@ import json
 import logging
 import pandas as pd
 
-from ercot_scraping.create_ercot_tables import create_ercot_tables
 from ercot_scraping.data_models import (
     SettlementPointPrice,
     Bid,
@@ -107,8 +106,7 @@ def store_data_to_db(
             else:
                 continue
 
-            delivery_date = record_dict.get('deliveryDate')
-            if delivery_date:
+            if delivery_date := record_dict.get('deliveryDate'):
                 # Normalize the date format to YYYY-MM-DD
                 try:
                     if '/' in delivery_date:
@@ -162,8 +160,7 @@ def validate_spp_data(data: dict) -> None:
         raise ValueError("Data must be a list of records")
 
     first_record = data["data"][0]
-    missing_fields = required_fields - set(first_record.keys())
-    if missing_fields:
+    if missing_fields := required_fields - set(first_record.keys()):
         raise ValueError(f"Missing required fields: {missing_fields}")
 
 
@@ -226,8 +223,7 @@ def store_prices_to_db(
         raise
 
     if filter_by_awards:
-        active_points = get_active_settlement_points(db_name)
-        if active_points:  # Only filter if we found active points
+        if active_points := get_active_settlement_points(db_name):
             data = filter_by_settlement_points(data, active_points)
 
     # Aggregate the data before storing
@@ -257,8 +253,7 @@ def validate_model_data(data: dict, required_fields: set, model_name: str) -> No
     if not isinstance(first_record, dict):
         raise ValueError(f"Invalid data record format for {model_name}")
 
-    missing_fields = required_fields - set(first_record.keys())
-    if missing_fields:
+    if missing_fields := required_fields - set(first_record.keys()):
         raise ValueError(
             f"Missing required fields for {model_name}: {missing_fields}")
 

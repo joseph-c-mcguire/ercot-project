@@ -4,6 +4,7 @@ import logging
 
 from dotenv import load_dotenv
 from ercot_scraping.queries import *  # Import all queries
+from ercot_scraping.column_mappings import *
 from ercot_scraping.data_models import BidAward, Bid, Offer, OfferAward, SettlementPointPrice
 
 # Load environment variables from .env file

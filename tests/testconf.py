@@ -1,3 +1,4 @@
+import contextlib
 import os
 import sqlite3
 from pathlib import Path
@@ -13,11 +14,9 @@ ERCOT_DATA_DB = Path("_data/ercot_data.db")
 
 def close_all_db_connections(db_path):
     """Close any open connections to the database."""
-    try:
+    with contextlib.suppress(sqlite3.Error):
         conn = sqlite3.connect(db_path)
         conn.close()
-    except sqlite3.Error:
-        pass  # Database might not exist or be already closed
 
 
 SETTLEMENT_POINT_PRICE_SAMPLE = {

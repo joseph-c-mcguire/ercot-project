@@ -13,7 +13,6 @@ from ercot_scraping.config import (
     MAX_DATE_RANGE,
     DISABLE_RATE_LIMIT_SLEEP  # import new flag
 )
-from ercot_scraping.utils import split_date_range
 
 
 def fetch_in_batches(

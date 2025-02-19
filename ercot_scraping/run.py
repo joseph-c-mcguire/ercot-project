@@ -501,22 +501,15 @@ def _setup_command_parser(subparsers: argparse._SubParsersAction, arg1: str, hel
 
 def main():
     """
-    Main function to parse command-line arguments and execute the specified command.
-    Commands:
-        - historical-dam: Download historical DAM data.
-        - historical-spp: Download historical SPP data.
-        - update-dam: Update daily DAM data.
-        - update-spp: Update daily SPP data.
-        - merge-data: Merge data in the database.
-    Arguments:
-        --debug: Set logging level to DEBUG.
-        --command: The command to execute.
-        --start: Start date for historical data download.
-        --end: End date for historical data download.
-        --db: Database name.
-        --qse_filter: QSE filter file path.
+    This function performs the following steps:
+    1. Parses command-line arguments using the `parse_args` function.
+    2. Sets the logging level to DEBUG if the `--debug` flag is specified.
+    3. Checks if a command is specified in the arguments. If not, logs an error and exits.
+    4. Attempts to execute the specified command using the `execute_command` function.
+    5. Handles HTTP errors specifically by calling `handle_http_error`.
+    6. Logs any other exceptions that occur during command execution and re-raises them.
     Raises:
-        requests.exceptions.HTTPError: If an HTTP error occurs during data download.
+        requests.exceptions.HTTPError: If an HTTP error occurs during command execution.
         Exception: If any other error occurs during command execution.
     """
     args = parse_args()
@@ -530,44 +523,69 @@ def main():
         return
 
     try:
-        # Load QSE filter if specified
-        qse_filter = None
-        if hasattr(args, "qse_filter") and args.qse_filter:
-            qse_filter = load_qse_shortnames(args.qse_filter)
-
-        # Execute the requested command
-        if args.command == "historical-dam":
-            download_historical_dam_data(
-                start_date=args.start,
-                end_date=args.end,
-                db_name=args.db,
-                qse_filter=qse_filter,
-            )
-
-        elif args.command == "historical-spp":
-            download_historical_spp_data(
-                start_date=args.start, end_date=args.end, db_name=args.db
-            )
-
-        elif args.command == "update-dam":
-            update_daily_dam_data(db_name=args.db, qse_filter=qse_filter)
-
-        elif args.command == "update-spp":
-            update_daily_spp_data(db_name=args.db)
-
-        elif args.command == "merge-data":
-            merge_data(db_name=args.db)
-
+        execute_command(args)
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            logger.error(f"API endpoint not found: {e.response.url}")
-        else:
-            logger.error(f"HTTP error occurred: {str(e)}")
-        raise
-
+        handle_http_error(e)
     except Exception as e:
         logger.error(f"Error executing command: {str(e)}")
         raise
+
+
+def execute_command(args: argparse.Namespace) -> None:
+    """
+    Execute the specified command based on parsed arguments.
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments.
+    """
+    qse_filter = load_qse_filter_if_specified(args)
+
+    if args.command == "historical-dam":
+        download_historical_dam_data(
+            start_date=args.start,
+            end_date=args.end,
+            db_name=args.db,
+            qse_filter=qse_filter,
+        )
+    elif args.command == "historical-spp":
+        download_historical_spp_data(
+            start_date=args.start, end_date=args.end, db_name=args.db
+        )
+    elif args.command == "update-dam":
+        update_daily_dam_data(db_name=args.db, qse_filter=qse_filter)
+    elif args.command == "update-spp":
+        update_daily_spp_data(db_name=args.db)
+    elif args.command == "merge-data":
+        merge_data(db_name=args.db)
+
+
+def load_qse_filter_if_specified(args: argparse.Namespace) -> Optional[Set[str]]:
+    """
+    Load QSE filter if specified in the arguments.
+
+    Args:
+        args (argparse.Namespace): Parsed command-line arguments.
+
+    Returns:
+        Optional[Set[str]]: Loaded QSE filter or None.
+    """
+    if hasattr(args, "qse_filter") and args.qse_filter:
+        return load_qse_shortnames(args.qse_filter)
+    return None
+
+
+def handle_http_error(e: requests.exceptions.HTTPError) -> None:
+    """
+    Handle HTTP errors during command execution.
+
+    Args:
+        e (requests.exceptions.HTTPError): The HTTP error to handle.
+    """
+    if e.response.status_code == 404:
+        logger.error(f"API endpoint not found: {e.response.url}")
+    else:
+        logger.error(f"HTTP error occurred: {str(e)}")
+    raise
 
 
 if __name__ == "__main__":

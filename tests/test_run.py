@@ -1,13 +1,10 @@
-import sys
 from unittest.mock import patch, ANY
-from datetime import datetime, timedelta
 from pathlib import Path
 import pytest
 import sqlite3
 from ercot_scraping.run import (
     download_historical_dam_data,
     download_historical_spp_data,
-    update_daily_dam_data,
     update_daily_spp_data,
     parse_args,
     main,

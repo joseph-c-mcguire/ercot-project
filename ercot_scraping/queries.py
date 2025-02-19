@@ -1,4 +1,3 @@
-
 # Table Creation Queries
 SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY = """
 CREATE TABLE IF NOT EXISTS SETTLEMENT_POINT_PRICES (
@@ -190,24 +189,24 @@ SELECT
     ba.BidId,
     spp.SettlementPointPrice as MARK_PRICE,
     CASE 
-        WHEN b.energyOnlyBidMw1 IS NOT NULL THEN b.energyOnlyBidPrice1
-        WHEN b.energyOnlyBidMw2 IS NOT NULL THEN b.energyOnlyBidPrice2
-        WHEN b.energyOnlyBidMw3 IS NOT NULL THEN b.energyOnlyBidPrice3
-        WHEN b.energyOnlyBidMw4 IS NOT NULL THEN b.energyOnlyBidPrice4
-        WHEN b.energyOnlyBidMw5 IS NOT NULL THEN b.energyOnlyBidPrice5
+        WHEN b.EnergyOnlyBidMW1 IS NOT NULL THEN b.EnergyOnlyBidPrice1
+        WHEN b.EnergyOnlyBidMW2 IS NOT NULL THEN b.EnergyOnlyBidPrice2
+        WHEN b.EnergyOnlyBidMW3 IS NOT NULL THEN b.EnergyOnlyBidPrice3
+        WHEN b.EnergyOnlyBidMW4 IS NOT NULL THEN b.EnergyOnlyBidPrice4
+        WHEN b.EnergyOnlyBidMW5 IS NOT NULL THEN b.EnergyOnlyBidPrice5
         ELSE NULL
     END as BID_PRICE,
     CASE 
-        WHEN b.energyOnlyBidMw1 IS NOT NULL THEN b.energyOnlyBidMw1
-        WHEN b.energyOnlyBidMw2 IS NOT NULL THEN b.energyOnlyBidMw2
-        WHEN b.energyOnlyBidMw3 IS NOT NULL THEN b.energyOnlyBidMw3
-        WHEN b.energyOnlyBidMw4 IS NOT NULL THEN b.energyOnlyBidMw4
-        WHEN b.energyOnlyBidMw5 IS NOT NULL THEN b.energyOnlyBidMw5
+        WHEN b.EnergyOnlyBidMW1 IS NOT NULL THEN b.EnergyOnlyBidMW1
+        WHEN b.EnergyOnlyBidMW2 IS NOT NULL THEN b.EnergyOnlyBidMW2
+        WHEN b.EnergyOnlyBidMW3 IS NOT NULL THEN b.EnergyOnlyBidMW3
+        WHEN b.EnergyOnlyBidMW4 IS NOT NULL THEN b.EnergyOnlyBidMW4
+        WHEN b.EnergyOnlyBidMW5 IS NOT NULL THEN b.EnergyOnlyBidMW5
         ELSE NULL
     END as BID_SIZE,
-    b.blockCurve
+    b.BlockCurveIndicator as blockCurve
 FROM BID_AWARDS ba
-LEFT JOIN BIDS b ON ba.BidId = b.energyOnlyBidID 
+LEFT JOIN BIDS b ON ba.BidId = b.EnergyOnlyBidID 
     AND ba.DeliveryDate = b.DeliveryDate 
     AND ba.HourEnding = b.HourEnding
 LEFT JOIN SETTLEMENT_POINT_PRICES spp ON ba.SettlementPoint = spp.SettlementPointName 

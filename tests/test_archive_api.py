@@ -5,7 +5,8 @@ from io import BytesIO
 
 import pytest
 
-from ercot_scraping.config import COLUMN_MAPPINGS, DAM_TABLE_DATA_MAPPING
+from ercot_scraping.column_mappings import COLUMN_MAPPINGS
+from ercot_scraping.config import DAM_TABLE_DATA_MAPPING
 from ercot_scraping.archive_api import (
     download_spp_archive_files,
     download_dam_archive_files,

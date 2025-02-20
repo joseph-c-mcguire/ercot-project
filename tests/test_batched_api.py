@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from ercot_scraping.apis.batched_api import fetch_in_batches
 from ercot_scraping.config.config import LOGGER
+
 # Mock the logger to avoid printouts during testing
 LOGGER.info = MagicMock()
 LOGGER.warning = MagicMock()

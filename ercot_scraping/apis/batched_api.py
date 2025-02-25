@@ -48,6 +48,8 @@ def fetch_in_batches(
     Returns:
         dict[str, any]: Combined results from all batches
     """
+    LOGGER.debug(
+        f"Starting fetch_in_batches with start_date={start_date} and end_date={end_date}")
     # Validate batch_days
     batch_days = min(batch_days, MAX_DATE_RANGE)
 
@@ -59,9 +61,7 @@ def fetch_in_batches(
     if total_days - 1 <= batch_days:
         batches = [(start_date, end_date)]
     else:
-        batches = []
-        # First batch covers only the start_date.
-        batches.append((start_date, start_date))
+        batches = [(start_date, start_date)]
         remaining_days = total_days - 1
         next_day = dt_start + timedelta(days=1)
         while remaining_days > 0:
@@ -88,6 +88,12 @@ def fetch_in_batches(
         for qse_name in sorted(qse_names):
             LOGGER.info(f"Processing QSE: {qse_name}")
             for i, (batch_start, batch_end) in enumerate(batches, 1):
+                LOGGER.debug(
+                    f"Creating batch {i}/{total_batches} from {batch_start} to {batch_end}")
+                # If desired, compare batch_start/batch_end with earliest DB date:
+                # if batch_end < earliest_db_date:
+                #     LOGGER.debug(f"Skipping batch {batch_start}-{batch_end}: before earliest DB date {earliest_db_date}")
+                #     continue
                 try:
                     # Initialize for pagination
                     current_page = 1
@@ -157,6 +163,12 @@ def fetch_in_batches(
     else:
         # Handle non-QSE batches
         for i, (batch_start, batch_end) in enumerate(batches, 1):
+            LOGGER.debug(
+                f"Creating batch {i}/{total_batches} from {batch_start} to {batch_end}")
+            # If desired, compare batch_start/batch_end with earliest DB date:
+            # if batch_end < earliest_db_date:
+            #     LOGGER.debug(f"Skipping batch {batch_start}-{batch_end}: before earliest DB date {earliest_db_date}")
+            #     continue
             try:
                 # Initialize for pagination
                 current_page = 1

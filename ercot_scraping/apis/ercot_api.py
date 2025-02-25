@@ -24,11 +24,11 @@ from ercot_scraping.config.config import (
     QSE_FILTER_CSV,
     LOGGER,
     DEFAULT_BATCH_DAYS,
-    ERCOT_DB_NAME
+    ERCOT_DB_NAME,
+    ERCOT_TABLE_MODEL_MAPPING
 )
 from ercot_scraping.apis.batched_api import fetch_in_batches, rate_limited_request
 from ercot_scraping.utils.utils import refresh_access_token
-from ercot_scraping.database.store_data import store_data_to_db
 
 
 def fetch_data_from_endpoint(
@@ -147,7 +147,8 @@ def fetch_dam_energy_bid_awards(
         qse_names=qse_names,
         db_name=db_name,
         table_name="DAM_ENERGY_BID_AWARDS",
-        model_class=None
+        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BID_AWARDS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BID_AWARDS"]["insert_query"]
     )
 
 
@@ -195,7 +196,8 @@ def fetch_dam_energy_bids(
         qse_names=qse_names,
         db_name=db_name,
         table_name="DAM_ENERGY_BIDS",
-        model_class=None
+        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BIDS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BIDS"]["insert_query"]
     )
 
 
@@ -243,7 +245,8 @@ def fetch_dam_energy_only_offer_awards(
         qse_names=qse_names,
         db_name=db_name,
         table_name="DAM_ENERGY_ONLY_OFFER_AWARDS",
-        model_class=None
+        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFER_AWARDS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFER_AWARDS"]["insert_query"]
     )
 
 
@@ -293,7 +296,8 @@ def fetch_dam_energy_only_offers(
         qse_names=qse_names,
         db_name=db_name,
         table_name="DAM_ENERGY_ONLY_OFFERS",
-        model_class=None
+        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFERS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFERS"]["insert_query"]
     )
 
 
@@ -344,5 +348,6 @@ def fetch_settlement_point_prices(
         batch_days,
         db_name=db_name,
         table_name="SETTLEMENT_POINT_PRICES",
-        model_class=None
+        model_class=ERCOT_TABLE_MODEL_MAPPING["SETTLEMENT_POINT_PRICES"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["SETTLEMENT_POINT_PRICES"]["insert_query"]
     )

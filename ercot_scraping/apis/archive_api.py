@@ -4,7 +4,7 @@ import io
 import zipfile
 from io import BytesIO
 
-from ercot_scraping.config.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, DAM_TABLE_DATA_MAPPING, COLUMN_MAPPINGS
+from ercot_scraping.config.config import ERCOT_API_REQUEST_HEADERS, ERCOT_ARCHIVE_API_BASE_URL, API_MAX_ARCHIVE_FILES, LOGGER, DAM_FILENAMES, ERCOT_TABLE_MODEL_MAPPING, COLUMN_MAPPINGS
 from ercot_scraping.apis.batched_api import rate_limited_request
 from ercot_scraping.utils.utils import get_table_name
 from ercot_scraping.database.store_data import store_data_to_db
@@ -122,9 +122,9 @@ def process_spp_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str
 
         if rows:
             LOGGER.info(f"Storing {len(rows)} rows to {table_name}")
-            if table_name in DAM_TABLE_DATA_MAPPING:
-                model_class = DAM_TABLE_DATA_MAPPING[table_name]["model_class"]
-                insert_query = DAM_TABLE_DATA_MAPPING[table_name]["insert_query"]
+            if table_name in ERCOT_TABLE_MODEL_MAPPING:
+                model_class = ERCOT_TABLE_MODEL_MAPPING[table_name]["model_class"]
+                insert_query = ERCOT_TABLE_MODEL_MAPPING[table_name]["insert_query"]
                 store_data_to_db(
                     data={"data": rows}, db_name=db_name, table_name=table_name, model_class=model_class, insert_query=insert_query)
             else:
@@ -261,9 +261,9 @@ def process_dam_file(zip_folder: zipfile.ZipFile, filename: str, table_name: str
 
         if normalized_rows:
             LOGGER.info(f"Storing {len(normalized_rows)} rows to {table_name}")
-            if table_name in DAM_TABLE_DATA_MAPPING:
-                model_class = DAM_TABLE_DATA_MAPPING[table_name]["model_class"]
-                insert_query = DAM_TABLE_DATA_MAPPING[table_name]["insert_query"]
+            if table_name in ERCOT_TABLE_MODEL_MAPPING:
+                model_class = ERCOT_TABLE_MODEL_MAPPING[table_name]["model_class"]
+                insert_query = ERCOT_TABLE_MODEL_MAPPING[table_name]["insert_query"]
                 store_data_to_db(
                     data={"data": normalized_rows},
                     db_name=db_name,

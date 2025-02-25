@@ -6,7 +6,7 @@ from io import BytesIO
 import pytest
 
 from ercot_scraping.config.column_mappings import COLUMN_MAPPINGS
-from ercot_scraping.config.config import DAM_TABLE_DATA_MAPPING
+from ercot_scraping.config.config import ERCOT_TABLE_MODEL_MAPPING
 from ercot_scraping.apis.archive_api import (
     download_spp_archive_files,
     download_dam_archive_files,
@@ -124,7 +124,7 @@ def test_process_spp_file_with_data(mock_logger, mock_store_data):
 
     COLUMN_MAPPINGS['test_table'] = {
         'header1': 'mapped_header1', 'header2': 'mapped_header2'}
-    DAM_TABLE_DATA_MAPPING['test_table'] = {
+    ERCOT_TABLE_MODEL_MAPPING['test_table'] = {
         "model_class": mock.Mock(),
         "insert_query": "INSERT INTO test_table (mapped_header1, mapped_header2) VALUES (:mapped_header1, :mapped_header2)"
     }
@@ -140,8 +140,8 @@ def test_process_spp_file_with_data(mock_logger, mock_store_data):
         ]},
         db_name='test_db',
         table_name='test_table',
-        model_class=DAM_TABLE_DATA_MAPPING['test_table']["model_class"],
-        insert_query=DAM_TABLE_DATA_MAPPING['test_table']["insert_query"]
+        model_class=ERCOT_TABLE_MODEL_MAPPING['test_table']["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING['test_table']["insert_query"]
     )
 
 
@@ -373,13 +373,13 @@ def test_process_dam_file_happy_path(
         process_dam_file(zip_folder, "data.csv", table_name, db_name)
 
         # Assert
-        if table_name in DAM_TABLE_DATA_MAPPING:
+        if table_name in ERCOT_TABLE_MODEL_MAPPING:
             mock_store_data.assert_called_once_with(
                 data={"data": expected_rows},
                 db_name=db_name,
                 table_name=table_name,
-                model_class=DAM_TABLE_DATA_MAPPING[table_name]["model_class"],
-                insert_query=DAM_TABLE_DATA_MAPPING[table_name]["insert_query"],
+                model_class=ERCOT_TABLE_MODEL_MAPPING[table_name]["model_class"],
+                insert_query=ERCOT_TABLE_MODEL_MAPPING[table_name]["insert_query"],
             )
 
 

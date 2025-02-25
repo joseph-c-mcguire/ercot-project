@@ -5,15 +5,19 @@ This tool allows you to fetch historical and current ERCOT market data including
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 pip install .
 ```
+
 If you want to make edits run it in editable mode:
+
 ```bash
 pip install -e .
 ```
 
 2. Create a `.env` file in the root directory with the following variables:
+
 ```env
 ERCOT_API_USERNAME=your_username
 ERCOT_API_PASSWORD=your_password 
@@ -33,6 +37,7 @@ python ercot_scraping historical-dam --start YYYY-MM-DD --end YYYY-MM-DD [--debu
 ```
 
 Example:
+
 ```bash
 python ercot_scraping historical-dam --start 2024-01-01 --end 2024-01-02
 ```
@@ -46,6 +51,7 @@ python ercot_scraping historical-spp --start YYYY-MM-DD --end YYYY-MM-DD [--debu
 ```
 
 Example:
+
 ```bash
 python ercot_scraping historical-spp --start 2024-01-01 --end 2024-01-02
 ```
@@ -92,7 +98,7 @@ The tool creates/updates a SQLite database (`_data/ercot_data.db`) with the foll
 - BIDS  
 - OFFER_AWARDS
 - OFFERS
-- FINAL 
+- FINAL
 
 Data is stored in a normalized format with consistent column names and data types.
 

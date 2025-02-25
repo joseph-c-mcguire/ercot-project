@@ -23,10 +23,12 @@ from ercot_scraping.config.config import (
     ERCOT_API_REQUEST_HEADERS,
     QSE_FILTER_CSV,
     LOGGER,
-    DEFAULT_BATCH_DAYS
+    DEFAULT_BATCH_DAYS,
+    ERCOT_DB_NAME
 )
 from ercot_scraping.apis.batched_api import fetch_in_batches, rate_limited_request
 from ercot_scraping.utils.utils import refresh_access_token
+from ercot_scraping.database.store_data import store_data_to_db
 
 
 def fetch_data_from_endpoint(
@@ -112,7 +114,8 @@ def fetch_dam_energy_bid_awards(
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
+    qse_names: Optional[set[str]] = None,
+    db_name: str = ERCOT_DB_NAME
 ) -> dict[str, any]:
     """
     Fetches DAM energy bid awards data from the specified endpoint.
@@ -141,7 +144,10 @@ def fetch_dam_energy_bid_awards(
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_names=qse_names,
+        db_name=db_name,
+        table_name="DAM_ENERGY_BID_AWARDS",
+        model_class=None
     )
 
 
@@ -151,7 +157,8 @@ def fetch_dam_energy_bids(
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
+    qse_names: Optional[set[str]] = None,
+    db_name: str = ERCOT_DB_NAME
 ) -> dict[str, any]:
     """
     Fetches DAM energy bids data from the specified API endpoint.
@@ -185,7 +192,10 @@ def fetch_dam_energy_bids(
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_names=qse_names,
+        db_name=db_name,
+        table_name="DAM_ENERGY_BIDS",
+        model_class=None
     )
 
 
@@ -195,7 +205,8 @@ def fetch_dam_energy_only_offer_awards(
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
+    qse_names: Optional[set[str]] = None,
+    db_name: str = ERCOT_DB_NAME
 ) -> dict[str, any]:
     """
     Fetch DAM energy only offer awards data from the API endpoint.
@@ -229,7 +240,10 @@ def fetch_dam_energy_only_offer_awards(
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_names=qse_names,
+        db_name=db_name,
+        table_name="DAM_ENERGY_ONLY_OFFER_AWARDS",
+        model_class=None
     )
 
 
@@ -239,7 +253,8 @@ def fetch_dam_energy_only_offers(
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
+    qse_names: Optional[set[str]] = None,
+    db_name: str = ERCOT_DB_NAME
 ) -> dict[str, any]:
     """
     Fetches Demand Aggregated Market (DAM) energy only offers data.
@@ -275,7 +290,10 @@ def fetch_dam_energy_only_offers(
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_names=qse_names,
+        db_name=db_name,
+        table_name="DAM_ENERGY_ONLY_OFFERS",
+        model_class=None
     )
 
 
@@ -284,7 +302,8 @@ def fetch_settlement_point_prices(
     end_date: Optional[str] = None,
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    db_name: str = ERCOT_DB_NAME
 ) -> dict[str, any]:
     """
     The function retrieves real-time settlement point prices for nodes, zones, and hubs
@@ -323,4 +342,7 @@ def fetch_settlement_point_prices(
         start_date,
         end_date,
         batch_days,
+        db_name=db_name,
+        table_name="SETTLEMENT_POINT_PRICES",
+        model_class=None
     )

@@ -14,6 +14,8 @@ from ercot_scraping.config.config import (
     DISABLE_RATE_LIMIT_SLEEP  # import new flag
 )
 
+from ercot_scraping.database.store_data import store_data_to_db
+
 
 def fetch_in_batches(
     fetch_func: callable,
@@ -21,10 +23,15 @@ def fetch_in_batches(
     end_date: str,
     batch_days: int = DEFAULT_BATCH_DAYS,
     qse_names: Optional[set[str]] = None,
+    db_name: Optional[str] = None,
+    table_name: Optional[str] = None,
+    model_class: Optional[object] = None,
+    insert_query: Optional[str] = None,
     **kwargs
 ) -> dict[str, any]:
     """
     Execute a fetch function in batches over a date range.
+    For each API pull, data is immediately stored to the DB.
 
     Args:
         fetch_func (callable): Function to fetch data
@@ -32,6 +39,10 @@ def fetch_in_batches(
         end_date (str): Overall end date
         batch_days (int): Days per batch, defaults to 1 to handle API limits
         qse_names (Optional[set[str]]): Set of QSE names to filter by
+        db_name (Optional[str]): Database name
+        table_name (Optional[str]): Table name
+        model_class (Optional[object]): Model class
+        insert_query (Optional[str]): Insert query
         **kwargs: Additional arguments to pass to fetch_func
 
     Returns:
@@ -107,6 +118,14 @@ def fetch_in_batches(
                             LOGGER.info(
                                 f"Got {len(batch_data['data'])} records from page {current_page}"
                             )
+                            if db_name and table_name:
+                                store_data_to_db(
+                                    data={"data": batch_data["data"]},
+                                    db_name=db_name,
+                                    table_name=table_name,
+                                    model_class=model_class,
+                                    insert_query=insert_query
+                                )
 
                         # Update pagination info
                         if "_meta" in batch_data:
@@ -167,6 +186,14 @@ def fetch_in_batches(
                         LOGGER.info(
                             f"Got {len(batch_data['data'])} records from page {current_page}"
                         )
+                        if db_name and table_name:
+                            store_data_to_db(
+                                data={"data": batch_data["data"]},
+                                db_name=db_name,
+                                table_name=table_name,
+                                model_class=model_class,
+                                insert_query=insert_query
+                            )
 
                     # Update pagination info
                     if "_meta" in batch_data:

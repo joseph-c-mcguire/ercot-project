@@ -1,13 +1,14 @@
 """
 Create tables in the SQLite database for ERCOT project.
-This function connects to an SQLite database (or creates it if it doesn't exist)
-and creates the following tables if they do not already exist:
-- SETTLEMENT_POINT_PRICES: Stores settlement point prices with columns for delivery date,
-  delivery hour, delivery interval, settlement point name, settlement point type,
-  settlement point price, and DST flag.
-- BIDS: Stores bid data with columns for delivery date, hour ending, settlement point,
-  QSE name, energy-only bid MW and price for up to 10 bids, bid ID, multi-hour block
-  indicator, and block curve indicator.
+This function connects to an SQLite database
+(or creates it if it doesn't exist) and creates the
+following tables if they do not already exist:
+- SETTLEMENT_POINT_PRICES: Stores settlement point prices with columns for
+  delivery date, delivery hour, delivery interval, settlement point name,
+  settlement point type, settlement point price, and DST flag.
+- BIDS: Stores bid data with columns for delivery date, hour ending,
+  settlement point, QSE name, energy-only bid MW and price for up to 10 bids,
+  bid ID, multi-hour block indicator, and block curve indicator.
 - BID_AWARDS: Stores bid awards with columns for delivery date, hour ending, settlement
   point, QSE name, energy-only bid award MW, settlement point price, and bid ID.
 - OFFERS: Stores offer data with columns for delivery date, hour ending, settlement point,
@@ -25,7 +26,7 @@ from ercot_scraping.config.config import (
     BID_AWARDS_TABLE_CREATION_QUERY,
     OFFERS_TABLE_CREATION_QUERY,
     OFFER_AWARDS_TABLE_CREATION_QUERY,
-    ERCOT_DB_NAME
+    ERCOT_DB_NAME,
 )
 
 

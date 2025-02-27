@@ -146,9 +146,9 @@ def fetch_dam_energy_bid_awards(
         batch_days,
         qse_names=qse_names,
         db_name=db_name,
-        table_name="DAM_ENERGY_BID_AWARDS",
-        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BID_AWARDS"]["model_class"],
-        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BID_AWARDS"]["insert_query"]
+        table_name="BID_AWARDS",
+        model_class=ERCOT_TABLE_MODEL_MAPPING["BID_AWARDS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["BID_AWARDS"]["insert_query"]
     )
 
 
@@ -195,9 +195,9 @@ def fetch_dam_energy_bids(
         batch_days,
         qse_names=qse_names,
         db_name=db_name,
-        table_name="DAM_ENERGY_BIDS",
-        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BIDS"]["model_class"],
-        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_BIDS"]["insert_query"]
+        table_name="BIDS",
+        model_class=ERCOT_TABLE_MODEL_MAPPING["BIDS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["BIDS"]["insert_query"]
     )
 
 
@@ -244,9 +244,9 @@ def fetch_dam_energy_only_offer_awards(
         batch_days,
         qse_names=qse_names,
         db_name=db_name,
-        table_name="DAM_ENERGY_ONLY_OFFER_AWARDS",
-        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFER_AWARDS"]["model_class"],
-        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFER_AWARDS"]["insert_query"]
+        table_name="OFFER_AWARDS",
+        model_class=ERCOT_TABLE_MODEL_MAPPING["OFFER_AWARDS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["OFFER_AWARDS"]["insert_query"]
     )
 
 
@@ -295,9 +295,9 @@ def fetch_dam_energy_only_offers(
         batch_days,
         qse_names=qse_names,
         db_name=db_name,
-        table_name="DAM_ENERGY_ONLY_OFFERS",
-        model_class=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFERS"]["model_class"],
-        insert_query=ERCOT_TABLE_MODEL_MAPPING["DAM_ENERGY_ONLY_OFFERS"]["insert_query"]
+        table_name="OFFERS",
+        model_class=ERCOT_TABLE_MODEL_MAPPING["OFFERS"]["model_class"],
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["OFFERS"]["insert_query"]
     )
 
 

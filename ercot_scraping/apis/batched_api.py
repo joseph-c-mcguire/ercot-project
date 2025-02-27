@@ -68,7 +68,10 @@ def fetch_in_batches(
             current_batch_days = min(batch_days, remaining_days)
             batch_start = next_day.strftime(fmt)
             batch_end = (
-                next_day + timedelta(days=current_batch_days - 1)).strftime(fmt)
+                next_day +
+                timedelta(
+                    days=current_batch_days -
+                    1)).strftime(fmt)
             batches.append((batch_start, batch_end))
             next_day += timedelta(days=current_batch_days)
             remaining_days -= current_batch_days
@@ -112,7 +115,8 @@ def fetch_in_batches(
                             **kwargs
                         )
 
-                        # Update fields if they're in the response and not set yet
+                        # Update fields if they're in the response and not set
+                        # yet
                         if fields is None and "fields" in batch_data:
                             fields = batch_data["fields"]
 
@@ -124,14 +128,15 @@ def fetch_in_batches(
                             LOGGER.info(
                                 f"Got {len(batch_data['data'])} records from page {current_page}"
                             )
-                            if db_name and table_name:
+                            if db_name and table_name and fields:
                                 store_data_to_db(
-                                    data={"data": batch_data["data"]},
+                                    data={
+                                        "data": batch_data["data"],
+                                        "fields": fields},
                                     db_name=db_name,
                                     table_name=table_name,
                                     model_class=model_class,
-                                    insert_query=insert_query
-                                )
+                                    insert_query=insert_query)
 
                         # Update pagination info
                         if "_meta" in batch_data:
@@ -140,7 +145,8 @@ def fetch_in_batches(
                             current_page = batch_data["_meta"].get(
                                 "currentPage", 1) + 1
                         else:
-                            # If no _meta info, increment page and assume we're done after first page
+                            # If no _meta info, increment page and assume we're
+                            # done after first page
                             total_pages = 1
                             current_page += 1
 
@@ -198,14 +204,15 @@ def fetch_in_batches(
                         LOGGER.info(
                             f"Got {len(batch_data['data'])} records from page {current_page}"
                         )
-                        if db_name and table_name:
+                        if db_name and table_name and fields:
                             store_data_to_db(
-                                data={"data": batch_data["data"]},
+                                data={
+                                    "data": batch_data["data"],
+                                    "fields": fields},
                                 db_name=db_name,
                                 table_name=table_name,
                                 model_class=model_class,
-                                insert_query=insert_query
-                            )
+                                insert_query=insert_query)
 
                     # Update pagination info
                     if "_meta" in batch_data:

@@ -1,6 +1,5 @@
 import sqlite3
-from typing import Optional, Set
-import json
+from typing import Optional, Set, Any
 import logging
 import pandas as pd
 
@@ -17,12 +16,12 @@ from ercot_scraping.config.config import (
     BIDS_INSERT_QUERY,
     OFFERS_INSERT_QUERY,
     OFFER_AWARDS_INSERT_QUERY,
-    ERCOT_DB_NAME
+    ERCOT_DB_NAME,
 )
 from ercot_scraping.utils.filters import (
     get_active_settlement_points,
     filter_by_settlement_points,
-    filter_by_qse_names
+    filter_by_qse_names,
 )
 from ercot_scraping.utils.utils import normalize_data
 
@@ -32,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def store_data_to_db(
-    data: dict[str, any],
+    data: dict[str, Any],
     db_name: str,
     table_name: str,
     insert_query: str,
@@ -76,8 +75,9 @@ def store_data_to_db(
 
     # Log unique dates in the data
     if hasattr(model_class, "deliveryDate"):
-        unique_dates = {record.get("deliveryDate", "unknown")
-                        for record in data["data"]}
+        unique_dates = {
+            record.get("deliveryDate", "unknown") for record in data["data"]
+        }
         logger.info(
             f"Storing {table_name} data for dates: {sorted(unique_dates)}")
 
@@ -94,6 +94,17 @@ def store_data_to_db(
         logger.info(f"Table {table_name} does not exist yet")
         existing_dates = set()
 
+    # If all dates in the data are already in the database, skip processing
+    if hasattr(model_class, "deliveryDate"):
+        unique_dates = {
+            record.get("deliveryDate", "unknown") for record in data["data"]
+        }
+        if unique_dates.issubset(existing_dates):
+            logger.info(
+                f"All dates in the data are already in {table_name}, skipping insertion.")
+            conn.close()
+            return
+
     # Filter out records with dates that already exist
     filtered_rows = []
     for record in data["data"]:
@@ -106,17 +117,15 @@ def store_data_to_db(
             else:
                 continue
 
-            if delivery_date := record_dict.get('deliveryDate'):
+            if delivery_date := record_dict.get("deliveryDate"):
                 # Normalize the date format to YYYY-MM-DD
                 try:
-                    if '/' in delivery_date:
+                    if "/" in delivery_date:
                         # Convert MM/DD/YYYY to YYYY-MM-DD
-                        mm, dd, yyyy = delivery_date.split('/')
+                        mm, dd, yyyy = delivery_date.split("/")
                         delivery_date = f"{yyyy}-{mm:0>2}-{dd:0>2}"
 
-                    # Skip if this date is already in the database
-                    if delivery_date not in existing_dates:
-                        filtered_rows.append(record_dict)
+                    filtered_rows.append(record_dict)
                 except ValueError as e:
                     logger.error(f"Error parsing date {delivery_date}: {e}")
                     continue
@@ -150,7 +159,7 @@ def validate_spp_data(data: dict) -> None:
         "settlementPointName",
         "settlementPointType",
         "settlementPointPrice",
-        "dstFlag"
+        "dstFlag",
     }
 
     if not data or "data" not in data or not data["data"]:
@@ -184,25 +193,24 @@ def aggregate_spp_data(data: dict) -> dict:
     # Use lowercase column names to match the model field names
     groupby_cols = ["deliveryDate", "deliveryHour"]
 
-    grouped_df = df.groupby(
-        groupby_cols,
-        as_index=False,
-        dropna=False
-    ).agg({
-        "deliveryInterval": "first",
-        "settlementPointName": "first",
-        "settlementPointType": "first",
-        "settlementPointPrice": "mean",
-        "dstFlag": "first"
-    })
+    grouped_df = df.groupby(groupby_cols, as_index=False, dropna=False).agg(
+        {
+            "deliveryInterval": "first",
+            "settlementPointName": "first",
+            "settlementPointType": "first",
+            "settlementPointPrice": "mean",
+            "dstFlag": "first",
+        }
+    )
 
     return {"data": grouped_df.to_dict("records")}
 
 
 # Delegation functions for different models using local constants:
-def store_prices_to_db(
-    data: dict[str, any], db_name: str = ERCOT_DB_NAME, filter_by_awards: bool = True
-) -> None:
+def store_prices_to_db(data: dict[str,
+                                  Any],
+                       db_name: str = ERCOT_DB_NAME,
+                       filter_by_awards: bool = True) -> None:
     """
     Stores settlement point prices data into the database.
 
@@ -238,7 +246,10 @@ def store_prices_to_db(
     )
 
 
-def validate_model_data(data: dict, required_fields: set, model_name: str) -> None:
+def validate_model_data(
+        data: dict,
+        required_fields: set,
+        model_name: str) -> None:
     """Validate data structure against required fields."""
     if not data or "data" not in data or not data["data"]:
         raise ValueError(f"Invalid or empty data structure for {model_name}")
@@ -259,7 +270,7 @@ def validate_model_data(data: dict, required_fields: set, model_name: str) -> No
 
 
 def store_bid_awards_to_db(
-    data: dict[str, any],
+    data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
@@ -271,49 +282,45 @@ def store_bid_awards_to_db(
         "qseName",
         "energyOnlyBidAwardInMW",
         "settlementPointPrice",
-        "bidId"
+        "bidId",
     }
     validate_model_data(data, required_fields, "BidAward")
     store_data_to_db(
-        data, db_name, "BID_AWARDS", BID_AWARDS_INSERT_QUERY, BidAward, qse_filter
-    )
+        data,
+        db_name,
+        "BID_AWARDS",
+        BID_AWARDS_INSERT_QUERY,
+        BidAward,
+        qse_filter)
 
 
 def store_bids_to_db(
-    data: dict[str, any],
+    data: dict[str, Any],
     db_name: Optional[str] = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """Stores bid data into the database."""
-    required_fields = {
-        "deliveryDate",
-        "hourEnding",
-        "settlementPointName",
-        "qseName"
-    }
+    required_fields = {"deliveryDate", "hourEnding",
+                       "settlementPointName", "qseName"}
     validate_model_data(data, required_fields, "Bid")
     store_data_to_db(data, db_name, "BIDS", BIDS_INSERT_QUERY, Bid, qse_filter)
 
 
 def store_offers_to_db(
-    data: dict[str, any],
+    data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
     """Stores offer data into the database."""
-    required_fields = {
-        "deliveryDate",
-        "hourEnding",
-        "settlementPointName",
-        "qseName"
-    }
+    required_fields = {"deliveryDate", "hourEnding",
+                       "settlementPointName", "qseName"}
     validate_model_data(data, required_fields, "Offer")
     store_data_to_db(data, db_name, "OFFERS",
                      OFFERS_INSERT_QUERY, Offer, qse_filter)
 
 
 def store_offer_awards_to_db(
-    data: dict[str, any],
+    data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,
 ) -> None:
@@ -325,9 +332,13 @@ def store_offer_awards_to_db(
         "qseName",
         "energyOnlyOfferAwardInMW",
         "settlementPointPrice",
-        "offerId"
+        "offerId",
     }
     validate_model_data(data, required_fields, "OfferAward")
     store_data_to_db(
-        data, db_name, "OFFER_AWARDS", OFFER_AWARDS_INSERT_QUERY, OfferAward, qse_filter
-    )
+        data,
+        db_name,
+        "OFFER_AWARDS",
+        OFFER_AWARDS_INSERT_QUERY,
+        OfferAward,
+        qse_filter)

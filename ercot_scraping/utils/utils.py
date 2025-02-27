@@ -24,7 +24,8 @@ def detect_encoding(content: bytes) -> str:
     return result['encoding'] if result['encoding'] else 'utf-8'
 
 
-def split_date_range(start_date: str, end_date: str, batch_days: int = DEFAULT_BATCH_DAYS) -> List[tuple[str, str]]:
+def split_date_range(start_date: str, end_date: str,
+                     batch_days: int = DEFAULT_BATCH_DAYS) -> List[tuple[str, str]]:
     """Split a date range into smaller batches."""
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
@@ -43,7 +44,7 @@ def split_date_range(start_date: str, end_date: str, batch_days: int = DEFAULT_B
     batches = []
     batch_start = start
     while batch_start <= end:
-        batch_end = min(batch_start + timedelta(days=batch_days-1), end)
+        batch_end = min(batch_start + timedelta(days=batch_days - 1), end)
         batch = (
             batch_start.strftime("%Y-%m-%d"),
             batch_end.strftime("%Y-%m-%d")
@@ -64,9 +65,13 @@ def should_use_archive_api(start_date: str, end_date: str) -> bool:
     """
     Determine if the archive API should be used based on date range.
     """
-    cutoff = datetime.strptime(API_CUTOFF_DATE, "%Y-%m-%d")
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
+    try:
+        cutoff = datetime.strptime(API_CUTOFF_DATE, "%Y-%m-%d")
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+    except ValueError as e:
+        logging.error(f"Invalid date format: {e}")
+        raise
 
     return start < cutoff or end < cutoff
 

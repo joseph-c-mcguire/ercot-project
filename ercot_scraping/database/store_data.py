@@ -63,6 +63,10 @@ def store_data_to_db(
         ValueError: If the data provided cannot be used to instantiate an instance of model_class due to a TypeError,
                     indicating invalid or missing data fields.
     """
+    if not isinstance(data, dict):
+        logger.error(f"Expected data to be a dictionary but got {type(data)}")
+        return
+
     if normalize:
         data = normalize_data(data, table_name=table_name.lower())
 

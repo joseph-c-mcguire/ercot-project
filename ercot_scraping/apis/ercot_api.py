@@ -40,6 +40,8 @@ def fetch_data_from_endpoint(
     retries: int = 3,
     qse_name: Optional[str] = None,  # Changed from qse_names to qse_name
     page: Optional[int] = None,  # Add page parameter
+    api_mode: str = "current",  # Add api_mode parameter
+    **kwargs
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering.
@@ -57,6 +59,24 @@ def fetch_data_from_endpoint(
     Raises:
         HTTPError: If an error occurs during the HTTP request (non-successful status code).
     """
+
+    # If in archive mode, redirect to archive API
+    if api_mode == "archive":
+        from ercot_scraping.apis.archive_api import get_archive_document_ids, download_dam_archive_files, download_spp_archive_files
+
+        # Determine product ID based on endpoint
+        if "spp" in endpoint.lower():
+            product_id = "NP6-905-CD"
+            download_func = download_spp_archive_files
+        else:
+            product_id = "NP3-966-er"
+            download_func = download_dam_archive_files
+
+        # Get document IDs and download archive data
+        doc_ids = get_archive_document_ids(product_id, start_date, end_date)
+        return download_func(product_id, doc_ids, kwargs.get('db_name'))
+
+    # Original current API logic
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
@@ -115,7 +135,8 @@ def fetch_dam_energy_bid_awards(
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
     qse_names: Optional[set[str]] = None,
-    db_name: str = ERCOT_DB_NAME
+    db_name: str = ERCOT_DB_NAME,
+    api_mode: str = "current"  # Add api_mode parameter
 ) -> dict[str, any]:
     """
     Fetches DAM energy bid awards data from the specified endpoint.
@@ -139,11 +160,13 @@ def fetch_dam_energy_bid_awards(
             e,
             header=header,
             qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            page=kw.get('page'),
+            api_mode=api_mode,  # Pass api_mode parameter
+            db_name=db_name  # Pass db_name parameter
         ),
-        start_date,
-        end_date,
-        batch_days,
+        start_date=start_date,
+        end_date=end_date,
+        batch_days=batch_days,
         qse_names=qse_names,
         db_name=db_name,
         table_name="BID_AWARDS",
@@ -159,7 +182,8 @@ def fetch_dam_energy_bids(
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
     qse_names: Optional[set[str]] = None,
-    db_name: str = ERCOT_DB_NAME
+    db_name: str = ERCOT_DB_NAME,
+    api_mode: str = "current"  # Add api_mode parameter
 ) -> dict[str, any]:
     """
     Fetches DAM energy bids data from the specified API endpoint.
@@ -188,11 +212,13 @@ def fetch_dam_energy_bids(
             e,
             header=header,
             qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            page=kw.get('page'),
+            api_mode=api_mode,  # Pass api_mode parameter
+            db_name=db_name  # Pass db_name parameter
         ),
-        start_date,
-        end_date,
-        batch_days,
+        start_date=start_date,
+        end_date=end_date,
+        batch_days=batch_days,
         qse_names=qse_names,
         db_name=db_name,
         table_name="BIDS",
@@ -208,7 +234,8 @@ def fetch_dam_energy_only_offer_awards(
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
     qse_names: Optional[set[str]] = None,
-    db_name: str = ERCOT_DB_NAME
+    db_name: str = ERCOT_DB_NAME,
+    api_mode: str = "current"
 ) -> dict[str, any]:
     """
     Fetch DAM energy only offer awards data from the API endpoint.
@@ -238,15 +265,17 @@ def fetch_dam_energy_only_offer_awards(
             header=header,
             qse_name=kw.get('qse_name'),
             page=kw.get('page'),
+            api_mode=api_mode,
+            db_name=db_name
         ),
-        start_date,
-        end_date,
-        batch_days,
+        start_date=start_date,
+        end_date=end_date,
+        batch_days=batch_days,
         qse_names=qse_names,
         db_name=db_name,
         table_name="OFFER_AWARDS",
         model_class=ERCOT_TABLE_MODEL_MAPPING["OFFER_AWARDS"]["model_class"],
-        insert_query=ERCOT_TABLE_MODEL_MAPPING["OFFER_AWARDS"]["insert_query"]
+        insert_query=ERCOT_TABLE_MODEL_MAPPING["OFFER_AWARDS"]["insert_query"],
     )
 
 
@@ -257,10 +286,11 @@ def fetch_dam_energy_only_offers(
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
     qse_names: Optional[set[str]] = None,
-    db_name: str = ERCOT_DB_NAME
+    db_name: str = ERCOT_DB_NAME,
+    api_mode: str = "current"
 ) -> dict[str, any]:
     """
-    Fetches Demand Aggregated Market (DAM) energy only offers data.
+    Fetches DAM energy only offers data.
 
     This function retrieves DAM energy only offers by delegating the request
     to the 'fetch_data_from_endpoint' function using the specific endpoint
@@ -268,11 +298,11 @@ def fetch_dam_energy_only_offers(
     specification of a start date, an end date, and HTTP headers.
 
     Parameters:
-        start_date (Optional[str]): The start date for the data query, formatted as a string.
+        start_date(Optional[str]): The start date for the data query, formatted as a string.
                                     If not provided, a default or full range is assumed.
-        end_date (Optional[str]): The end date for the data query, formatted as a string.
+        end_date(Optional[str]): The end date for the data query, formatted as a string.
                                   If not provided, a default or full range is assumed.
-        header (Optional[dict[str, any]]): A dictionary of HTTP headers to include in the request.
+        header(Optional[dict[str, any]]): A dictionary of HTTP headers to include in the request.
                                            This may contain authentication tokens or other metadata.
                                            Defaults to None.
 
@@ -288,11 +318,13 @@ def fetch_dam_energy_only_offers(
             e,
             header=header,
             qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            page=kw.get('page'),
+            api_mode=api_mode,
+            db_name=db_name
         ),
-        start_date,
-        end_date,
-        batch_days,
+        start_date=start_date,
+        end_date=end_date,
+        batch_days=batch_days,
         qse_names=qse_names,
         db_name=db_name,
         table_name="OFFERS",
@@ -307,18 +339,19 @@ def fetch_settlement_point_prices(
     header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
     tracking_list_path: Optional[str] = QSE_FILTER_CSV,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    db_name: str = ERCOT_DB_NAME
+    db_name: str = ERCOT_DB_NAME,
+    api_mode: str = "current"
 ) -> dict[str, any]:
     """
-    The function retrieves real-time settlement point prices for nodes, zones, and hubs
-    from the ERCOT (Electric Reliability Council of Texas) API.
+    The function retrieves real-time settlement point prices for nodes, zones, and hubs.
+    from the ERCOT(Electric Reliability Council of Texas) API.
 
     Args:
-        start_date (str, optional): The start date for the data range in 'YYYY-MM-DD' format.
+        start_date(str, optional): The start date for the data range in 'YYYY-MM-DD' format.
             If None, defaults to current date.
-        end_date (str, optional): The end date for the data range in 'YYYY-MM-DD' format.
+        end_date(str, optional): The end date for the data range in 'YYYY-MM-DD' format.
             If None, defaults to current date.
-        header (dict[str, any], optional): Custom headers for the API request.
+        header(dict[str, any], optional): Custom headers for the API request.
             If None, default headers will be used.
 
     Returns:
@@ -329,23 +362,25 @@ def fetch_settlement_point_prices(
             }
 
     Raises:
-        APIError: If the ERCOT API request fails
         ValueError: If the date format is invalid
+        APIError: If the ERCOT API request fails
     """
-    # Load QSE names from tracking list
     LOGGER.info(
         f"Fetching settlement point prices from {start_date} to {end_date}")
     return fetch_in_batches(
         lambda s, e, **kw: fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_SETTLEMENT,
             "spp_node_zone_hub",
-            s, e,
+            s,
+            e,
             header=header,
-            page=kw.get('page')
+            page=kw.get('page'),
+            api_mode=api_mode,
+            db_name=db_name
         ),
-        start_date,
-        end_date,
-        batch_days,
+        start_date=start_date,
+        end_date=end_date,
+        batch_days=batch_days,
         db_name=db_name,
         table_name="SETTLEMENT_POINT_PRICES",
         model_class=ERCOT_TABLE_MODEL_MAPPING["SETTLEMENT_POINT_PRICES"]["model_class"],

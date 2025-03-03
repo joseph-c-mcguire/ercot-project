@@ -3,15 +3,15 @@ import requests
 import time
 from datetime import datetime, timedelta
 
-from ratelimit import limits, sleep_and_retry
-
+# Add API_CUTOFF_DATE to imports
 from ercot_scraping.config.config import (
     API_RATE_LIMIT_REQUESTS,
     API_RATE_LIMIT_INTERVAL,
     LOGGER,
     DEFAULT_BATCH_DAYS,
     MAX_DATE_RANGE,
-    DISABLE_RATE_LIMIT_SLEEP  # import new flag
+    DISABLE_RATE_LIMIT_SLEEP,
+    API_CUTOFF_DATE  # Add this import
 )
 
 from ercot_scraping.database.store_data import store_data_to_db
@@ -53,10 +53,60 @@ def fetch_in_batches(
     # Validate batch_days
     batch_days = min(batch_days, MAX_DATE_RANGE)
 
-    # --- Begin custom date-splitting logic ---
     fmt = "%Y-%m-%d"
     dt_start = datetime.strptime(start_date, fmt)
     dt_end = datetime.strptime(end_date, fmt)
+    dt_cutoff = datetime.strptime(API_CUTOFF_DATE, fmt)
+    dt_now = datetime.now()
+
+    # Check if date range crosses cutoff and we're past cutoff date
+    if dt_start < dt_cutoff < dt_end and dt_now > dt_cutoff:
+        LOGGER.info(
+            f"Date range crosses archive cutoff date ({API_CUTOFF_DATE}). Splitting requests between archive and current API.")
+
+        # Get archive data (up to cutoff date)
+        archive_data = fetch_in_batches(
+            fetch_func,
+            start_date,
+            dt_cutoff.strftime(fmt),
+            batch_days,
+            qse_names,
+            db_name,
+            table_name,
+            model_class,
+            insert_query,
+            api_mode="archive",
+            **kwargs
+        )
+
+        # Get current API data (after cutoff date)
+        current_data = fetch_in_batches(
+            fetch_func,
+            (dt_cutoff + timedelta(days=1)).strftime(fmt),
+            end_date,
+            batch_days,
+            qse_names,
+            db_name,
+            table_name,
+            model_class,
+            insert_query,
+            api_mode="current",
+            **kwargs
+        )
+
+        # Merge results
+        combined_data = archive_data.get(
+            "data", []) + current_data.get("data", [])
+        combined_fields = archive_data.get(
+            "fields", []) or current_data.get(
+            "fields", [])
+
+        return {
+            "data": combined_data,
+            "fields": combined_fields
+        }
+
+    # --- Begin custom date-splitting logic ---
     total_days = (dt_end - dt_start).days + 1
     if total_days - 1 <= batch_days:
         batches = [(start_date, end_date)]

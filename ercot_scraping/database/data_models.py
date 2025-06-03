@@ -10,7 +10,7 @@ from typing import Optional
 class SettlementPointPrice:
     """
     Represents settlement price details for a delivery period.
-    Attributes: 
+    Attributes:
                  deliveryDate (str): The date when the delivery occurs.
         deliveryHour (int): The hour of delivery.
         deliveryInterval (int): The specific interval within the delivery hour.
@@ -152,7 +152,7 @@ class Bid:
 class BidAward:
     """
     Represents an ERCOT bid award record.
-    Field names match the API response format with property getters/setters 
+    Field names match the API response format with property getters/setters
     to maintain compatibility with existing code.
     """
     deliveryDate: str  # API uses lowercase
@@ -164,8 +164,15 @@ class BidAward:
     bidId: str        # API uses lowercase
 
     def __post_init__(self):
-        # Convert bidid to string if it's not already
-        self.bidId = str(self.bidId)
+        # Ensure types are correct and handle None gracefully
+        if self.hourEnding is not None:
+            self.hourEnding = int(self.hourEnding)
+        if self.energyOnlyBidAwardInMW is not None:
+            self.energyOnlyBidAwardInMW = float(self.energyOnlyBidAwardInMW)
+        if self.settlementPointPrice is not None:
+            self.settlementPointPrice = float(self.settlementPointPrice)
+        if self.bidId is not None:
+            self.bidId = str(self.bidId)
 
     def as_tuple(self):
         return (
@@ -175,7 +182,7 @@ class BidAward:
             self.qseName,
             self.energyOnlyBidAwardInMW,
             self.settlementPointPrice,
-            self.bidId,
+            self.bidId
         )
 
 

@@ -26,7 +26,7 @@ from ercot_scraping.config.config import (
     OFFERS_INSERT_QUERY,
     OFFER_AWARDS_INSERT_QUERY,
     ERCOT_DB_NAME,
-    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY
+    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
 )
 from ercot_scraping.utils.filters import (
     get_active_settlement_points,
@@ -35,6 +35,7 @@ from ercot_scraping.utils.filters import (
 )
 from ercot_scraping.utils.utils import normalize_data
 from ercot_scraping.utils.logging_utils import setup_module_logging
+from ercot_scraping.database.create_ercot_tables import create_ercot_tables
 
 
 # Configure logging
@@ -121,6 +122,8 @@ def store_data_to_db(
     model_class: type,
     qse_filter: Optional[Set[str]] = None,
     normalize: bool = True,
+    # NEW: control number of records per insert
+    batch_size: Optional[int] = 10_000,
 ) -> None:
     """
     Stores data into the specified SQLite database and table.
@@ -170,38 +173,25 @@ def store_data_to_db(
         cursor = conn.cursor()
         # Check if table exists, create if not
         cursor.execute(
-            f"SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
         if not cursor.fetchone():
+            # Instead of creating the table inline, call the central table
+            # creation function
             logger.info(
-                "Table %s does not exist yet, creating table.",
+                "Table %s does not exist yet, calling create_ercot_tables().",
                 table_name)
-            # Use a mapping or convention to get the creation query
-            creation_query = None
-            if table_name.upper() == "OFFERS":
-                from ercot_scraping.config.config import OFFERS_TABLE_CREATION_QUERY
-                creation_query = OFFERS_TABLE_CREATION_QUERY
-            elif table_name.upper() == "BIDS":
-                from ercot_scraping.config.config import BIDS_TABLE_CREATION_QUERY
-                creation_query = BIDS_TABLE_CREATION_QUERY
-            elif table_name.upper() == "BID_AWARDS":
-                from ercot_scraping.config.config import BID_AWARDS_TABLE_CREATION_QUERY
-                creation_query = BID_AWARDS_TABLE_CREATION_QUERY
-            elif table_name.upper() == "OFFER_AWARDS":
-                from ercot_scraping.config.config import OFFER_AWARDS_TABLE_CREATION_QUERY
-                creation_query = OFFER_AWARDS_TABLE_CREATION_QUERY
-            elif table_name.upper() == "SETTLEMENT_POINT_PRICES":
-                from ercot_scraping.config.config import SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY
-                creation_query = SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY
-            if creation_query:
-                cursor.execute(creation_query)
-                conn.commit()
-                logger.info("Created table %s successfully.", table_name)
-            else:
+            create_ercot_tables(db_name)
+            # Re-check if the table now exists
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            if not cursor.fetchone():
                 logger.error(
-                    "No creation query found for table %s.",
+                    "Table %s still does not exist after create_ercot_tables().",
                     table_name)
                 raise ValueError(
-                    f"No creation query found for table {table_name}")
+                    f"Table {table_name} could not be created in {db_name}")
+            else:
+                logger.info("Table %s created successfully.", table_name)
 
         # Filter out records with dates that already exist
         filtered_rows = []
@@ -226,8 +216,98 @@ def store_data_to_db(
                         record["deliveryDate"])
         for record in data["data"]:
             try:
-                if "deliveryDate" in record and record["deliveryDate"] in existing_dates:
-                    continue
+                # If record is a list, map it to a dict using model field names
+                if isinstance(record, list):
+                    if model_class is SettlementPointPrice:
+                        field_names = [
+                            'deliveryDate',
+                            'deliveryHour',
+                            'deliveryInterval',
+                            'settlementPointName',
+                            'settlementPointType',
+                            'settlementPointPrice',
+                            'dstFlag']
+                    elif model_class is Offer:
+                        field_names = [
+                            'deliveryDate',
+                            'hourEnding',
+                            'settlementPointName',
+                            'qseName',
+                            'energyOnlyOfferMW1',
+                            'energyOnlyOfferPrice1',
+                            'energyOnlyOfferMW2',
+                            'energyOnlyOfferPrice2',
+                            'energyOnlyOfferMW3',
+                            'energyOnlyOfferPrice3',
+                            'energyOnlyOfferMW4',
+                            'energyOnlyOfferPrice4',
+                            'energyOnlyOfferMW5',
+                            'energyOnlyOfferPrice5',
+                            'energyOnlyOfferMW6',
+                            'energyOnlyOfferPrice6',
+                            'energyOnlyOfferMW7',
+                            'energyOnlyOfferPrice7',
+                            'energyOnlyOfferMW8',
+                            'energyOnlyOfferPrice8',
+                            'energyOnlyOfferMW9',
+                            'energyOnlyOfferPrice9',
+                            'energyOnlyOfferMW10',
+                            'energyOnlyOfferPrice10',
+                            'offerId',
+                            'multiHourBlock',
+                            'blockCurve']
+                    elif model_class is Bid:
+                        field_names = [
+                            'deliveryDate',
+                            'hourEnding',
+                            'settlementPointName',
+                            'qseName',
+                            'energyOnlyBidMw1',
+                            'energyOnlyBidPrice1',
+                            'energyOnlyBidMw2',
+                            'energyOnlyBidPrice2',
+                            'energyOnlyBidMw3',
+                            'energyOnlyBidPrice3',
+                            'energyOnlyBidMw4',
+                            'energyOnlyBidPrice4',
+                            'energyOnlyBidMw5',
+                            'energyOnlyBidPrice5',
+                            'energyOnlyBidMw6',
+                            'energyOnlyBidPrice6',
+                            'energyOnlyBidMw7',
+                            'energyOnlyBidPrice7',
+                            'energyOnlyBidMw8',
+                            'energyOnlyBidPrice8',
+                            'energyOnlyBidMw9',
+                            'energyOnlyBidPrice9',
+                            'energyOnlyBidMw10',
+                            'energyOnlyBidPrice10',
+                            'bidId',
+                            'multiHourBlock',
+                            'blockCurve']
+                    elif model_class is OfferAward:
+                        field_names = [
+                            'deliveryDate',
+                            'hourEnding',
+                            'settlementPointName',
+                            'qseName',
+                            'energyOnlyOfferAwardInMW',
+                            'settlementPointPrice',
+                            'offerId']
+                    elif model_class is BidAward:
+                        field_names = [
+                            'deliveryDate',
+                            'hourEnding',
+                            'settlementPointName',
+                            'qseName',
+                            'energyOnlyBidAwardInMW',
+                            'settlementPointPrice',
+                            'bidId']
+                    else:
+                        logger.warning(
+                            "Unknown model_class for list record mapping: %s", model_class)
+                        continue
+                    record = dict(zip(field_names, record))
                 obj = model_class(**record)
                 filtered_rows.append(obj.as_tuple())
             except (TypeError, ValueError) as e:
@@ -236,39 +316,35 @@ def store_data_to_db(
         logger.info("Found %d new records to insert", len(filtered_rows))
 
         if filtered_rows:
-            try:
+            if batch_size is not None and batch_size > 0:
+                for i in range(0, len(filtered_rows), batch_size):
+                    chunk = filtered_rows[i:i + batch_size]
+                    cursor.executemany(insert_query, chunk)
+                    # Insert a row into INSERTED_AT for this batch
+                    cursor.execute(
+                        "INSERT INTO INSERTED_AT (table_name, inserted_at) VALUES (?, CURRENT_TIMESTAMP)",
+                        (table_name,)
+                    )
+                    conn.commit()
+                    logger.info(
+                        "Inserted batch of %d records into %s table.",
+                        len(chunk), table_name)
+            else:
                 cursor.executemany(insert_query, filtered_rows)
+                cursor.execute(
+                    "INSERT INTO INSERTED_AT (table_name, inserted_at) VALUES (?, CURRENT_TIMESTAMP)",
+                    (table_name,)
+                )
                 conn.commit()
                 logger.info(
                     "Inserted %d records into %s table.",
                     len(filtered_rows), table_name)
-            except sqlite3.OperationalError as e:
-                if ("no such table" in str(e)
-                        and table_name == "SETTLEMENT_POINT_PRICES"):
-                    logger.info(
-                        "Table %s does not exist yet: %s", table_name, e)
-                    cursor.execute(
-                        SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY)
-                    conn.commit()
-                    logger.info(
-                        "Created table %s. Retrying insert.", table_name)
-                    cursor.executemany(insert_query, filtered_rows)
-                    conn.commit()
-                    logger.info(
-                        "Inserted %d records into %s after creating table.",
-                        len(filtered_rows),
-                        table_name)
-                else:
-                    logger.error("Error in store_data_to_db: %s", e)
-                    raise
     except sqlite3.Error as e:
         logger.error("SQLite error in store_data_to_db: %s", e)
         raise
     finally:
-        try:
+        if 'conn' in locals() and conn:
             conn.close()
-        except Exception:
-            pass
 
 
 def validate_spp_data(data: dict) -> None:
@@ -292,7 +368,8 @@ def validate_spp_data(data: dict) -> None:
     first_record = data["data"][0]
     if isinstance(first_record, list):
         logger.warning(
-            "First SPP record is a list, not a dict. Field mapping will be applied or validation skipped.")
+            "First SPP record is a list, not a dict. Field mapping will be "
+            "applied or validation skipped.")
         # Optionally, try to map to dict if you know the field order, or just
         # skip validation
         return
@@ -324,7 +401,8 @@ def aggregate_spp_data(data: dict) -> dict:
             data["data"][0],
             list):
         logger.warning(
-            "SPP data records are lists in aggregate_spp_data, mapping to dicts using SettlementPointPrice fields.")
+            "SPP data records are lists in aggregate_spp_data, mapping to "
+            "dicts using SettlementPointPrice fields.")
         field_names = [
             'deliveryDate',
             'deliveryHour',
@@ -361,7 +439,8 @@ def aggregate_spp_data(data: dict) -> dict:
 # Delegation functions for different models using local constants:
 def store_prices_to_db(data: dict[str, Any],
                        db_name: str = ERCOT_DB_NAME,
-                       filter_by_awards: bool = True) -> None:
+                       filter_by_awards: bool = True,
+                       batch_size: int = 500) -> None:
     """
     Stores settlement point prices data into the database. If data is empty, does nothing.
 
@@ -371,6 +450,7 @@ def store_prices_to_db(data: dict[str, Any],
         filter_by_awards (bool): If True, only store prices for settlement points
                                that appear in bid/offer awards. If award tables don't
                                exist, stores all prices.
+        batch_size (int): Number of records to insert per batch (default 500)
 
     Raises:
         ValueError: If the data structure is invalid or missing required fields
@@ -417,6 +497,7 @@ def store_prices_to_db(data: dict[str, Any],
         "SETTLEMENT_POINT_PRICES",
         SETTLEMENT_POINT_PRICES_INSERT_QUERY,
         SettlementPointPrice,
+        batch_size=batch_size
     )
 
 
@@ -447,309 +528,350 @@ def store_bid_awards_to_db(
     data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
+    batch_size: int = 500
 ) -> None:
     """
-    Stores bid award records into an SQLite database.
-    This function takes bid award data in the form of a dictionary, validates that the required
-    fields are present, and then inserts each record into the BID_AWARDS table of the specified database.
-    It performs logging at various steps to trace data validation, insertion, and any errors encountered.
-    Parameters:
-        data (dict[str, Any]): A dictionary expected to contain a key "data", which should be a list of
-                               dictionaries where each dictionary represents a bid award record.
-        db_name (str): The name (or file path) of the SQLite database where data should be stored.
-                       Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): An optional set of QSE names to filter the records (currently unused).
-                                         Defaults to None.
-    Raises:
-        Exception: Propagates any exceptions encountered during database operations after logging the error.
+    Batch version: Stores bid award records in batches.
     """
-    # Log the type and length of data['data']
-    if not data or "data" not in data:
-        logger.warning("No 'data' key found in bid_awards input.")
-        return
-
-    logger.debug(
-        "store_bid_awards_to_db: type(data['data'])=%s, len=%d",
-        type(data['data']), len(data['data']))
-    if len(data['data']) > 0:
-        logger.debug(
-            "store_bid_awards_to_db: First record: %s",
-            data['data'][0])
-        logger.debug(
-            "store_bid_awards_to_db: All keys in first record: %s",
-            list(data['data'][0].keys()) if isinstance(data['data'][0], dict)
-            else 'Not a dict')
-    else:
-        logger.debug("store_bid_awards_to_db: data['data'] is empty.")
-
-    if not data["data"]:
+    if is_data_empty(data):
         logger.warning("No bid awards to store, skipping DB insert.")
         return
-    required_fields = {
-        "deliveryDate",
-        "hourEnding",
-        "settlementPointName",
-        "qseName",
-        "energyOnlyBidAwardInMW",
-        "settlementPointPrice",
-        "bidId"
-    }
-    validate_model_data(data, required_fields, "BidAward")
-
-    # Synchronous DB insert
-    try:
-        conn = sqlite3.connect(db_name)
-        cursor = conn.cursor()
-        # Create table if not exists (optional, for robustness)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS BID_AWARDS (
-                DeliveryDate TEXT,
-                HourEnding INTEGER,
-                SettlementPoint TEXT,
-                QSEName TEXT,
-                EnergyOnlyBidAwardMW REAL,
-                SettlementPointPrice REAL,
-                BidId TEXT
-            )
-        """)
-        inserted = 0
-        for record in data["data"]:
-            try:
-                instance = BidAward(**record)
-                cursor.execute(BID_AWARDS_INSERT_QUERY, instance.as_tuple())
-                inserted += 1
-            except (TypeError, ValueError) as e:
-                logger.error("Error inserting record: %s", e)
-                continue
-        conn.commit()
-        logger.info(
-            "Inserted %d bid award records into BID_AWARDS table.",
-            inserted)
-    except Exception as e:
-        logger.error("Error in store_bid_awards_to_db: %s", e)
-        raise
-    finally:
-        if 'conn' in locals():
-            conn.close()
+    store_data_to_db(
+        data,
+        db_name,
+        "BID_AWARDS",
+        BID_AWARDS_INSERT_QUERY,
+        BidAward,
+        batch_size=batch_size
+    )
 
 
 def store_bids_to_db(
     data: dict[str, Any],
     db_name: Optional[str] = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
+    batch_size: int = 500
 ) -> None:
     """
-    Stores bid records from the provided data dictionary into the SQLite database.
-
-    This function validates that the given data dictionary contains a non-empty 'data' key
-    with bid records. It uses a specified set of required fields ("deliveryDate", "hourEnding",
-    "settlementPointName", "qseName") to validate each record using the validate_model_data function.
-    After validation, it connects to the SQLite database (default name provided by ERCOT_DB_NAME),
-    ensures the BIDS table exists, and iterates over each record, attempting to instantiate a Bid
-    object and insert its data into the database using the BIDS_INSERT_QUERY. The function logs any
-    errors that occur during record insertion or if the bid data is missing/empty, and commits the changes
-    to the database before closing the connection.
-
-    Parameters:
-        data (dict[str, Any]): A dictionary expected to contain a key "data" with a list of bid records.
-        db_name (Optional[str], optional): The name of the SQLite database file. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]], optional): An optional set of QSE names to filter the data. Currently unused.
-
-    Raises:
-        Exception: Propagates any exceptions raised during database operations after logging the error.
-
-    Returns:
-        None
+    Batch version: Stores bid records in batches.
     """
-
-    if not data or "data" not in data or not data["data"]:
+    if is_data_empty(data):
         logger.warning("No bids to store, skipping DB insert.")
         return
-    required_fields = {
-        "deliveryDate",
-        "hourEnding",
-        "settlementPointName",
-        "qseName"
-    }
-    validate_model_data(data, required_fields, "Bid")
-    try:
-        conn = sqlite3.connect(db_name)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS BIDS (
-                DeliveryDate TEXT,
-                HourEnding INTEGER,
-                SettlementPoint TEXT,
-                QSEName TEXT
-            )
-        """)
-        inserted = 0
-        for record in data["data"]:
-            try:
-                instance = Bid(**record)
-                cursor.execute(BIDS_INSERT_QUERY, instance.as_tuple())
-                inserted += 1
-            except (TypeError, ValueError) as e:
-                logger.error("Error inserting bid record: %s", e)
-                continue
-        conn.commit()
-        logger.info(
-            "Inserted %d bid records into BIDS table.", inserted)
-    except Exception as e:
-        logger.error("Error in store_bids_to_db: %s", e)
-        raise
-    finally:
-        if 'conn' in locals():
-            conn.close()
+    store_data_to_db(
+        data,
+        db_name,
+        "BIDS",
+        BIDS_INSERT_QUERY,
+        Bid,
+        batch_size=batch_size
+    )
 
 
 def store_offers_to_db(
     data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
+    batch_size: int = 500
 ) -> None:
     """
-    Stores offer records into the SQLite database.
-
-    This function processes a given data dictionary expected to contain offer records and
-    inserts them into the OFFERS table in a SQLite database. It validates that the data
-    contains the required fields, creates the OFFERS table if it does not exist, and then
-    iterates over each record, converting it into an Offer instance before inserting it
-    into the database. Records that fail conversion or insertion are logged and skipped.
-
-    Parameters:
-        data (dict[str, Any]): A dictionary containing offer records under the key "data".
-                               Each element of data["data"] should be a mapping with at least
-                               the following keys: "deliveryDate", "hourEnding",
-                               "settlementPointName", and "qseName".
-        db_name (str, optional): The name of the SQLite database file. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): An optional filter for QSE values. This parameter is
-                                         currently unused.
-
-    Raises:
-        Exception: Propagates exceptions that occur during database operations after logging the error.
-
-    Returns:
-        None
+    Batch version: Stores offer records in batches.
     """
-
-    # logger = logging.getLogger(__name__)  # removed duplicate
-    if not data or "data" not in data or not data["data"]:
+    if is_data_empty(data):
         logger.warning("No offers to store, skipping DB insert.")
         return
-    required_fields = {
-        "deliveryDate",
-        "hourEnding",
-        "settlementPointName",
-        "qseName"
-    }
-    validate_model_data(data, required_fields, "Offer")
-    try:
-        conn = sqlite3.connect(db_name)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS OFFERS (
-                DeliveryDate TEXT,
-                HourEnding INTEGER,
-                SettlementPoint TEXT,
-                QSEName TEXT
-            )
-        """)
-        inserted = 0
-        for record in data["data"]:
-            try:
-                instance = Offer(**record)
-                cursor.execute(OFFERS_INSERT_QUERY, instance.as_tuple())
-                inserted += 1
-            except (TypeError, ValueError) as e:
-                logger.error("Error inserting offer record: %s", e)
-                continue
-        conn.commit()
-        logger.info(
-            "Inserted %d offer records into OFFERS table.", inserted)
-    except Exception as e:
-        logger.error("Error in store_offers_to_db: %s", e)
-        raise
-    finally:
-        if 'conn' in locals():
-            conn.close()
+    store_data_to_db(
+        data,
+        db_name,
+        "OFFERS",
+        OFFERS_INSERT_QUERY,
+        Offer,
+        batch_size=batch_size
+    )
 
 
 def store_offer_awards_to_db(
     data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
+    batch_size: int = 500
 ) -> None:
     """
-    Stores offer award records into an SQLite database.
-
-    This function inserts records from the provided data dictionary into the OFFER_AWARDS table of the specified
-    SQLite database. If the table does not exist, it is created. Each record within data["data"] must
-    contain the following required fields: 'deliveryDate', 'hourEnding', 'settlementPointName', 'qseName',
-    'energyOnlyOfferAwardInMW', 'settlementPointPrice', and 'offerId'.
-    The data is validated against these fields using the OfferAward model.
-
-    Parameters:
-        data (dict[str, Any]): A dictionary containing the offer award data under the key "data".
-        db_name (str): The SQLite database name or path. Defaults to ERCOT_DB_NAME.
-        qse_filter (Optional[Set[str]]): An optional set of QSE names for filtering
-            (note: not directly used in this function).
-
-    Raises:
-        Exception: Propagates any exception encountered during the database operations after logging
-        the error.
-
-    Notes:
-        - The function logs a warning and returns early if there is no valid data to insert.
-        - Each record is attempted individually; errors with individual records are logged and
-            skipped.
-        - The database connection is properly closed in the finally block.
+    Batch version: Stores offer award records in batches.
     """
-
-    # logger = logging.getLogger(__name__)  # removed duplicate
-    if not data or "data" not in data or not data["data"]:
+    if is_data_empty(data):
         logger.warning("No offer awards to store, skipping DB insert.")
         return
-    required_fields = {
-        "deliveryDate",
-        "hourEnding",
-        "settlementPointName",
-        "qseName",
-        "energyOnlyOfferAwardInMW",
-        "settlementPointPrice",
-        "offerId"
-    }
-    validate_model_data(data, required_fields, "OfferAward")
+    store_data_to_db(
+        data,
+        db_name,
+        "OFFER_AWARDS",
+        OFFER_AWARDS_INSERT_QUERY,
+        OfferAward,
+        batch_size=batch_size
+    )
+
+
+def store_bid_record_to_db(
+    record: dict,
+    db_name: str = ERCOT_DB_NAME,
+) -> None:
+    """
+    Stores a single bid record into the SQLite database.
+    Ensures the BIDS table exists using the canonical schema before inserting.
+    Uses the Bid dataclass for validation and conversion.
+    """
+    from ercot_scraping.database.data_models import Bid
+    try:
+        instance = Bid(**record)
+    except Exception as e:
+        logger.error(f"Invalid Bid record: {record} | Error: {e}")
+        raise ValueError(f"Invalid data record for Bid: {e}")
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_name)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", ("BIDS",))
+        if not cursor.fetchone():
+            logger.info(
+                "Table BIDS does not exist, calling create_ercot_tables().")
+            create_ercot_tables(db_name)
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", ("BIDS",))
+            if not cursor.fetchone():
+                logger.error(
+                    "Table BIDS still does not exist after create_ercot_tables().")
+                raise ValueError(
+                    f"Table BIDS could not be created in {db_name}")
+        cursor.execute(BIDS_INSERT_QUERY, instance.as_tuple())
+        conn.commit()
+        logger.info(
+            "Inserted bid record for %s %s.",
+            record.get("deliveryDate"),
+            record.get("qseName"))
+    except Exception as e:
+        logger.error("Error inserting bid record: %s", e)
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+def store_bid_award_record_to_db(
+    record: dict,
+    db_name: str = ERCOT_DB_NAME,
+) -> None:
+    """
+    Stores a single bid award record into the SQLite database.
+    Ensures the BID_AWARDS table exists using the canonical schema before inserting.
+    Uses the BidAward dataclass for validation and conversion.
+    """
+    try:
+        instance = BidAward(**record)
+    except Exception as e:
+        logger.error(f"Invalid BidAward record: {record} | Error: {e}")
+        raise ValueError(f"Invalid data record for BidAward: {e}")
     try:
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS OFFER_AWARDS (
-                DeliveryDate TEXT,
-                HourEnding INTEGER,
-                SettlementPoint TEXT,
-                QSEName TEXT,
-                EnergyOnlyOfferAwardMW REAL,
-                SettlementPointPrice REAL,
-                OfferID TEXT
-            )
-        """)
-        inserted = 0
-        for record in data["data"]:
-            try:
-                instance = OfferAward(**record)
-                cursor.execute(OFFER_AWARDS_INSERT_QUERY, instance.as_tuple())
-                inserted += 1
-            except (TypeError, ValueError) as e:
-                logger.error("Error inserting offer award record: %s", e)
-                continue
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", ("BID_AWARDS",))
+        if not cursor.fetchone():
+            logger.info(
+                "Table BID_AWARDS does not exist, calling create_ercot_tables().")
+            create_ercot_tables(db_name)
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", ("BID_AWARDS",))
+            if not cursor.fetchone():
+                logger.error(
+                    "Table BID_AWARDS still does not exist after create_ercot_tables().")
+                raise ValueError(
+                    f"Table BID_AWARDS could not be created in {db_name}")
+        cursor.execute(BID_AWARDS_INSERT_QUERY, instance.as_tuple())
         conn.commit()
         logger.info(
-            "Inserted %d offer award records into OFFER_AWARDS table.",
-            inserted)
-
+            "Inserted bid award record for %s %s.",
+            record.get("deliveryDate"),
+            record.get("qseName"))
     except Exception as e:
-        logger.error("Error in store_offer_awards_to_db: %s", e)
+        logger.error("Error inserting bid award record: %s", e)
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+def store_offer_record_to_db(
+    record: dict,
+    db_name: str = ERCOT_DB_NAME,
+) -> None:
+    """
+    Stores a single offer record into the SQLite database.
+    Ensures the OFFERS table exists using the canonical schema before inserting.
+    Uses the Offer dataclass for validation and conversion.
+    """
+    try:
+        instance = Offer(**record)
+    except Exception as e:
+        logger.error(f"Invalid Offer record: {record} | Error: {e}")
+        raise ValueError(f"Invalid data record for Offer: {e}")
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_name)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", ("OFFERS",))
+        if not cursor.fetchone():
+            logger.info(
+                "Table OFFERS does not exist, calling create_ercot_tables().")
+            create_ercot_tables(db_name)
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", ("OFFERS",))
+            if not cursor.fetchone():
+                logger.error(
+                    "Table OFFERS still does not exist after create_ercot_tables().")
+                raise ValueError(
+                    f"Table OFFERS could not be created in {db_name}")
+        cursor.execute(OFFERS_INSERT_QUERY, instance.as_tuple())
+        conn.commit()
+        logger.info(
+            "Inserted offer record for %s %s.",
+            record.get("deliveryDate"),
+            record.get("qseName"))
+    except Exception as e:
+        logger.error("Error inserting offer record: %s", e)
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+def store_offer_award_record_to_db(
+    record: dict,
+    db_name: str = ERCOT_DB_NAME,
+) -> None:
+    """
+    Stores a single offer award record into the SQLite database.
+    Ensures the OFFER_AWARDS table exists using the canonical schema before inserting.
+    Uses the OfferAward dataclass for validation and conversion.
+    """
+    from ercot_scraping.database.data_models import OfferAward
+    try:
+        instance = OfferAward(**record)
+    except Exception as e:
+        logger.error(f"Invalid OfferAward record: {record} | Error: {e}")
+        raise ValueError(f"Invalid data record for OfferAward: {e}")
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_name)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            ("OFFER_AWARDS",
+             ))
+        if not cursor.fetchone():
+            logger.info(
+                "Table OFFER_AWARDS does not exist, calling create_ercot_tables().")
+            create_ercot_tables(db_name)
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                ("OFFER_AWARDS",
+                 ))
+            if not cursor.fetchone():
+                logger.error(
+                    "Table OFFER_AWARDS still does not exist after create_ercot_tables().")
+                raise ValueError(
+                    f"Table OFFER_AWARDS could not be created in {db_name}")
+        cursor.execute(OFFER_AWARDS_INSERT_QUERY, instance.as_tuple())
+        conn.commit()
+        logger.info(
+            "Inserted offer award record for %s %s.",
+            record.get("deliveryDate"),
+            record.get("qseName"))
+    except Exception as e:
+        logger.error("Error inserting offer award record: %s", e)
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+
+def store_settlement_point_price_record_to_db(
+    record: dict,
+    db_name: str = ERCOT_DB_NAME,
+    status_bar: dict = None,
+    total: int = None,
+    log_every: int = 1000,
+) -> None:
+    """
+    Stores a single settlement point price record into the SQLite database.
+    Ensures the SETTLEMENT_POINT_PRICES table exists using the canonical schema before inserting.
+    Accepts both dict and list record formats (auto-maps list to dict if needed).
+    Uses the SettlementPointPrice dataclass for validation and conversion.
+    Optionally updates a status bar dict for macro progress logging.
+    Logs progress every `log_every` records.
+
+    DEPRECATED: Use store_prices_to_db with batch_size for batch inserts.
+    """
+    # DEPRECATED: Use store_prices_to_db with batch_size for batch inserts.
+    logger.warning(
+        "store_settlement_point_price_record_to_db is deprecated. Use store_prices_to_db with batch_size for batch inserts.")
+    if isinstance(record, list):
+        field_names = [
+            'deliveryDate',
+            'deliveryHour',
+            'deliveryInterval',
+            'settlementPointName',
+            'settlementPointType',
+            'settlementPointPrice',
+            'dstFlag'
+        ]
+        record = dict(zip(field_names, record))
+    if 'dstFlag' in record and isinstance(record['dstFlag'], bool):
+        record['dstFlag'] = 'Y' if record['dstFlag'] else 'N'
+    try:
+        instance = SettlementPointPrice(**record)
+    except Exception as e:
+        logger.error(
+            f"Invalid SettlementPointPrice record: {record} | Error: {e}")
+        raise ValueError(f"Invalid data record for SettlementPointPrice: {e}")
+    try:
+        conn = sqlite3.connect(db_name)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            ("SETTLEMENT_POINT_PRICES",))
+        if not cursor.fetchone():
+            logger.info(
+                f"Table SETTLEMENT_POINT_PRICES does not exist in {db_name}, calling create_ercot_tables().")
+            create_ercot_tables(db_name)
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                ("SETTLEMENT_POINT_PRICES",))
+            if not cursor.fetchone():
+                logger.error(
+                    f"Table SETTLEMENT_POINT_PRICES still does not exist after create_ercot_tables() in {db_name}.")
+                raise ValueError(
+                    f"Table SETTLEMENT_POINT_PRICES could not be created in {db_name}")
+        cursor.execute(
+            SETTLEMENT_POINT_PRICES_INSERT_QUERY,
+            instance.as_tuple())
+        conn.commit()
+        # Macro status bar logging
+        if status_bar is not None:
+            status_bar['count'] += 1
+            count = status_bar['count']
+            if count % log_every == 0 or (total and count == total):
+                if total:
+                    logger.info(
+                        f"[SPP] Progress: {count}/{total} records inserted into {db_name}...")
+                else:
+                    logger.info(
+                        f"[SPP] Progress: {count} records inserted into {db_name}...")
+    except Exception as e:
+        logger.error(
+            f"Error inserting settlement point price record into {db_name}: %s", e)
         raise
     finally:
         if 'conn' in locals():

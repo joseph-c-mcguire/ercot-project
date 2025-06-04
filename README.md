@@ -4,6 +4,11 @@ This tool allows you to fetch historical and current ERCOT market data including
 
 ## Getting Started
 
+> **Note for Windows users:**  
+> If you encounter issues with file paths (e.g., "file not found" errors), ensure you include the drive letter (such as `Z:`) in your path. For example:  
+> `Z:\Databases\000_ERCOT\ercot_data.db`  
+> Omitting the drive letter may cause Python or scripts to fail to locate files.
+
 ### 1. Clone the Repository
 
 ```bash

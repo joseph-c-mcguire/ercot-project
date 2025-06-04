@@ -1,9 +1,10 @@
 import os
-import requests
 import logging
 
+import requests
+
 from dotenv import load_dotenv
-from ercot_scraping.config.queries import *  # Import all queries
+from ercot_scraping.config.queries import *  # Import only necessary queries
 from ercot_scraping.config.column_mappings import *
 from ercot_scraping.database.data_models import BidAward, Bid, Offer, OfferAward, SettlementPointPrice
 
@@ -21,7 +22,7 @@ ERCOT_API_BASE_URL_SETTLEMENT = r"https://api.ercot.com/api/public-reports/np6-9
 AUTH_URL = f"https://ercotb2c.b2clogin.com/ercotb2c.onmicrosoft.com/B2C_1_PUBAPI-ROPC-FLOW/oauth2/v2.0/token?username={ERCOT_USERNAME}&password={ERCOT_PASSWORD}&grant_type=password&scope=openid+fec253ea-0d06-4272-a5e6-b478baeecd70+offline_access&client_id=fec253ea-0d06-4272-a5e6-b478baeecd70&response_type=id_token"
 
 # Sign In/Authenticate
-AUTH_RESPONSE = requests.post(AUTH_URL)
+AUTH_RESPONSE = requests.post(AUTH_URL, timeout=3600)
 # Only need the id_token for use in follow up requests headers.
 ERCOT_ID_TOKEN = AUTH_RESPONSE.json().get("id_token")
 ERCOT_API_REQUEST_HEADERS = {
@@ -54,7 +55,7 @@ DAM_FILENAMES = [
 # API Rate Limiting and Request Settings
 API_RATE_LIMIT_REQUESTS = 10
 API_RATE_LIMIT_INTERVAL = 60
-DEFAULT_BATCH_DAYS = 1
+DEFAULT_BATCH_DAYS = 30
 MAX_DATE_RANGE = 100  # example value; tests assume a high cap
 # New flag to disable sleep during tests to reduce runtime
 DISABLE_RATE_LIMIT_SLEEP = False
@@ -95,5 +96,5 @@ DAM_TABLE_DATA_MAPPING = {
 LOGGER = logging.getLogger(__name__)
 
 # Ensure environment variables are loaded correctly
-LOGGER.info(f"ERCOT_API_BASE_URL_DAM: {ERCOT_API_BASE_URL_DAM}")
-LOGGER.info(f"ERCOT_API_BASE_URL_SETTLEMENT: {ERCOT_API_BASE_URL_SETTLEMENT}")
+LOGGER.info("ERCOT_API_BASE_URL_DAM: %s", ERCOT_API_BASE_URL_DAM)
+LOGGER.info("ERCOT_API_BASE_URL_SETTLEMENT: %s", ERCOT_API_BASE_URL_SETTLEMENT)

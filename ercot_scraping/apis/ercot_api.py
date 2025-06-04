@@ -1,7 +1,7 @@
 """This module provides functionality to fetch settlement point prices from the ERCOT API
 and store them into a SQLite database.
 Functions:
-    fetch_settlement point_prices(start_date=None, end_date=None):
+    fetch_settlement_point_prices(start_date=None, end_date=None):
         Fetches settlement point prices from the ERCOT API and returns the JSON response.
     store_prices_to_db(data, db_name=ERCOT_DB_NAME):
         Stores settlement point prices data into a SQLite database.
@@ -26,6 +26,14 @@ from ercot_scraping.config.config import (
     QSE_FILTER_CSV,
     LOGGER,
     DEFAULT_BATCH_DAYS,
+    ERCOT_DB_NAME,
+)
+from ercot_scraping.database.store_data import (
+    store_bid_record_to_db,
+    store_bid_award_record_to_db,
+    store_offer_record_to_db,
+    store_offer_award_record_to_db,
+    store_settlement_point_price_record_to_db,
 )
 
 # Configure logging
@@ -42,11 +50,15 @@ def fetch_data_from_endpoint(
     retries: int = 3,
     qse_name: Optional[str] = None,  # Changed from qse_names to qse_name
     page: Optional[int] = None,  # Add page parameter
+    store_func: Optional[callable] = None,
+    db_name: Optional[str] = None,
 ) -> dict[str, any]:
     """
     Fetch data from a specified API endpoint with optional date filtering and pagination.
-    Loops through all pages and aggregates the data.
+    If store_func is provided, store each record as soon as it is fetched.
     """
+    if db_name is None:
+        db_name = ERCOT_DB_NAME
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
@@ -104,6 +116,10 @@ def fetch_data_from_endpoint(
                     LOGGER.error(
                         "Unexpected response format: %s", response_json)
                     return {}
+                # STREAMING STORAGE: Store each record as soon as it's fetched
+                if store_func is not None:
+                    for record in response_json["data"]:
+                        store_func(record, db_name)
                 all_data.extend(response_json["data"])
                 # Pagination logic
                 if meta:
@@ -130,130 +146,230 @@ def fetch_data_from_endpoint(
     return {}
 
 
-def fetch_dam_energy_bid_awards(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
-    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None,
-    max_concurrent: int = 1,
-    **kwargs
-) -> dict[str, any]:
-    def fetch_func(s, e, **kw):
-        # Do NOT pass qse_name to the API
-        return fetch_data_from_endpoint(
-            ERCOT_API_BASE_URL_DAM,
-            "60_dam_energy_bid_awards",
-            s,
-            e,
-            header=header
-        )
-    result = fetch_in_batches(
-        fetch_func,
-        start_date,
-        end_date,
-        batch_days,
-        qse_filter=qse_names,
-        max_concurrent=max_concurrent
-    )
-    return result
-
-
 def fetch_dam_energy_bids(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
-    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    header: Optional[dict[str, any]] = None,
+    # unused, kept for signature compatibility
+    tracking_list_path: Optional[str] = None,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
-) -> dict[str, any]:
+    qse_names: Optional[set[str]] = None,
+    db_name: Optional[str] = None,
+    log_every: int = 100,
+    batch_size: int = 500,
+) -> None:
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    if db_name is None:
+        db_name = ERCOT_DB_NAME
+
     def fetch_func(s, e, **kw):
-        return fetch_data_from_endpoint(
+        response_json = fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_bids",
             s,
             e,
-            header=header
+            header=header,
+            qse_name=None,  # Not used in this context
         )
-    result = fetch_in_batches(
+        if response_json and "data" in response_json:
+            from ercot_scraping.database.store_data import store_bids_to_db
+            store_bids_to_db(
+                {"data": response_json["data"]},
+                db_name=db_name,
+                batch_size=batch_size
+            )
+            count = len(response_json["data"])
+            logger.info(
+                f"[BIDS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
+            )
+
+    fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
         qse_filter=qse_names
     )
-    return result
+
+
+def fetch_dam_energy_bid_awards(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    header: Optional[dict[str, any]] = None,
+    # unused, kept for signature compatibility
+    tracking_list_path: Optional[str] = None,
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    qse_names: Optional[set[str]] = None,
+    db_name: Optional[str] = None,
+    log_every: int = 100,
+    batch_size: int = 500,
+) -> None:
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    if db_name is None:
+        db_name = ERCOT_DB_NAME
+
+    def fetch_func(s, e, **kw):
+        response_json = fetch_data_from_endpoint(
+            ERCOT_API_BASE_URL_DAM,
+            "60_dam_energy_bid_awards",
+            s,
+            e,
+            header=header,
+            qse_name=None,  # Not used in this context
+        )
+        if response_json and "data" in response_json:
+            from ercot_scraping.database.store_data import store_bid_awards_to_db
+            store_bid_awards_to_db(
+                {"data": response_json["data"]},
+                db_name=db_name,
+                batch_size=batch_size
+            )
+            count = len(response_json["data"])
+            logger.info(
+                f"[BID_AWARDS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
+            )
+
+    fetch_in_batches(
+        fetch_func,
+        start_date,
+        end_date,
+        batch_days,
+        qse_filter=qse_names
+    )
 
 
 def fetch_dam_energy_only_offer_awards(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
-    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    header: Optional[dict[str, any]] = None,
+    # unused, kept for signature compatibility
+    tracking_list_path: Optional[str] = None,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
-) -> dict[str, any]:
+    qse_names: Optional[set[str]] = None,
+    db_name: Optional[str] = None,
+    log_every: int = 100,
+    batch_size: int = 500,
+) -> None:
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    if db_name is None:
+        db_name = ERCOT_DB_NAME
+
     def fetch_func(s, e, **kw):
-        return fetch_data_from_endpoint(
+        response_json = fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_only_offer_awards",
             s,
             e,
-            header=header
+            header=header,
+            qse_name=None,  # Not used in this context
         )
-    result = fetch_in_batches(
+        if response_json and "data" in response_json:
+            from ercot_scraping.database.store_data import store_offer_awards_to_db
+            store_offer_awards_to_db(
+                {"data": response_json["data"]},
+                db_name=db_name,
+                batch_size=batch_size
+            )
+            count = len(response_json["data"])
+            logger.info(
+                f"[OFFER_AWARDS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
+            )
+
+    fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
         qse_filter=qse_names
     )
-    return result
 
 
 def fetch_dam_energy_only_offers(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
-    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
+    header: Optional[dict[str, any]] = None,
+    # unused, kept for signature compatibility
+    tracking_list_path: Optional[str] = None,
     batch_days: int = DEFAULT_BATCH_DAYS,
-    qse_names: Optional[set[str]] = None
-) -> dict[str, any]:
+    qse_names: Optional[set[str]] = None,
+    db_name: Optional[str] = None,
+    log_every: int = 100,
+    batch_size: int = 500,
+) -> None:
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    if db_name is None:
+        db_name = ERCOT_DB_NAME
+
     def fetch_func(s, e, **kw):
-        return fetch_data_from_endpoint(
+        response_json = fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_only_offers",
             s,
             e,
-            header=header
+            header=header,
+            qse_name=None,  # Not used in this context
         )
-    result = fetch_in_batches(
+        if response_json and "data" in response_json:
+            from ercot_scraping.database.store_data import store_offers_to_db
+            store_offers_to_db(
+                {"data": response_json["data"]},
+                db_name=db_name,
+                batch_size=batch_size
+            )
+            count = len(response_json["data"])
+            logger.info(
+                f"[OFFERS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
+            )
+
+    fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
         qse_filter=qse_names
     )
-    return result
 
 
 def fetch_settlement_point_prices(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
-    tracking_list_path: Optional[str] = QSE_FILTER_CSV,
-    batch_days: int = DEFAULT_BATCH_DAYS
-) -> dict[str, any]:
+    header: Optional[dict[str, any]] = None,
+    batch_days: int = DEFAULT_BATCH_DAYS,
+    db_name: Optional[str] = None,
+    log_every: int = 100,
+    batch_size: int = 500,
+) -> None:
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
+    if db_name is None:
+        db_name = ERCOT_DB_NAME
+
     def fetch_func(s, e, **kw):
-        return fetch_data_from_endpoint(
+        response_json = fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_SETTLEMENT,
             "spp_node_zone_hub",
-            s, e,
+            s,
+            e,
             header=header,
-            page=kw.get('page')
         )
-    return fetch_in_batches(
+        # Batch insert for each page
+        if response_json and "data" in response_json:
+            from ercot_scraping.database.store_data import store_prices_to_db
+            store_prices_to_db(
+                {"data": response_json["data"]},
+                db_name=db_name,
+                batch_size=batch_size
+            )
+            count = len(response_json["data"])
+            logger.info(
+                f"[SPP] Progress: Inserted {count} records into {db_name} for {s} to {e}."
+            )
+
+    fetch_in_batches(
         fetch_func,
         start_date,
         end_date,

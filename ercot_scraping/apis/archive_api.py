@@ -11,8 +11,6 @@ import csv
 import io
 import zipfile
 from io import BytesIO
-import time
-import sys
 import requests
 import traceback
 import logging
@@ -21,7 +19,6 @@ from ercot_scraping.config.config import (
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_ARCHIVE_API_BASE_URL,
     API_MAX_ARCHIVE_FILES,
-    API_MAX_DAM_BATCH_SIZE,
     LOGGER,
     DAM_FILENAMES,
     DAM_TABLE_DATA_MAPPING,
@@ -50,8 +47,6 @@ def download_spp_archive_files(
     doc_ids: list[int],
     db_name: str
 ) -> None:
-    LOGGER.info(
-        f"[CALL] download_spp_archive_files({product_id}, {doc_ids}, {db_name}) called from: {traceback.format_stack(limit=3)}")
     """
     Downloads and processes SPP archive files from the ERCOT archive API.
     Args:
@@ -61,6 +56,9 @@ def download_spp_archive_files(
     Returns:
         None
     """
+    LOGGER.info(
+        f"[CALL] download_spp_archive_files({product_id}, {doc_ids}, {db_name}) called from: {traceback.format_stack(limit=3)}")
+
     if not doc_ids:
         LOGGER.warning("No document IDs found for SPP product %s", product_id)
         return
@@ -323,6 +321,16 @@ def get_archive_document_ids(
         response = rate_limited_request(
             "GET", url, headers=ERCOT_API_REQUEST_HEADERS, params=params)
         data = response.json()
+        # Log _meta and fields for traceability
+        meta = data.get("_meta")
+        if meta:
+            LOGGER.debug("_meta field for archive doc page %d: %s", page, meta)
+        fields = data.get("fields")
+        if fields:
+            LOGGER.debug(
+                "fields field for archive doc page %d: %s",
+                page,
+                fields)
 
         if not data.get("archives"):
             break

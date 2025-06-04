@@ -44,69 +44,89 @@ def fetch_data_from_endpoint(
     page: Optional[int] = None,  # Add page parameter
 ) -> dict[str, any]:
     """
-    Fetch data from a specified API endpoint with optional date filtering.
-    Constructs the URL using the given base URL and endpoint, and sends an HTTP GET request to the API.
-    Optional start and end dates can be specified to filter the API results by delivery dates.
-    Args:
-        base_url (str): The base URL of the API.
-        endpoint (str): The API endpoint to request data from, appended to the base URL.
-        start_date (Optional[str]): The start date (inclusive) for filtering the data. Defaults to None.
-        end_date (Optional[str]): The end date (inclusive) for filtering the data. Defaults to None.
-        header (Optional[dict[str, any]]): A custom dictionary of HTTP headers for the request. Defaults to ERCOT_API_REQUEST_HEADERS if None.
-        retries (int): The number of retries for the request in case of failure. Defaults to 3.
-    Returns:
-        dict[str, any]: The parsed JSON response from the API.
-    Raises:
-        HTTPError: If an error occurs during the HTTP request (non-successful status code).
+    Fetch data from a specified API endpoint with optional date filtering and pagination.
+    Loops through all pages and aggregates the data.
     """
     params = {}
     if start_date:
         params["deliveryDateFrom"] = start_date
     if end_date:
         params["deliveryDateTo"] = end_date
-    if qse_name:  # Changed from qse_names to qse_name
-        # No need for formatting, just use the single name
+    if qse_name:
         params["qseName"] = qse_name
-    if page is not None:  # Add page to params if provided
-        params["page"] = page
-
     url = f"{base_url}/{endpoint}"
-    LOGGER.debug(
-        f"Fetching data from endpoint: {url} with params: {params} and headers: {header}"
-    )
-
-    for attempt in range(retries):
-        response = rate_limited_request(
-            "GET",
-            url=url,
-            headers=header,
-            params=params
-        )
-        if response.status_code == 401:
-            LOGGER.warning("Unauthorized. Refreshing access token.")
-            id_token = refresh_access_token()
-            header["Authorization"] = f"Bearer {id_token}"
-            os.environ["ERCOT_ID_TOKEN"] = id_token
-        else:
+    all_data = []
+    total_pages = 1
+    current_page = 1
+    first_response_json = None
+    while current_page <= total_pages:
+        params["page"] = current_page
+        LOGGER.debug(
+            "Fetching data from endpoint: %s with params: %s and headers: %s (page %d)",
+            url,
+            params,
+            header,
+            current_page)
+        for attempt in range(retries):
+            response = rate_limited_request(
+                "GET",
+                url=url,
+                headers=header,
+                params=params
+            )
+            if response.status_code == 401:
+                LOGGER.warning("Unauthorized. Refreshing access token.")
+                id_token = refresh_access_token()
+                header["Authorization"] = f"Bearer {id_token}"
+                os.environ["ERCOT_ID_TOKEN"] = id_token
+                continue
             try:
                 response.raise_for_status()
-                LOGGER.info(f"Data fetched successfully from endpoint: {url}")
+                LOGGER.info(
+                    "Data fetched successfully from endpoint: %s (page %d)",
+                    url,
+                    current_page)
                 response_json = response.json()
-                LOGGER.debug(f"Response data: {response_json}")
+                # Log _meta and fields for traceability
+                meta = response_json.get("_meta")
+                if meta:
+                    LOGGER.debug(
+                        "_meta field for page %d: %s", current_page, meta)
+                fields = response_json.get("fields")
+                if fields:
+                    LOGGER.debug(
+                        "fields field for page %d: %s",
+                        current_page,
+                        fields)
+                if first_response_json is None:
+                    first_response_json = response_json
                 if "data" not in response_json:
                     LOGGER.error(
-                        f"Unexpected response format: {response_json}")
+                        "Unexpected response format: %s", response_json)
                     return {}
-                return response_json
-            except Exception as e:
+                all_data.extend(response_json["data"])
+                # Pagination logic
+                if meta:
+                    total_pages = meta.get("totalPages", 1)
+                break  # Success, break retry loop
+            except requests.HTTPError as e:
                 if attempt < retries - 1:
                     LOGGER.warning(
-                        f"Request failed. Retrying... ({attempt + 1}/{retries})"
-                    )
+                        "Request failed. Retrying... (%d/%d)",
+                        attempt + 1,
+                        retries)
                 else:
                     LOGGER.error(
-                        f"Request failed after {retries} attempts: {e}")
-                    raise e
+                        "Request failed after %d attempts: %s", retries, e)
+                    raise
+            except requests.RequestException as e:
+                LOGGER.error("Request exception: %s", e)
+                raise
+        current_page += 1
+    # Return the first response structure but with all data aggregated
+    if first_response_json is not None:
+        first_response_json["data"] = all_data
+        return first_response_json
     return {}
 
 
@@ -121,23 +141,23 @@ def fetch_dam_energy_bid_awards(
     **kwargs
 ) -> dict[str, any]:
     def fetch_func(s, e, **kw):
+        # Do NOT pass qse_name to the API
         return fetch_data_from_endpoint(
             ERCOT_API_BASE_URL_DAM,
             "60_dam_energy_bid_awards",
             s,
             e,
-            header=header,
-            qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            header=header
         )
-    return fetch_in_batches(
+    result = fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names,
+        qse_filter=qse_names,
         max_concurrent=max_concurrent
     )
+    return result
 
 
 def fetch_dam_energy_bids(
@@ -154,17 +174,16 @@ def fetch_dam_energy_bids(
             "60_dam_energy_bids",
             s,
             e,
-            header=header,
-            qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            header=header
         )
-    return fetch_in_batches(
+    result = fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_filter=qse_names
     )
+    return result
 
 
 def fetch_dam_energy_only_offer_awards(
@@ -181,17 +200,16 @@ def fetch_dam_energy_only_offer_awards(
             "60_dam_energy_only_offer_awards",
             s,
             e,
-            header=header,
-            qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            header=header
         )
-    return fetch_in_batches(
+    result = fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_filter=qse_names
     )
+    return result
 
 
 def fetch_dam_energy_only_offers(
@@ -208,17 +226,16 @@ def fetch_dam_energy_only_offers(
             "60_dam_energy_only_offers",
             s,
             e,
-            header=header,
-            qse_name=kw.get('qse_name'),
-            page=kw.get('page')
+            header=header
         )
-    return fetch_in_batches(
+    result = fetch_in_batches(
         fetch_func,
         start_date,
         end_date,
         batch_days,
-        qse_names=qse_names
+        qse_filter=qse_names
     )
+    return result
 
 
 def fetch_settlement_point_prices(

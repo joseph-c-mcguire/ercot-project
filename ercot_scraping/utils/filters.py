@@ -1,11 +1,23 @@
+"""
+Utility functions for filtering and formatting ERCOT data.
+
+This module provides functions to:
+- Load QSE short names from a CSV file
+- Filter data by QSE names or settlement points
+- Retrieve active settlement points from a SQLite database
+- Format QSE names for API query parameters
+
+Intended for use in ERCOT data scraping and processing workflows.
+"""
+
 import contextlib
 import csv
-from typing import Set
+from typing import Set, Union
 import sqlite3
 from pathlib import Path
 
 
-def load_qse_shortnames(csv_file: str | Path) -> Set[str]:
+def load_qse_shortnames(csv_file: Union[str, Path]) -> Set[str]:
     """
     Load QSE short names from a CSV file.
 
@@ -17,12 +29,13 @@ def load_qse_shortnames(csv_file: str | Path) -> Set[str]:
     """
     qse_names = set()
     try:
-        with open(csv_file, 'r', newline='') as f:
+        with open(csv_file, 'r', newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             if 'SHORT NAME' not in reader.fieldnames:
                 return set()
             for row in reader:
-                if name := row['SHORT NAME'].strip():
+                name = row['SHORT NAME'].strip()
+                if name:
                     qse_names.add(name)
     except (FileNotFoundError, KeyError):
         return set()
@@ -82,7 +95,8 @@ def get_active_settlement_points(db_name: str) -> Set[str]:
     return points
 
 
-def filter_by_settlement_points(data: dict, settlement_points: Set[str]) -> dict:
+def filter_by_settlement_points(data: dict,
+                                settlement_points: Set[str]) -> dict:
     """
     Filter data to only include records matching the given settlement points.
 

@@ -1,3 +1,11 @@
+import argparse
+from typing import Optional, Set
+from datetime import datetime, timedelta
+import logging
+from pathlib import Path
+
+import requests
+
 from ercot_scraping.database.merge_data import merge_data
 from ercot_scraping.apis.archive_api import (
     get_archive_document_ids,
@@ -5,7 +13,6 @@ from ercot_scraping.apis.archive_api import (
     download_spp_archive_files,
 )
 from ercot_scraping.utils.filters import load_qse_shortnames
-from ercot_scraping.utils.utils import should_use_archive_api
 from ercot_scraping.database.store_data import (
     store_prices_to_db,
     store_bid_awards_to_db,
@@ -21,18 +28,15 @@ from ercot_scraping.apis.ercot_api import (
     fetch_dam_energy_only_offer_awards,
 )
 from ercot_scraping.config.config import (
+    DAM_ARCHIVE_CUTOFF_DATE,
+    SPP_ARCHIVE_CUTOFF_DATE,
     ERCOT_API_REQUEST_HEADERS,
     ERCOT_DB_NAME,
     ERCOT_ARCHIVE_PRODUCT_IDS,
     QSE_FILTER_CSV,
-    API_CUTOFF_DATE,
 )
-import argparse
-from pathlib import Path
-from typing import Optional, Set
-from datetime import datetime, timedelta
-import requests
-import logging
+
+
 from ercot_scraping.utils.logging_utils import setup_module_logging
 
 # Configure logging
@@ -40,7 +44,7 @@ logger = logging.getLogger(__name__)
 per_run_handler = setup_module_logging(__name__)
 
 
-def _split_date_range_by_cutoff(
+def split_date_range_by_cutoff(
         start_date: str,
         end_date: str,
         cutoff_date: str):
@@ -57,7 +61,6 @@ def _split_date_range_by_cutoff(
     elif start_dt >= cutoff_dt:
         return (None, (start_date, end_date))
     else:
-        # Crosses cutoff
         archive_end = (cutoff_dt - timedelta(days=1)).strftime(fmt)
         return ((start_date, archive_end), (cutoff_date, end_date))
 
@@ -67,32 +70,56 @@ def download_historical_dam_data(
         end_date: Optional[str] = None,
         db_name: str = ERCOT_DB_NAME,
         qse_filter: Optional[Set[str]] = None) -> None:
+    """
+        Downloads historical DAM (Day-Ahead Market) data within the specified date range.
+
+        This function fetches historical DAM data across two different API endpoints based on a cutoff
+        date. The date range is split into two segments:
+            - Archive API: For dates before the cutoff.
+            - Regular API: For dates on or after the cutoff.
+        If the end date is not provided, the current date is used. The function also applies a filter
+        for specific QSEs (Qualified Scheduling Entities) if provided.
+
+        Parameters:
+            start_date (str): The starting date for downloading data, in "YYYY-MM-DD" format.
+            end_date (Optional[str]): The ending date for downloading data, in "YYYY-MM-DD" format;
+                                      if None, defaults to the current date.
+            db_name (str): The name of the database where the downloaded data will be stored.
+            qse_filter (Optional[Set[str]]): A set of QSE identifiers; if provided, used to filter the
+                                             downloaded data.
+
+        Raises:
+            Exception: If an error occurs during the data fetching, processing, or storing process.
+    """
+
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
     qse_filter = _load_qse_filter(qse_filter)
     logger.info(
-        f"Downloading historical DAM data from {start_date} to {end_date}")
-    logger.info(f"Filtering for QSEs: {sorted(qse_filter)}")
+        "Downloading historical DAM data from %s to %s",
+        start_date,
+        end_date)
+    logger.info("Filtering for QSEs: %s", sorted(qse_filter))
     try:
-        archive_range, regular_range = _split_date_range_by_cutoff(
-            start_date, end_date, API_CUTOFF_DATE
-        )
+        archive_range, regular_range = split_date_range_by_cutoff(
+            start_date, end_date, DAM_ARCHIVE_CUTOFF_DATE)
         if archive_range:
             logger.info(
-                f"Fetching DAM data from archive API for {archive_range[0]} to {archive_range[1]}"
-            )
+                "Fetching DAM data from archive API for %s to %s",
+                archive_range[0],
+                archive_range[1])
             _download_dam_data_from_archive(
                 archive_range[0], archive_range[1], db_name)
         if regular_range:
             logger.info(
-                f"Fetching DAM data from regular API for {regular_range[0]} to {regular_range[1]}"
-            )
+                "Fetching DAM data from regular API for %s to %s",
+                regular_range[0],
+                regular_range[1])
             _fetch_and_store_historical_dam_data(
-                regular_range[0], regular_range[1], qse_filter, db_name
-            )
+                regular_range[0], regular_range[1], qse_filter, db_name)
         logger.info("Historical DAM data download completed successfully")
     except Exception as e:
-        logger.error(f"Error downloading historical DAM data: {str(e)}")
+        logger.error("Error downloading historical DAM data: %s", str(e))
         raise
 
 
@@ -120,7 +147,6 @@ def _load_qse_filter(qse_filter: Optional[object]) -> Set[str]:
         if ',' in qse_filter:
             return set(q.strip() for q in qse_filter.split(',') if q.strip())
         # Try to interpret as a file path
-        from pathlib import Path
         path = Path(qse_filter)
         if path.exists():
             return load_qse_shortnames(path)
@@ -147,7 +173,7 @@ def _download_dam_data_from_archive(
         start_date,
         end_date
     )
-    logger.info(f"Found {len(doc_ids)} documents in archive")
+    logger.info("Found %d documents in archive", len(doc_ids))
     download_dam_archive_files(
         ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"],
         doc_ids,
@@ -184,60 +210,38 @@ def _fetch_and_store_bid_awards(
         end_date: str,
         qse_filter: Set[str],
         db_name: str) -> None:
-    """
-    Fetches bid awards data from the ERCOT API for the specified date range and stores it in the database.
-
-    Args:
-        start_date (str): The start date for fetching bid awards in the format 'YYYY-MM-DD'.
-        end_date (str): The end date for fetching bid awards in the format 'YYYY-MM-DD'.
-        qse_filter (Set[str]): A set of Qualified Scheduling Entities (QSE) names to filter the bid awards.
-        db_name (str): The name of the database where the bid awards data will be stored.
-
-    Returns:
-        None
-
-    Logs:
-        - Info: When the fetching process starts and ends, and the number of bid awards found.
-        - Error: If no bid awards data is found.
-    """
-    logger.info(f"Fetching bid awards for {start_date} to {end_date}...")
+    logger.info("Fetching bid awards for %s to %s...", start_date, end_date)
     bid_awards = fetch_dam_energy_bid_awards(
         start_date, end_date,
         header=ERCOT_API_REQUEST_HEADERS,
         qse_names=qse_filter
     )
     if not bid_awards or "data" not in bid_awards:
-        logger.error("No bid awards data found.")
+        logger.error(
+            "No bid awards data found for %s to %s",
+            start_date,
+            end_date)
+        return
     else:
-        logger.info(f"Found {len(bid_awards.get('data', []))} bid awards")
+        logger.info("Found %d bid awards", len(bid_awards.get('data', [])))
         if bid_awards.get("data"):
             first_record = bid_awards['data'][0]
-            logger.debug(f"First BidAward record: {first_record}")
-            if isinstance(first_record, dict):
-                logger.debug(
-                    f"All keys in first record: {list(first_record.keys())}")
-            elif isinstance(first_record, list):
+            if isinstance(first_record, list):
                 logger.warning(
                     "First BidAward record is a list, not a dict. Field mapping will be applied.")
                 logger.debug(f"First record as list: {first_record}")
-                field_names = [
-                    'deliveryDate',
-                    'hourEnding',
-                    'settlementPointName',
-                    'qseName',
-                    'energyOnlyBidAwardInMW',
-                    'settlementPointPrice',
-                    'bidId'
-                ]
+                # Map fields from config
+                from ercot_scraping.config.column_mappings import COLUMN_MAPPINGS
+                field_names = list(
+                    COLUMN_MAPPINGS.get(
+                        "bid_awards", {}).values())
                 bid_awards['data'] = [dict(zip(field_names, row))
                                       for row in bid_awards['data']]
                 logger.debug(
                     f"First mapped BidAward dict: {bid_awards['data'][0]}")
-            else:
+            elif not isinstance(first_record, dict):
                 logger.warning(
                     f"First BidAward record is of unexpected type: {type(first_record)}")
-        else:
-            logger.debug("BidAwards 'data' list is empty.")
         store_bid_awards_to_db(bid_awards, db_name, qse_filter)
 
 
@@ -294,9 +298,12 @@ def _fetch_and_store_offer_awards(start_date, end_date, qse_filter, db_name):
     Fetches and stores offer awards data from the ERCOT API for a given date range and QSE filter.
 
     Args:
-        start_date (str): The start date for fetching offer awards in the format 'YYYY-MM-DD'.
-        end_date (str): The end date for fetching offer awards in the format 'YYYY-MM-DD'.
-        qse_filter (list): A list of QSE (Qualified Scheduling Entity) names to filter the offer awards.
+        start_date (str): The start date for fetching offer awards in the
+        format 'YYYY-MM-DD'.
+        end_date (str): The end date for fetching offer awards in the format
+            'YYYY-MM-DD'.
+        qse_filter (list): A list of QSE (Qualified Scheduling Entity) names
+            to filter the offer awards.
         db_name (str): The name of the database where the offer awards data will be stored.
 
     Returns:
@@ -396,8 +403,8 @@ def download_historical_spp_data(
     logger.info(
         f"Downloading historical SPP data from {start_date} to {end_date}")
     try:
-        archive_range, regular_range = _split_date_range_by_cutoff(
-            start_date, end_date, API_CUTOFF_DATE
+        archive_range, regular_range = split_date_range_by_cutoff(
+            start_date, end_date, SPP_ARCHIVE_CUTOFF_DATE
         )
         if archive_range:
             logger.info(
@@ -770,7 +777,6 @@ def handle_http_error(e: requests.exceptions.HTTPError) -> None:
         logger.error(f"API endpoint not found: {e.response.url}")
     else:
         logger.error(f"HTTP error occurred: {str(e)}")
-    raise
 
 
 if __name__ == "__main__":

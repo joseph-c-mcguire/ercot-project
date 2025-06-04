@@ -6,24 +6,17 @@ This tool allows you to fetch historical and current ERCOT market data including
 
 ### 1. Clone the Repository
 
-First, download the code from GitHub:
-
 ```bash
+# Clone the repository
 git clone https://github.com/joseph-c-mcguire/ercot-project.git
 cd ercot-project
 ```
 
 ### 2. Install as a Local Python Package
 
-Install the dependencies and the package itself (recommended in a virtual environment):
-
 ```bash
 pip install .
-```
-
-If you want to make edits and have them reflected immediately, use editable mode:
-
-```bash
+# Or for development:
 pip install -e .
 ```
 
@@ -37,6 +30,8 @@ ERCOT_API_PASSWORD=your_password
 ERCOT_API_SUBSCRIPTION_KEY=your_subscription_key
 ```
 
+---
+
 ## CLI Usage
 
 You can run the CLI using the Python module syntax:
@@ -45,81 +40,99 @@ You can run the CLI using the Python module syntax:
 python -m ercot_scraping.run <command> [options]
 ```
 
-Or, if you have an entry point script, you can use:
+### CLI Commands
+
+| Command            | Description                                                                                      |
+|--------------------|--------------------------------------------------------------------------------------------------|
+| `historical-dam`   | Download historical Day-Ahead Market (DAM) data (bids, offers, awards) for a date range.         |
+| `historical-spp`   | Download historical Settlement Point Prices (SPP) for a date range.                              |
+| `update-dam`       | Download and update DAM data for the most recent day(s).                                         |
+| `update-spp`       | Download and update SPP data for the most recent day(s).                                         |
+| `merge-data`       | Merge data from BID_AWARDS, BIDS, and SETTLEMENT_POINT_PRICES into the FINAL table.              |
+
+### Common Arguments
+
+| Argument                | Description                                                                                 | Example Input                |
+|-------------------------|---------------------------------------------------------------------------------------------|------------------------------|
+| `--db <filename>`       | Path to SQLite database file (default: `_data/ercot_data.db`)                               | `--db mydata.db`             |
+| `--start <YYYY-MM-DD>`  | Start date for data download/merge (required for historical commands)                       | `--start 2024-01-01`         |
+| `--end <YYYY-MM-DD>`    | End date for data download/merge (optional; defaults to today for download commands)        | `--end 2024-01-31`           |
+| `--qse-filter <csv/list>` | QSE filter as CSV file or comma-separated list (optional)                                 | `--qse-filter qses.csv`      |
+| `--debug`               | Enable detailed debug logging                                                               | `--debug`                    |
+| `--quick-test`          | Run a quick test with a small QSE set and short date range                                 | `--quick-test`               |
+
+#### Example Commands
 
 ```bash
-python ercot_scraping <command> [options]
+python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02 --db mydata.db
+python -m ercot_scraping.run historical-spp --start 2024-01-01 --end 2024-01-02 --db mydata.db
+python -m ercot_scraping.run merge-data --start 2024-01-01 --end 2024-01-02 --db mydata.db
 ```
 
-### Example Commands
+---
 
-- **Download historical DAM data:**
+## Expected Inputs
 
-  ```bash
-  python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02
-  ```
+- **Dates**: Must be in `YYYY-MM-DD` format.
+- **QSE Filter**: Either a CSV file with QSE names or a comma-separated string.
+- **Database**: Path to a writable SQLite file.
 
-- **Download historical SPP data:**
+## Expected Outputs
 
-  ```bash
-  python -m ercot_scraping.run historical-spp --start 2024-01-01 --end 2024-01-02
-  ```
+- **Database Tables**:  
+  - `SETTLEMENT_POINT_PRICES`
+  - `BID_AWARDS`
+  - `BIDS`
+  - `OFFER_AWARDS`
+  - `OFFERS`
+  - `FINAL` (after merge)
+- **Logs**: Console and file logs (if enabled) with progress, errors, and debug info.
+- **Normalized Data**: All tables use consistent column names and types as defined in `data_models.py`.
 
-- **Update daily DAM data:**
+---
 
-  ```bash
-  python -m ercot_scraping.run update-dam
-  ```
+## Module Details
 
-- **Update daily SPP data:**
+- **data_models.py**: Defines the data structure for each table, ensuring consistent field names and types.
+- **ercot_api.py**: Handles live API requests, batching, pagination, and normalization.
+- **batched_api.py**: Splits large date ranges into batches, manages QSE filtering, and enforces API rate limits.
+- **archive_api.py**: Downloads and processes historical archive files, normalizes CSVs, and stores data in the database.
 
-  ```bash
-  python -m ercot_scraping.run update-spp
-  ```
+---
 
-- **Merge data into the FINAL table:**
+## Script Usage
 
-  ```bash
-  python -m ercot_scraping.run merge-data
-  ```
+### `scripts/2025-06-04_JM_run-dam-to-latest.py`
 
-### Additional CLI Options
+**Purpose**:  
+Automatically downloads DAM data from the latest date in your database up to today.
 
-- `--db <filename>`: Specify a custom SQLite database file (default: `_data/ercot_data.db`)
-- `--qse-filter <csv or list>`: Filter by QSEs using a CSV file or comma-separated list
-- `--debug`: Enable detailed debug logging
-- `--quick-test`: Run a quick test with a small QSE set and short date range
+**How to use**:
+1. Set `DB_FILE` and `PYTHON` path as needed.
+2. Run:
+   ```powershell
+   python scripts/2025-06-04_JM_run-dam-to-latest.py
+   ```
 
-For full help and all options, run:
+---
 
-```bash
-python -m ercot_scraping.run --help
-```
+### `scripts/2025-06-04_JM_run-full-range.py`
 
-## CLI Functions
+**Purpose**:  
+Downloads DAM and SPP data for a specified date range, then merges them into the FINAL table.
 
-- `historical-dam`: Downloads historical DAM data including:
-  - Energy Bid Awards
-  - Energy Bids
-  - Energy Only Offer Awards
-  - Energy Only Offers
+**How to use**:
+1. Set `DB_FILE`, `PYTHON`, `START_DATE`, and `END_DATE` as needed.
+2. Run:
+   ```powershell
+   python scripts/2025-06-04_JM_run-full-range.py
+   ```
 
-- `historical-spp`: Downloads historical Settlement Point Prices for:
-  - Nodes
-  - Hubs
-  - Load Zones
-
-- `merge-data`: Combines data from multiple database files into a single database
-
-## Important Notes on Data Availability and Merging
-
-- The `merge-data` command creates the `FINAL` table by merging data from the BID_AWARDS, BIDS, and SETTLEMENT_POINT_PRICES tables.
-- **You must have already downloaded data for the desired date range using the `historical-dam` and `historical-spp` commands before running `merge-data`.**
-- If you run `merge-data` for a date range where data is missing in any of the required tables, the `FINAL` table may be incomplete or empty for those dates.
+---
 
 ## Environment Variables
 
-Required variables in `.env`:
+Required in `.env`:
 
 | Variable | Description |
 |----------|-------------|
@@ -127,9 +140,11 @@ Required variables in `.env`:
 | ERCOT_API_PASSWORD | Your ERCOT API password |
 | ERCOT_API_SUBSCRIPTION_KEY | Your ERCOT API subscription key |
 
+---
+
 ## Output
 
-The tool creates/updates a SQLite database (`_data/ercot_data.db`) with the following tables:
+The tool creates/updates a SQLite database (`_data/ercot_data.db` by default) with the following tables:
 
 - SETTLEMENT_POINT_PRICES
 - BID_AWARDS
@@ -140,13 +155,17 @@ The tool creates/updates a SQLite database (`_data/ercot_data.db`) with the foll
 
 Data is stored in a normalized format with consistent column names and data types.
 
+---
+
 ## Debug Mode
 
 Add `--debug` flag to any command for detailed logging:
 
-```bash
+```powershell
 python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02 --debug
 ```
+
+---
 
 ## CLI Defaults and Argument Details
 

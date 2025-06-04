@@ -3,8 +3,8 @@ import subprocess
 DB_FILE = "\\Cohesion-nas\\z_work\\Databases\\000_ERCOT\\ercot_data.db"
 # Change this to your Python executable path if needed
 PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv\\Scripts\\python.exe"
-START_DATE = "2025-01-01"
-END_DATE = "2025-03-01"
+START_DATE = "2025-01-31"
+END_DATE = "2025-02-04"
 
 
 def run_command(args):

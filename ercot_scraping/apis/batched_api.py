@@ -56,6 +56,16 @@ _MIN_REQUEST_INTERVAL = API_RATE_LIMIT_INTERVAL / \
 _sync_rate_limit_lock = threading.Lock()
 
 
+def normalize_records(records, field_names):
+    """Convert list-of-lists to list-of-dicts if needed."""
+    if records and isinstance(records[0], list):
+        logger.warning(
+            "Normalizing records: converting list-of-lists to list-of-dicts using fields: %s",
+            field_names)
+        return [dict(zip(field_names, row)) for row in records]
+    return records
+
+
 def fetch_in_batches(
     fetch_func: callable,
     start_date: str,
@@ -63,6 +73,7 @@ def fetch_in_batches(
     batch_days: int = DEFAULT_BATCH_DAYS,
     qse_filter: Optional[set[str]] = None,
     max_concurrent: int = 1,  # ignored, for compatibility
+    data_type: Optional[str] = None,  # NEW: specify type for field mapping
     **kwargs
 ) -> dict[str, any]:
     """
@@ -89,6 +100,7 @@ def fetch_in_batches(
                                                     and passed to fetch_func.
         max_concurrent (int, optional): Parameter for
             compatibility with other interfaces; currently ignored.
+        data_type (Optional[str], optional): NEW: specify type for field mapping
         **kwargs: Additional keyword arguments to pass to fetch_func.
     Returns:
         dict[str, any]: A dictionary with the following structure:
@@ -141,15 +153,34 @@ def fetch_in_batches(
         "Processing %d batches (sync)", total_batches)
     combined_data = []
     fields = None
+    from ercot_scraping.config.column_mappings import COLUMN_MAPPINGS
     for batch_start, batch_end in batches:
         batch_data = fetch_func(batch_start, batch_end)
         if not isinstance(batch_data, dict) or "data" not in batch_data:
             continue
         records = batch_data["data"]
+        # Normalize records if needed
+        if records and isinstance(records[0], list):
+            # Try to get field names from batch_data['fields'] or
+            # COLUMN_MAPPINGS
+            if batch_data.get("fields"):
+                # Convert list of dicts to list of field name strings if needed
+                if isinstance(batch_data["fields"][0], dict):
+                    field_names = [f["name"] for f in batch_data["fields"]]
+                else:
+                    field_names = batch_data["fields"]
+            elif data_type and data_type in COLUMN_MAPPINGS:
+                field_names = list(COLUMN_MAPPINGS[data_type].values())
+            else:
+                logger.warning(
+                    "Could not determine field names for normalization; skipping normalization.")
+                field_names = []
+            if field_names:
+                records = normalize_records(records, field_names)
         # Filter here if qse_filter is provided
         if qse_filter:
-            records = [row for row in records if row.get(
-                "qseName") in qse_filter]
+            records = [row for row in records if isinstance(
+                row, dict) and row.get("qseName") in qse_filter]
         combined_data.extend(records)
         # Log _meta and fields for traceability if present
         meta = batch_data.get("_meta")

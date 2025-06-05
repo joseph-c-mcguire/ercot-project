@@ -40,23 +40,27 @@ from ercot_scraping.database.store_data import (
 logger = logging.getLogger(__name__)
 per_run_handler = setup_module_logging(__name__)
 
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+
 
 def fetch_data_from_endpoint(
     base_url: str,
     endpoint: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    header: Optional[dict[str, any]] = ERCOT_API_REQUEST_HEADERS,
+    header: Optional[dict[str, any]] = None,
     retries: int = 3,
     qse_name: Optional[str] = None,  # Changed from qse_names to qse_name
     page: Optional[int] = None,  # Add page parameter
     store_func: Optional[callable] = None,
     db_name: Optional[str] = None,
 ) -> dict[str, any]:
-    """
-    Fetch data from a specified API endpoint with optional date filtering and pagination.
-    If store_func is provided, store each record as soon as it is fetched.
-    """
+    if header is None:
+        header = ERCOT_API_REQUEST_HEADERS
     if db_name is None:
         db_name = ERCOT_DB_NAME
     params = {}
@@ -71,14 +75,22 @@ def fetch_data_from_endpoint(
     total_pages = 1
     current_page = 1
     first_response_json = None
+    progress_bar = None
+    use_progress = TQDM_AVAILABLE
     while current_page <= total_pages:
+        if use_progress and progress_bar is None and total_pages > 1:
+            progress_bar = tqdm(
+                total=total_pages,
+                desc="API Pages",
+                unit="page")
         params["page"] = current_page
         LOGGER.debug(
-            "Fetching data from endpoint: %s with params: %s and headers: %s (page %d)",
+            "Fetching data from endpoint: %s with params: %s and headers: %s (page %d/%d)",
             url,
             params,
             header,
-            current_page)
+            current_page,
+            total_pages)
         for attempt in range(retries):
             response = rate_limited_request(
                 "GET",
@@ -94,22 +106,28 @@ def fetch_data_from_endpoint(
                 continue
             try:
                 response.raise_for_status()
-                LOGGER.info(
-                    "Data fetched successfully from endpoint: %s (page %d)",
-                    url,
-                    current_page)
                 response_json = response.json()
-                # Log _meta and fields for traceability
                 meta = response_json.get("_meta")
                 if meta:
-                    LOGGER.debug(
-                        "_meta field for page %d: %s", current_page, meta)
-                fields = response_json.get("fields")
-                if fields:
-                    LOGGER.debug(
-                        "fields field for page %d: %s",
+                    total_pages = meta.get("totalPages", 1)
+                    current_page_num = meta.get("currentPage", current_page)
+                    if use_progress and progress_bar:
+                        progress_bar.n = current_page_num
+                        progress_bar.total = total_pages
+                        progress_bar.refresh()
+                    else:
+                        LOGGER.info(
+                            "Fetched page %d of %d (records this page: %d)",
+                            current_page_num,
+                            total_pages,
+                            len(response_json.get('data', []))
+                        )
+                else:
+                    LOGGER.info(
+                        "Fetched page %d (records this page: %d)",
                         current_page,
-                        fields)
+                        len(response_json.get('data', []))
+                    )
                 if first_response_json is None:
                     first_response_json = response_json
                 if "data" not in response_json:
@@ -139,7 +157,10 @@ def fetch_data_from_endpoint(
                 LOGGER.error("Request exception: %s", e)
                 raise
         current_page += 1
-    # Return the first response structure but with all data aggregated
+    if progress_bar:
+        progress_bar.n = total_pages
+        progress_bar.refresh()
+        progress_bar.close()
     if first_response_json is not None:
         first_response_json["data"] = all_data
         return first_response_json

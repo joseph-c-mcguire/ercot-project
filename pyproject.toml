@@ -12,7 +12,8 @@ dependencies = [
     "ratelimit",
     "chardet",
     "aiosqlite",
-    "aiohttp"
+    "aiohttp",
+    "tqdm"
 ]
 requires-python = "<=3.11.9 "
 

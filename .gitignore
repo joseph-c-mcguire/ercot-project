@@ -177,3 +177,5 @@ cython_debug/
 *test_ercot.db
 *.db
 _data\ercot_data.db
+
+*.venv*

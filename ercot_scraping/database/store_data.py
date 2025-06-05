@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 import sqlite3
 import pandas as pd
+import os
 
 from ercot_scraping.database.data_models import (
     SettlementPointPrice,
@@ -46,7 +47,7 @@ per_run_handler = setup_module_logging(__name__)
 def dump_logs():
     """
     Dump log messages to separate files based on their severity levels
-    and to an aggregated log file.
+    and to an aggregated log file, all inside the logs/ directory.
 
     This function iterates over a predefined set of logging levels (DEBUG, INFO, WARNING, ERROR).
     For each level, it:
@@ -66,13 +67,21 @@ def dump_logs():
                 - get_all_logs()
     """
     levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR]
+    logs_dir = "logs"
+    os.makedirs(logs_dir, exist_ok=True)  # Ensure logs/ exists
+
     for lvl in levels:
         logs = per_run_handler.get_logs_by_level(lvl)
-        file_name = 'logs_' + logging.getLevelName(lvl) + '.txt'
+        file_name = os.path.join(
+            logs_dir,
+            'logs_' +
+            logging.getLevelName(lvl) +
+            '.txt')
         with open(file_name, 'w', encoding='utf-8') as f:
             for line in logs:
                 f.write(line + '\n')
-    with open('logs_ALL.txt', 'w', encoding='utf-8') as f:
+    all_logs_file = os.path.join(logs_dir, 'logs_ALL.txt')
+    with open(all_logs_file, 'w', encoding='utf-8') as f:
         for line in per_run_handler.get_all_logs():
             f.write(line + '\n')
 

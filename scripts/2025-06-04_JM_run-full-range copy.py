@@ -20,7 +20,7 @@ Notes:
 import subprocess
 from datetime import datetime, timedelta
 
-DB_FILE = "Z:\\Databases\\000_ERCOT\\ercot_data.db"
+DB_FILE = "Z:\\Databases\\000_ERCOT\\archive_ercot_data.db"
 # DB_FILE = "_data/ercot_data.db"  # Relative path to the database file
 # Change this to your Python executable path if needed
 PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv\\Scripts\\python.exe"

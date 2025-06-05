@@ -34,7 +34,7 @@ PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv
 # START_DATE = "2023-12-10"
 # END_DATE = "2023-12-12"
 # Final Run
-START_DATE = "2020-01-01"
+START_DATE = "2000-01-01"
 END_DATE = "2025-06-04"
 
 

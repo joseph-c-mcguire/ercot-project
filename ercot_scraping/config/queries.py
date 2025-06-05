@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS SETTLEMENT_POINT_PRICES (
     SettlementPointName TEXT,
     SettlementPointType TEXT,
     SettlementPointPrice REAL,
-    DSTFlag TEXT
+    DSTFlag TEXT,
+    INSERTED_AT TEXT DEFAULT (datetime('now'))
 )
 """
 
@@ -39,7 +40,8 @@ CREATE TABLE IF NOT EXISTS BIDS (
     EnergyOnlyBidPrice10 REAL,
     EnergyOnlyBidID TEXT,
     MultiHourBlockIndicator TEXT,
-    BlockCurveIndicator TEXT
+    BlockCurveIndicator TEXT,
+    INSERTED_AT TEXT DEFAULT (datetime('now'))
 )
 """
 
@@ -51,7 +53,8 @@ CREATE TABLE IF NOT EXISTS BID_AWARDS (
     QSEName TEXT,
     EnergyOnlyBidAwardMW REAL,
     SettlementPointPrice REAL,
-    BidId TEXT
+    BidId TEXT,
+    INSERTED_AT TEXT DEFAULT (datetime('now'))
 )
 """
 
@@ -83,7 +86,8 @@ CREATE TABLE IF NOT EXISTS OFFERS (
     EnergyOnlyOfferPrice10 REAL,
     EnergyOnlyOfferID TEXT,
     MultiHourBlockIndicator TEXT,
-    BlockCurveIndicator TEXT
+    BlockCurveIndicator TEXT,
+    INSERTED_AT TEXT DEFAULT (datetime('now'))
 )
 """
 
@@ -95,7 +99,8 @@ CREATE TABLE IF NOT EXISTS OFFER_AWARDS (
     QSEName TEXT,
     EnergyOnlyOfferAwardMW REAL,
     SettlementPointPrice REAL,
-    OfferID TEXT
+    OfferID TEXT,
+    INSERTED_AT TEXT DEFAULT (datetime('now'))
 )
 """
 
@@ -119,14 +124,14 @@ CREATE TABLE IF NOT EXISTS FINAL (
 SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
     INSERT INTO SETTLEMENT_POINT_PRICES (DeliveryDate, DeliveryHour, DeliveryInterval,
                                          SettlementPointName, SettlementPointType,
-                                         SettlementPointPrice, DSTFlag)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                         SettlementPointPrice, DSTFlag, INSERTED_AT)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 BID_AWARDS_INSERT_QUERY = """
     INSERT INTO BID_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidId)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidId, INSERTED_AT)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 BIDS_INSERT_QUERY = """
@@ -136,8 +141,8 @@ BIDS_INSERT_QUERY = """
                       EnergyOnlyBidMW5, EnergyOnlyBidPrice5, EnergyOnlyBidMW6, EnergyOnlyBidPrice6,
                       EnergyOnlyBidMW7, EnergyOnlyBidPrice7, EnergyOnlyBidMW8, EnergyOnlyBidPrice8,
                       EnergyOnlyBidMW9, EnergyOnlyBidPrice9, EnergyOnlyBidMW10, EnergyOnlyBidPrice10,
-                      EnergyOnlyBidID, MultiHourBlockIndicator, BlockCurveIndicator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      EnergyOnlyBidID, MultiHourBlockIndicator, BlockCurveIndicator, INSERTED_AT)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 OFFERS_INSERT_QUERY = """
@@ -147,14 +152,14 @@ OFFERS_INSERT_QUERY = """
                          EnergyOnlyOfferMW5, EnergyOnlyOfferPrice5, EnergyOnlyOfferMW6, EnergyOnlyOfferPrice6,
                          EnergyOnlyOfferMW7, EnergyOnlyOfferPrice7, EnergyOnlyOfferMW8, EnergyOnlyOfferPrice8,
                          EnergyOnlyOfferMW9, EnergyOnlyOfferPrice9, EnergyOnlyOfferMW10, EnergyOnlyOfferPrice10,
-                         EnergyOnlyOfferID, MultiHourBlockIndicator, BlockCurveIndicator)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         EnergyOnlyOfferID, MultiHourBlockIndicator, BlockCurveIndicator, INSERTED_AT)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 OFFER_AWARDS_INSERT_QUERY = """
     INSERT INTO OFFER_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                              EnergyOnlyOfferAwardMW, SettlementPointPrice, OfferID)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+                              EnergyOnlyOfferAwardMW, SettlementPointPrice, OfferID, INSERTED_AT)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 # Select Queries

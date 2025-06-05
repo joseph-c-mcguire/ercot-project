@@ -22,10 +22,12 @@ ercot = "ercot_scraping.run:main"  # Changed from fetch_prices to ercot
 
 [project.optional-dependencies]
 test = [
-    "pytest>=6.2.4",
-    "pytest-cov>=4.1.0",  # Updated version
-    "coverage>=7.4.1",    # Updated version
-    "pytest-mock>=3.10.0", # Added for better mocking support
+    "pytest",
+    "pytest-cover",  # Updated version
+    "coverage",    # Updated version
+    "pytest-mock", # Added for better mocking support
+    "autopep8",  # Added for code formatting
+    "flake8",   # Added for linting
 ]
 
 [tool.pytest.ini_options]

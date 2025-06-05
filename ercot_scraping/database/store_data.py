@@ -6,38 +6,38 @@ This module provides functions to store, validate, and aggregate ERCOT market da
 It also includes logging utilities and helpers for data normalization and filtering.
 """
 
-from typing import Optional, Set, Any
 import logging
-from datetime import datetime
-import sqlite3
-import pandas as pd
 import os
+import sqlite3
+from dataclasses import fields
+from datetime import datetime
+from typing import Any, Optional, Set
 
-from ercot_scraping.database.data_models import (
-    SettlementPointPrice,
-    Offer,
-    Bid,
-    OfferAward,
-    BidAward,
-)
+import pandas as pd
+
 from ercot_scraping.config.config import (
-    SETTLEMENT_POINT_PRICES_INSERT_QUERY,
     BID_AWARDS_INSERT_QUERY,
     BIDS_INSERT_QUERY,
-    OFFERS_INSERT_QUERY,
-    OFFER_AWARDS_INSERT_QUERY,
     ERCOT_DB_NAME,
-    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
+    OFFER_AWARDS_INSERT_QUERY,
+    OFFERS_INSERT_QUERY,
+    SETTLEMENT_POINT_PRICES_INSERT_QUERY,
+)
+from ercot_scraping.database.create_ercot_tables import create_ercot_tables
+from ercot_scraping.database.data_models import (
+    Bid,
+    BidAward,
+    Offer,
+    OfferAward,
+    SettlementPointPrice,
 )
 from ercot_scraping.utils.filters import (
-    get_active_settlement_points,
+    filter_by_qse_names,
     filter_by_settlement_points,
-    filter_by_qse_names
+    get_active_settlement_points,
 )
-from ercot_scraping.utils.utils import normalize_data
 from ercot_scraping.utils.logging_utils import setup_module_logging
-from ercot_scraping.database.create_ercot_tables import create_ercot_tables
-
+from ercot_scraping.utils.utils import normalize_data
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -184,143 +184,67 @@ def store_data_to_db(
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
         if not cursor.fetchone():
-            # Instead of creating the table inline, call the central table
-            # creation function
             logger.info(
                 "Table %s does not exist yet, calling create_ercot_tables().",
                 table_name)
             create_ercot_tables(db_name)
-            # Re-check if the table now exists
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-            if not cursor.fetchone():
-                logger.error(
-                    "Table %s still does not exist after create_ercot_tables().",
-                    table_name)
-                raise ValueError(
-                    f"Table {table_name} could not be created in {db_name}")
-            else:
-                logger.info("Table %s created successfully.", table_name)
 
-        # Filter out records with dates that already exist
         filtered_rows = []
-        # Normalize deliveryDate fields in all records to YYYY-MM-DD
-        existing_dates = set()
         if "data" in data and isinstance(data["data"], list):
-            # Get existing deliveryDate values from the table if the column
-            # exists
-            try:
-                cursor.execute(f"PRAGMA table_info({table_name})")
-                columns = [row[1] for row in cursor.fetchall()]
-                if "DeliveryDate" in columns:
-                    cursor.execute(
-                        f"SELECT DISTINCT DeliveryDate FROM {table_name}")
-                    existing_dates = {row[0] for row in cursor.fetchall()}
-            except sqlite3.Error as e:
-                logger.warning(
-                    "Could not fetch existing dates for %s: %s", table_name, e)
+            # Normalize deliveryDate fields in all records to YYYY-MM-DD
+            existing_dates = set()
+            if "data" in data and isinstance(data["data"], list):
+                # Get existing deliveryDate values from the table if the column
+                # exists
+                try:
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    if "DeliveryDate" in columns:
+                        cursor.execute(
+                            f"SELECT DISTINCT DeliveryDate FROM {table_name}")
+                        existing_dates = {row[0] for row in cursor.fetchall()}
+                except sqlite3.Error as e:
+                    logger.warning(
+                        "Could not fetch existing dates for %s: %s", table_name, e)
+                for record in data["data"]:
+                    if "deliveryDate" in record:
+                        record["deliveryDate"] = normalize_date_string(
+                            record["deliveryDate"])
+            # Get the set of valid field names for the dataclass
+            valid_fields = {f.name for f in fields(model_class)}
             for record in data["data"]:
-                if "deliveryDate" in record:
-                    record["deliveryDate"] = normalize_date_string(
-                        record["deliveryDate"])
-        for record in data["data"]:
+                # Fix casing for inserted_at
+                if "INSERTED_AT" in record:
+                    record["inserted_at"] = record.pop("INSERTED_AT")
+                # Ensure inserted_at is always set
+                if "inserted_at" not in record or not record["inserted_at"]:
+                    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    record["inserted_at"] = ts
+                # Add uppercase DeliveryDate for merge compatibility if needed
+                if "DeliveryDate" not in record and "deliveryDate" in record:
+                    record["DeliveryDate"] = record["deliveryDate"]
+                # Only keep keys that match the dataclass fields
+                filtered_record = {
+                    k: v for k, v in record.items() if k in valid_fields
+                }
+                try:
+                    obj = model_class(**filtered_record)
+                    filtered_rows.append(obj.as_tuple())
+                except Exception as e:
+                    keys_str = ','.join(list(record.keys()))[:40]
+                    logger.warning(
+                        "Skipping record due to error: %s. Keys: %s", e, keys_str)
+        # After insert, log min/max DeliveryDate for debugging
+        if filtered_rows and table_name in ["BID_AWARDS", "BIDS", "SETTLEMENT_POINT_PRICES"]:
             try:
-                # If record is a list, map it to a dict using model field names
-                if isinstance(record, list):
-                    if model_class is SettlementPointPrice:
-                        field_names = [
-                            'deliveryDate',
-                            'deliveryHour',
-                            'deliveryInterval',
-                            'settlementPointName',
-                            'settlementPointType',
-                            'settlementPointPrice',
-                            'dstFlag']
-                    elif model_class is Offer:
-                        field_names = [
-                            'deliveryDate',
-                            'hourEnding',
-                            'settlementPointName',
-                            'qseName',
-                            'energyOnlyOfferMW1',
-                            'energyOnlyOfferPrice1',
-                            'energyOnlyOfferMW2',
-                            'energyOnlyOfferPrice2',
-                            'energyOnlyOfferMW3',
-                            'energyOnlyOfferPrice3',
-                            'energyOnlyOfferMW4',
-                            'energyOnlyOfferPrice4',
-                            'energyOnlyOfferMW5',
-                            'energyOnlyOfferPrice5',
-                            'energyOnlyOfferMW6',
-                            'energyOnlyOfferPrice6',
-                            'energyOnlyOfferMW7',
-                            'energyOnlyOfferPrice7',
-                            'energyOnlyOfferMW8',
-                            'energyOnlyOfferPrice8',
-                            'energyOnlyOfferMW9',
-                            'energyOnlyOfferPrice9',
-                            'energyOnlyOfferMW10',
-                            'energyOnlyOfferPrice10',
-                            'offerId',
-                            'multiHourBlock',
-                            'blockCurve']
-                    elif model_class is Bid:
-                        field_names = [
-                            'deliveryDate',
-                            'hourEnding',
-                            'settlementPointName',
-                            'qseName',
-                            'energyOnlyBidMw1',
-                            'energyOnlyBidPrice1',
-                            'energyOnlyBidMw2',
-                            'energyOnlyBidPrice2',
-                            'energyOnlyBidMw3',
-                            'energyOnlyBidPrice3',
-                            'energyOnlyBidMw4',
-                            'energyOnlyBidPrice4',
-                            'energyOnlyBidMw5',
-                            'energyOnlyBidPrice5',
-                            'energyOnlyBidMw6',
-                            'energyOnlyBidPrice6',
-                            'energyOnlyBidMw7',
-                            'energyOnlyBidPrice7',
-                            'energyOnlyBidMw8',
-                            'energyOnlyBidPrice8',
-                            'energyOnlyBidMw9',
-                            'energyOnlyBidPrice9',
-                            'energyOnlyBidMw10',
-                            'energyOnlyBidPrice10',
-                            'bidId',
-                            'multiHourBlock',
-                            'blockCurve']
-                    elif model_class is OfferAward:
-                        field_names = [
-                            'deliveryDate',
-                            'hourEnding',
-                            'settlementPointName',
-                            'qseName',
-                            'energyOnlyOfferAwardInMW',
-                            'settlementPointPrice',
-                            'offerId']
-                    elif model_class is BidAward:
-                        field_names = [
-                            'deliveryDate',
-                            'hourEnding',
-                            'settlementPointName',
-                            'qseName',
-                            'energyOnlyBidAwardInMW',
-                            'settlementPointPrice',
-                            'bidId']
-                    else:
-                        logger.warning(
-                            "Unknown model_class for list record mapping: %s", model_class)
-                        continue
-                    record = dict(zip(field_names, record))
-                obj = model_class(**record)
-                filtered_rows.append(obj.as_tuple())
-            except (TypeError, ValueError) as e:
-                logger.warning("Skipping record due to error: %s", e)
+                cursor.execute(
+                    f"SELECT MIN(DeliveryDate), MAX(DeliveryDate) FROM {table_name}")
+                minmax = cursor.fetchone()
+                logger.info("%s DeliveryDate range after insert: %s",
+                            table_name, minmax)
+            except Exception as e:
+                logger.warning(
+                    "Could not fetch DeliveryDate range for %s: %s", table_name, e)
 
         logger.info("Found %d new records to insert", len(filtered_rows))
 
@@ -329,21 +253,12 @@ def store_data_to_db(
                 for i in range(0, len(filtered_rows), batch_size):
                     chunk = filtered_rows[i:i + batch_size]
                     cursor.executemany(insert_query, chunk)
-                    # Insert a row into INSERTED_AT for this batch
-                    cursor.execute(
-                        "INSERT INTO INSERTED_AT (table_name, inserted_at) VALUES (?, CURRENT_TIMESTAMP)",
-                        (table_name,)
-                    )
                     conn.commit()
                     logger.info(
                         "Inserted batch of %d records into %s table.",
                         len(chunk), table_name)
             else:
                 cursor.executemany(insert_query, filtered_rows)
-                cursor.execute(
-                    "INSERT INTO INSERTED_AT (table_name, inserted_at) VALUES (?, CURRENT_TIMESTAMP)",
-                    (table_name,)
-                )
                 conn.commit()
                 logger.info(
                     "Inserted %d records into %s table.",
@@ -637,7 +552,6 @@ def store_bid_record_to_db(
         logger.error(f"Invalid Bid record: {record} | Error: {e}")
         raise ValueError(f"Invalid data record for Bid: {e}")
     try:
-        import sqlite3
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
         cursor.execute(

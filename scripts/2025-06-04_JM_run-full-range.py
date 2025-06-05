@@ -28,14 +28,14 @@ PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv
 # PYTHON = "C:\\Users\\bigme\\OneDrive\\Documents\\GitHub\\ercot-project\\.venv_3.9\\Scripts\\python.exe"
 
 # These test the archive and current APIs for the DAM data.
-# START_DATE = "2024-01-30"
-# END_DATE = "2024-01-30"
+START_DATE = "2024-01-30"
+END_DATE = "2024-01-30"
 # These test the archive and current APIs for the SPP data.
 # START_DATE = "2023-12-10"
 # END_DATE = "2023-12-12"
 # Final Run
-START_DATE = "2020-01-01"
-END_DATE = "2025-06-04"
+# START_DATE = "2020-01-01"
+# END_DATE = "2025-06-04"
 
 
 def run_command(args):

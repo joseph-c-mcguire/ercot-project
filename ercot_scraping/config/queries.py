@@ -110,13 +110,19 @@ CREATE TABLE IF NOT EXISTS FINAL (
     hourEnding INTEGER,
     settlementPointName TEXT,
     qseName TEXT,
-    energyOnlyBidAwardInMW REAL,
     settlementPointPrice REAL,
-    bidId TEXT,
     MARK_PRICE REAL,
+    blockCurve TEXT,
+    sourceType TEXT,
+    energyOnlyBidAwardInMW REAL,
+    bidId TEXT,
     BID_PRICE REAL,
     BID_SIZE REAL,
-    blockCurve TEXT
+    energyOnlyOfferAwardMW REAL,
+    offerId TEXT,
+    OFFER_PRICE REAL,
+    OFFER_SIZE REAL,
+    INSERTED_AT TEXT DEFAULT (datetime('now'))
 )
 """
 
@@ -183,16 +189,36 @@ FETCH_OFFER_SETTLEMENT_POINTS_QUERY = "SELECT SettlementPoint FROM OFFER_AWARDS"
 
 # Merge Query
 MERGE_DATA_QUERY = """
-INSERT INTO FINAL
+INSERT INTO FINAL (
+    deliveryDate,
+    hourEnding,
+    settlementPointName,
+    qseName,
+    settlementPointPrice,
+    MARK_PRICE,
+    blockCurve,
+    sourceType,
+    energyOnlyBidAwardInMW,
+    bidId,
+    BID_PRICE,
+    BID_SIZE,
+    energyOnlyOfferAwardMW,
+    offerId,
+    OFFER_PRICE,
+    OFFER_SIZE,
+    INSERTED_AT
+)
 SELECT 
     ba.DeliveryDate,
     ba.HourEnding,
     ba.SettlementPoint as settlementPointName,
     ba.QSEName,
-    ba.EnergyOnlyBidAwardMW as energyOnlyBidAwardInMW,
     COALESCE(spp.SettlementPointPrice, ba.SettlementPointPrice) as settlementPointPrice,
-    ba.BidId,
     spp.SettlementPointPrice as MARK_PRICE,
+    b.BlockCurveIndicator as blockCurve,
+    'Bid' as sourceType,
+    ba.EnergyOnlyBidAwardMW as energyOnlyBidAwardInMW,
+    ba.BidId,
     CASE 
         WHEN b.EnergyOnlyBidMW1 IS NOT NULL THEN b.EnergyOnlyBidPrice1
         WHEN b.EnergyOnlyBidMW2 IS NOT NULL THEN b.EnergyOnlyBidPrice2
@@ -209,7 +235,11 @@ SELECT
         WHEN b.EnergyOnlyBidMW5 IS NOT NULL THEN b.EnergyOnlyBidMW5
         ELSE NULL
     END as BID_SIZE,
-    b.BlockCurveIndicator as blockCurve
+    NULL as energyOnlyOfferAwardMW,
+    NULL as offerId,
+    NULL as OFFER_PRICE,
+    NULL as OFFER_SIZE,
+    datetime('now') as INSERTED_AT
 FROM BID_AWARDS ba
 LEFT JOIN BIDS b ON ba.BidId = b.EnergyOnlyBidID 
     AND ba.DeliveryDate = b.DeliveryDate 
@@ -217,4 +247,46 @@ LEFT JOIN BIDS b ON ba.BidId = b.EnergyOnlyBidID
 LEFT JOIN SETTLEMENT_POINT_PRICES spp ON ba.SettlementPoint = spp.SettlementPointName 
     AND ba.DeliveryDate = spp.DeliveryDate 
     AND ba.HourEnding = spp.DeliveryHour
+
+UNION ALL
+
+SELECT 
+    oa.DeliveryDate,
+    oa.HourEnding,
+    oa.SettlementPoint as settlementPointName,
+    oa.QSEName,
+    COALESCE(spp.SettlementPointPrice, oa.SettlementPointPrice) as settlementPointPrice,
+    spp.SettlementPointPrice as MARK_PRICE,
+    o.BlockCurveIndicator as blockCurve,
+    'Offer' as sourceType,
+    NULL as energyOnlyBidAwardInMW,
+    NULL as bidId,
+    NULL as BID_PRICE,
+    NULL as BID_SIZE,
+    oa.EnergyOnlyOfferAwardMW as energyOnlyOfferAwardMW,
+    oa.OfferID as offerId,
+    CASE 
+        WHEN o.EnergyOnlyOfferMW1 IS NOT NULL THEN o.EnergyOnlyOfferPrice1
+        WHEN o.EnergyOnlyOfferMW2 IS NOT NULL THEN o.EnergyOnlyOfferPrice2
+        WHEN o.EnergyOnlyOfferMW3 IS NOT NULL THEN o.EnergyOnlyOfferPrice3
+        WHEN o.EnergyOnlyOfferMW4 IS NOT NULL THEN o.EnergyOnlyOfferPrice4
+        WHEN o.EnergyOnlyOfferMW5 IS NOT NULL THEN o.EnergyOnlyOfferPrice5
+        ELSE NULL
+    END as OFFER_PRICE,
+    CASE 
+        WHEN o.EnergyOnlyOfferMW1 IS NOT NULL THEN o.EnergyOnlyOfferMW1
+        WHEN o.EnergyOnlyOfferMW2 IS NOT NULL THEN o.EnergyOnlyOfferMW2
+        WHEN o.EnergyOnlyOfferMW3 IS NOT NULL THEN o.EnergyOnlyOfferMW3
+        WHEN o.EnergyOnlyOfferMW4 IS NOT NULL THEN o.EnergyOnlyOfferMW4
+        WHEN o.EnergyOnlyOfferMW5 IS NOT NULL THEN o.EnergyOnlyOfferMW5
+        ELSE NULL
+    END as OFFER_SIZE,
+    datetime('now') as INSERTED_AT
+FROM OFFER_AWARDS oa
+LEFT JOIN OFFERS o ON oa.OfferID = o.EnergyOnlyOfferID 
+    AND oa.DeliveryDate = o.DeliveryDate 
+    AND oa.HourEnding = o.HourEnding
+LEFT JOIN SETTLEMENT_POINT_PRICES spp ON oa.SettlementPoint = spp.SettlementPointName 
+    AND oa.DeliveryDate = spp.DeliveryDate 
+    AND oa.HourEnding = spp.DeliveryHour
 """

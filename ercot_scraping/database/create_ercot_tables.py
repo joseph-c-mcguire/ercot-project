@@ -1,6 +1,6 @@
 """
 Create tables in the SQLite database for ERCOT project.
-This function connects to an SQLite database (or creates it if it doesn't exist)
+This function connects to anSQLite database (or creates it if it doesn't exist)
 and creates the following tables if they do not already exist:
 - SETTLEMENT_POINT_PRICES: Stores settlement point prices with columns for delivery date,
   delivery hour, delivery interval, settlement point name, settlement point type,
@@ -15,26 +15,25 @@ and creates the following tables if they do not already exist:
   indicator, and block curve indicator.
 - OFFER_AWARDS: Stores offer awards with columns for delivery date, hour ending, settlement
   point, QSE name, energy-only offer award MW, settlement point price, and offer ID.
-- INSERTED_AT: Tracks when data is inserted into the above tables, with columns for
-  table name and inserted at timestamp.
 The function commits the changes and closes the database connection.
 """
 
 import sqlite3
+
 from ercot_scraping.config.config import (
-    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
-    BIDS_TABLE_CREATION_QUERY,
     BID_AWARDS_TABLE_CREATION_QUERY,
-    OFFERS_TABLE_CREATION_QUERY,
+    BIDS_TABLE_CREATION_QUERY,
+    ERCOT_DB_NAME,
     OFFER_AWARDS_TABLE_CREATION_QUERY,
-    ERCOT_DB_NAME
+    OFFERS_TABLE_CREATION_QUERY,
+    SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY,
 )
 
 
 def create_ercot_tables(save_path: str = ERCOT_DB_NAME) -> None:
     """
     Create tables in the SQLite database for ERCOT project.
-    This function connects to an SQLite database (or creates it if it doesn't exist)
+    This function connects to anSQLite database (or creates it if it doesn't exist)
     and creates the following tables if they do not already exist:
     - SETTLEMENT_POINT_PRICES: Stores settlement point prices with columns for delivery date,
       delivery hour, delivery interval, settlement point name, settlement point type,
@@ -49,8 +48,6 @@ def create_ercot_tables(save_path: str = ERCOT_DB_NAME) -> None:
       indicator, and block curve indicator.
     - OFFER_AWARDS: Stores offer awards with columns for delivery date, hour ending, settlement
       point, QSE name, energy-only offer award MW, settlement point price, and offer ID.
-    - INSERTED_AT: Tracks when data is inserted into the above tables, with columns for
-      table name and inserted at timestamp.
     The function commits the changes and closes the database connection.
     """
     # Connect to SQLite database (or create it if it doesn't exist)
@@ -63,14 +60,6 @@ def create_ercot_tables(save_path: str = ERCOT_DB_NAME) -> None:
     cursor.execute(BID_AWARDS_TABLE_CREATION_QUERY)
     cursor.execute(OFFERS_TABLE_CREATION_QUERY)
     cursor.execute(OFFER_AWARDS_TABLE_CREATION_QUERY)
-
-    # Add a table for tracking insertion times
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS INSERTED_AT (
-            table_name TEXT NOT NULL,
-            inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
 
     # Commit changes and close the connection
     conn.commit()

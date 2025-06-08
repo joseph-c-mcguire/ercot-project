@@ -20,14 +20,11 @@ Notes:
 import subprocess
 from datetime import datetime, timedelta
 
-DB_FILE = "Z:\\Databases\\000_ERCOT\\ercot_data.db"
+DB_FILE = "Z:\\Databases\\000_ERCOT\\archive_ercot_data.db"
 # DB_FILE = "_data/ercot_data.db"  # Relative path to the database file
 # Change this to your Python executable path if needed
 PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv\\Scripts\\python.exe"
 # Use 'python' if running in a virtual environment or system Python
-PYTHON = "C:\\Users\\bigme\\OneDrive\\Documents\\GitHub\\ercot-project\\.venv_3.9\\Scripts\\python.exe"
-START_DATE = "2010-01-31"
-END_DATE = "2025-02-28"
 # PYTHON = "C:\\Users\\bigme\\OneDrive\\Documents\\GitHub\\ercot-project\\.venv_3.9\\Scripts\\python.exe"
 
 # These test the archive and current APIs for the DAM data.
@@ -37,7 +34,7 @@ END_DATE = "2025-02-28"
 # START_DATE = "2023-12-10"
 # END_DATE = "2023-12-12"
 # Final Run
-START_DATE = "2020-01-01"
+START_DATE = "2000-01-01"
 END_DATE = "2025-06-04"
 
 

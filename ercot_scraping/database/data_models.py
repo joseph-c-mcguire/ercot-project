@@ -21,9 +21,11 @@ class SettlementPointPrice:
     Methods:
         as_tuple():
             Returns:
-                tuple: A tuple containing all the settlement point price attributes in the following order:
-                    (deliveryDate, deliveryHour, deliveryInterval, settlementPointName,
-                     settlementPointType, settlementPointPrice, dstFlag)
+                tuple: A tuple containing all the settlement point price attributes
+                  in the following order:
+                    (deliveryDate, deliveryHour, deliveryInterval,
+                    settlementPointName, settlementPointType, settlementPointPrice,
+                    dstFlag)
     """
 
     deliveryDate: str
@@ -33,8 +35,24 @@ class SettlementPointPrice:
     settlementPointType: str
     settlementPointPrice: float
     dstFlag: str
+    inserted_at: Optional[str] = None
 
     def as_tuple(self):
+        """
+        Return a tuple representation of the instance.
+
+        The tuple contains the following attributes in order:
+            - deliveryDate: The date of the delivery.
+            - deliveryHour: The hour corresponding to the delivery.
+            - deliveryInterval: The specific delivery interval.
+            - settlementPointName: The name of the settlement point.
+            - settlementPointType: The type/category of the settlement point.
+            - settlementPointPrice: The price associated with the settlement point.
+            - dstFlag: A flag indicating whether Daylight Saving Time is in effect.
+
+        Returns:
+            tuple: A tuple containing the instance attributes as listed above.
+        """
         return (
             self.deliveryDate,
             self.deliveryHour,
@@ -43,6 +61,7 @@ class SettlementPointPrice:
             self.settlementPointType,
             self.settlementPointPrice,
             self.dstFlag,
+            self.inserted_at,
         )
 
 
@@ -55,11 +74,16 @@ class Bid:
         hourEnding (int): The hour that marks the end of the delivery period.
         settlementPoint (str): The identifier for the settlement point related to the bid.
         qseName (str): The name of the Qualified Scheduling Entity (QSE).
-        energyOnlyBidMw1 (Optional[float]): Megawatt quantity for the first energy-only bid level.
-        energyOnlyBidPrice1 (Optional[float]): Bid price for the first energy-only bid level.
-        energyOnlyBidMW2 (Optional[float]): Megawatt quantity for the second energy-only bid level.
-        energyOnlyBidPrice2 (Optional[float]): Bid price for the second energy-only bid level.
-        energyOnlyBidMW3 (Optional[float]): Megawatt quantity for the third energy-only bid level.
+        energyOnlyBidMw1 (Optional[float]): Megawatt quantity for the first
+            energy-only bid level.
+        energyOnlyBidPrice1 (Optional[float]): Bid price for the first
+            energy-only bid level.
+        energyOnlyBidMW2 (Optional[float]): Megawatt quantity for the second
+            energy-only bid level.
+        energyOnlyBidPrice2 (Optional[float]): Bid price for the second
+            energy-only bid level.
+        energyOnlyBidMW3 (Optional[float]): Megawatt quantity for the third
+            energy-only bid level.
         energyOnlyBidPrice3 (Optional[float]): Bid price for the third energy-only bid level.
         energyOnlyBidMW4 (Optional[float]): Megawatt quantity for the fourth energy-only bid level.
         energyOnlyBidPrice4 (Optional[float]): Bid price for the fourth energy-only bid level.
@@ -110,13 +134,58 @@ class Bid:
     bidId: Optional[str] = None
     multiHourBlock: Optional[str] = None
     blockCurve: Optional[str] = None
+    inserted_at: Optional[str] = None
 
     def __post_init__(self):
+        """
+        Post-initialization processing for the instance.
+
+        This method ensures that the bidId attribute is converted to a string
+        if it has a non-null value. It guarantees that bidId is consistently
+        handled as a string throughout the application.
+        """
         # Convert energyOnlyBidID to string if it's not already
         if self.bidId is not None:
             self.bidId = str(self.bidId)
 
     def as_tuple(self):
+        """
+        Return a tuple representation of the object's bid data.
+
+        The returned tuple contains the following elements:
+            0: deliveryDate         - The delivery date for the bid.
+            1: hourEnding           - The ending hour for the bid period.
+            2: settlementPointName  - The name of the settlement point.
+            3: qseName              - The QSE (Qualified Scheduling Entity) name.
+            4: energyOnlyBidMw1     - Energy-only bid megawatts for level 1.
+            5: energyOnlyBidPrice1  - Energy-only bid price for level 1.
+            6: energyOnlyBidMw2     - Energy-only bid megawatts for level 2.
+            7: energyOnlyBidPrice2  - Energy-only bid price for level 2.
+            8: energyOnlyBidMw3     - Energy-only bid megawatts for level 3.
+            9: energyOnlyBidPrice3  - Energy-only bid price for level 3.
+           10: energyOnlyBidMw4     - Energy-only bid megawatts for level 4.
+           11: energyOnlyBidPrice4  - Energy-only bid price for level 4.
+           12: energyOnlyBidMw5     - Energy-only bid megawatts for level 5.
+           13: energyOnlyBidPrice5  - Energy-only bid price for level 5.
+           14: energyOnlyBidMw6     - Energy-only bid megawatts for level 6.
+           15: energyOnlyBidPrice6  - Energy-only bid price for level 6.
+           16: energyOnlyBidMw7     - Energy-only bid megawatts for level 7.
+           17: energyOnlyBidPrice7  - Energy-only bid price for level 7.
+           18: energyOnlyBidMw8     - Energy-only bid megawatts for level 8.
+           19: energyOnlyBidPrice8  - Energy-only bid price for level 8.
+           20: energyOnlyBidMw9     - Energy-only bid megawatts for level 9.
+           21: energyOnlyBidPrice9  - Energy-only bid price for level 9.
+           22: energyOnlyBidMw10    - Energy-only bid megawatts for level 10.
+           23: energyOnlyBidPrice10 - Energy-only bid price for level 10.
+           24: bidId                - The unique identifier for the bid.
+           25: multiHourBlock       - Indicator if the bid spans multiple hours.
+           26: blockCurve           - Information regarding the bid's block curve.
+           27: inserted_at          - Timestamp indicating when the record was inserted.
+
+        Returns:
+            tuple: A tuple containing all the bid-related attributes in the order
+                specified.
+        """
         return (
             self.deliveryDate,
             self.hourEnding,
@@ -145,6 +214,7 @@ class Bid:
             self.bidId,
             self.multiHourBlock,
             self.blockCurve,
+            self.inserted_at,
         )
 
 
@@ -155,15 +225,31 @@ class BidAward:
     Field names match the API response format with property getters/setters
     to maintain compatibility with existing code.
     """
+
     deliveryDate: str  # API uses lowercase
-    hourEnding: int    # API uses lowercase
+    hourEnding: int  # API uses lowercase
     settlementPointName: str  # API uses lowercase
-    qseName: str      # API uses lowercase
+    qseName: str  # API uses lowercase
     energyOnlyBidAwardInMW: float  # API uses lowercase
     settlementPointPrice: float  # API uses lowercase
-    bidId: str        # API uses lowercase
+    bidId: str  # API uses lowercase
+    inserted_at: Optional[str] = None
 
     def __post_init__(self):
+        """
+        Post-initialization method to enforce type conversion for the object's
+        attributes.
+
+        This method is automatically called right after the object's initialization
+        to ensure that:
+        - 'hourEnding' is converted to an integer if it is not None.
+        - 'energyOnlyBidAwardInMW' is converted to a float if it is not None.
+        - 'settlementPointPrice' is converted to a float if it is not None.
+        - 'bidId' is converted to a string if it is not None.
+
+        Each conversion is performed conditionally to gracefully handle cases where
+        attributes may be None.
+        """
         # Ensure types are correct and handle None gracefully
         if self.hourEnding is not None:
             self.hourEnding = int(self.hourEnding)
@@ -175,6 +261,24 @@ class BidAward:
             self.bidId = str(self.bidId)
 
     def as_tuple(self):
+        """
+        Return a tuple containing the key attributes of the instance.
+
+        The tuple includes the following elements in order:
+            1. deliveryDate: The delivery date for the energy bid.
+            2. hourEnding: The hour at which the bid is ending.
+            3. settlementPointName: The name of the settlement point.
+            4. qseName: The name of the Qualified Scheduling Entity (QSE).
+            5. energyOnlyBidAwardInMW: The awarded energy-only bid in megawatts.
+            6. settlementPointPrice: The price at the settlement point.
+            7. bidId: The unique identifier for the bid.
+            8. inserted_at: The timestamp when the record was inserted.
+
+        Returns:
+            tuple: A tuple containing (deliveryDate, hourEnding,
+            settlementPointName, qseName, energyOnlyBidAwardInMW,
+            settlementPointPrice, bidId, inserted_at).
+        """
         return (
             self.deliveryDate,
             self.hourEnding,
@@ -182,7 +286,8 @@ class BidAward:
             self.qseName,
             self.energyOnlyBidAwardInMW,
             self.settlementPointPrice,
-            self.bidId
+            self.bidId,
+            self.inserted_at,
         )
 
 
@@ -251,13 +356,56 @@ class Offer:
     offerId: Optional[str] = None
     multiHourBlock: Optional[str] = None
     blockCurve: Optional[str] = None
+    inserted_at: Optional[str] = None
 
     def __post_init__(self):
+        """
+        Post-initialization hook that ensures the offerId attribute is stored as a string.
+
+        If offerId is not None, converts it to a string. This simplifies subsequent operations
+        that work with offerId by guaranteeing a consistent data type.
+        """
         # Convert energyOnlyOfferID to string if it's not already
         if self.offerId is not None:
             self.offerId = str(self.offerId)
 
     def as_tuple(self):
+        """
+        Return a tuple representation of the object's attributes.
+
+        The tuple contains the following elements in order:
+            1. deliveryDate: The delivery date.
+            2. hourEnding: The hour ending.
+            3. settlementPointName: The name of the settlement point.
+            4. qseName: The QSE name.
+            5. energyOnlyOfferMW1: Energy only offer in MW for first block.
+            6. energyOnlyOfferPrice1: Energy only offer price for first block.
+            7. energyOnlyOfferMW2: Energy only offer in MW for second block.
+            8. energyOnlyOfferPrice2: Energy only offer price for second block.
+            9. energyOnlyOfferMW3: Energy only offer in MW for third block.
+            10. energyOnlyOfferPrice3: Energy only offer price for third block.
+            11. energyOnlyOfferMW4: Energy only offer in MW for fourth block.
+            12. energyOnlyOfferPrice4: Energy only offer price for fourth block.
+            13. energyOnlyOfferMW5: Energy only offer in MW for fifth block.
+            14. energyOnlyOfferPrice5: Energy only offer price for fifth block.
+            15. energyOnlyOfferMW6: Energy only offer in MW for sixth block.
+            16. energyOnlyOfferPrice6: Energy only offer price for sixth block.
+            17. energyOnlyOfferMW7: Energy only offer in MW for seventh block.
+            18. energyOnlyOfferPrice7: Energy only offer price for seventh block.
+            19. energyOnlyOfferMW8: Energy only offer in MW for eighth block.
+            20. energyOnlyOfferPrice8: Energy only offer price for eighth block.
+            21. energyOnlyOfferMW9: Energy only offer in MW for ninth block.
+            22. energyOnlyOfferPrice9: Energy only offer price for ninth block.
+            23. energyOnlyOfferMW10: Energy only offer in MW for tenth block.
+            24. energyOnlyOfferPrice10: Energy only offer price for tenth block.
+            25. offerId: The identifier for the offer.
+            26. multiHourBlock: Boolean or indicator for multi-hour block offers.
+            27. blockCurve: The block curve data associated with the offer.
+            28. inserted_at: The timestamp when the record was inserted.
+
+        Returns:
+            tuple: A tuple containing the object's attribute values in the specified order.
+        """
         return (
             self.deliveryDate,
             self.hourEnding,
@@ -286,6 +434,7 @@ class Offer:
             self.offerId,
             self.multiHourBlock,
             self.blockCurve,
+            self.inserted_at,
         )
 
 
@@ -298,7 +447,8 @@ class OfferAward:
         hourEnding (int): The hour (ending time) for energy delivery.
         settlementPoint (str): The settlement location where the offer is evaluated.
         qseName (str): The name of the qualified scheduling entity (QSE) submitting the offer.
-        energyOnlyOfferAwardMW (float): Awarded megawatts for the energy-only component of the offer.
+        energyOnlyOfferAwardMW (float): Awarded megawatts for the energy-only
+            component of the offer.
         settlementPointPrice (float): The price associated with the settlement point.
         offerId (str): A unique identifier for the offer.
     Methods:
@@ -315,12 +465,35 @@ class OfferAward:
     energyOnlyOfferAwardInMW: float
     settlementPointPrice: float
     offerId: str
+    inserted_at: Optional[str] = None
 
     def __post_init__(self):
+        """
+        Post-initialization method that ensures the `offerId` attribute is stored as a string.
+
+        This function converts the `offerId` to a string, which helps maintain consistency
+        and avoids type errors in subsequent operations.
+        """
         # Convert offerID to string if it's not already
         self.offerId = str(self.offerId)
 
     def as_tuple(self):
+        """
+        Return a tuple containing the object's core data attributes.
+
+        The returned tuple includes, in order:
+            1. deliveryDate: The delivery date.
+            2. hourEnding: The hour ending indicator.
+            3. settlementPointName: The name of the settlement point.
+            4. qseName: The name of the QSE.
+            5. energyOnlyOfferAwardInMW: The awarded energy-only offer in MW.
+            6. settlementPointPrice: The price at the settlement point.
+            7. offerId: The identifier for the offer.
+            8. inserted_at: The timestamp when the record was inserted.
+
+        Returns:
+            tuple: A tuple of the aforementioned attributes.
+        """
         return (
             self.deliveryDate,
             self.hourEnding,
@@ -329,4 +502,5 @@ class OfferAward:
             self.energyOnlyOfferAwardInMW,
             self.settlementPointPrice,
             self.offerId,
+            self.inserted_at,
         )

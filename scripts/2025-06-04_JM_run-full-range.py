@@ -23,7 +23,7 @@ DB_FILE = "_data/ercot_data.db"  # Relative path to the database file
 # PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv\\Scripts\\python.exe"
 # Use 'python' if running in a virtual environment or system Python
 PYTHON = "C:\\Users\\bigme\\OneDrive\\Documents\\GitHub\\ercot-project\\.venv_3.9\\Scripts\\python.exe"
-START_DATE = "2025-01-31"
+START_DATE = "2010-01-31"
 END_DATE = "2025-02-28"
 
 

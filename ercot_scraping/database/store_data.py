@@ -171,12 +171,24 @@ def store_data_to_db(
 
     # Log unique dates in the data
     if hasattr(model_class, "deliveryDate"):
-        unique_dates = {record.get("deliveryDate", "unknown")
-                        for record in data["data"]}
-        logger.info(
-            "Storing %s data for dates: %s",
-            table_name, sorted(unique_dates))
+        unique_dates = set()
+        for record in data.get("data", []):
+            if hasattr(record, "deliveryDate"):
+                unique_dates.add(record.deliveryDate)
+            elif isinstance(record, dict) and "deliveryDate" in record:
+                unique_dates.add(record["deliveryDate"])
+        if unique_dates:
+            logger.info(
+                "Storing records for unique delivery dates: %s", sorted(
+                    unique_dates)
+            )
 
+    try:
+        import sqlite3
+        TQDM_AVAILABLE = True
+    except ImportError:
+        import sqlite3
+        TQDM_AVAILABLE = False
     try:
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
@@ -191,25 +203,29 @@ def store_data_to_db(
 
         filtered_rows = []
         if "data" in data and isinstance(data["data"], list):
-            # Normalize deliveryDate fields in all records to YYYY-MM-DD
-            existing_dates = set()
-            if "data" in data and isinstance(data["data"], list):
-                # Get existing deliveryDate values from the table if the column
-                # exists
-                try:
-                    cursor.execute(f"PRAGMA table_info({table_name})")
-                    columns = [row[1] for row in cursor.fetchall()]
-                    if "DeliveryDate" in columns:
-                        cursor.execute(
-                            f"SELECT DISTINCT DeliveryDate FROM {table_name}")
-                        existing_dates = {row[0] for row in cursor.fetchall()}
-                except sqlite3.Error as e:
-                    logger.warning(
-                        "Could not fetch existing dates for %s: %s", table_name, e)
-                for record in data["data"]:
-                    if "deliveryDate" in record:
-                        record["deliveryDate"] = normalize_date_string(
-                            record["deliveryDate"])
+            try:
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                columns = [row[1] for row in cursor.fetchall()]
+                if "DeliveryDate" in columns:
+                    cursor.execute(
+                        f"SELECT DISTINCT DeliveryDate FROM {table_name}")
+                    # Remove unused variable assignment (was:
+                    # existing_dates = ...)
+                    cursor.fetchall()
+            except sqlite3.Error as e:
+                logger.warning(
+                    "Could not fetch existing dates for %s: %s",
+                    table_name, e)
+            for record in data["data"]:
+                if not isinstance(record, dict):
+                    logger.error(
+                        "Invalid data record format for %s: %r",
+                        table_name, record)
+                    raise ValueError(
+                        "Invalid data record format for %s" % table_name)
+                if "deliveryDate" in record:
+                    record["deliveryDate"] = normalize_date_string(
+                        record["deliveryDate"])
             # Get the set of valid field names for the dataclass
             valid_fields = {f.name for f in fields(model_class)}
             for record in data["data"]:
@@ -230,26 +246,44 @@ def store_data_to_db(
                 try:
                     obj = model_class(**filtered_record)
                     filtered_rows.append(obj.as_tuple())
-                except Exception as e:
+                except (TypeError, ValueError) as e:
                     keys_str = ','.join(list(record.keys()))[:40]
-                    logger.warning(
-                        "Skipping record due to error: %s. Keys: %s", e, keys_str)
+                    logger.error(
+                        "Error converting record to %s: %s. Keys: %s",
+                        model_class.__name__, e, keys_str)
+                    raise ValueError(
+                        "Invalid data for %s: %s" % (
+                            model_class.__name__, e)
+                    ) from e
+        else:
+            logger.error(
+                "Data for %s is not a list of dicts.", table_name)
+            raise ValueError(
+                "Data for %s is not a list of dicts." % table_name)
         # After insert, log min/max DeliveryDate for debugging
-        if filtered_rows and table_name in ["BID_AWARDS", "BIDS", "SETTLEMENT_POINT_PRICES"]:
+        if (filtered_rows and table_name in [
+                "BID_AWARDS", "BIDS", "SETTLEMENT_POINT_PRICES"]):
             try:
                 cursor.execute(
-                    f"SELECT MIN(DeliveryDate), MAX(DeliveryDate) FROM {table_name}")
+                    "SELECT MIN(DeliveryDate), MAX(DeliveryDate) "
+                    "FROM %s" % table_name)
                 minmax = cursor.fetchone()
                 logger.info("%s DeliveryDate range after insert: %s",
                             table_name, minmax)
             except Exception as e:
                 logger.warning(
-                    "Could not fetch DeliveryDate range for %s: %s", table_name, e)
+                    "Could not fetch DeliveryDate range for %s: %s",
+                    table_name, e)
 
         logger.info("Found %d new records to insert", len(filtered_rows))
 
         if filtered_rows:
             if batch_size is not None and batch_size > 0:
+                pbar = None
+                if TQDM_AVAILABLE and len(filtered_rows) > batch_size:
+                    from tqdm import tqdm  # Ensure tqdm is only imported if available
+                    pbar = tqdm(total=len(filtered_rows),
+                                desc=f"Inserting into {table_name}")
                 for i in range(0, len(filtered_rows), batch_size):
                     chunk = filtered_rows[i:i + batch_size]
                     cursor.executemany(insert_query, chunk)
@@ -257,6 +291,10 @@ def store_data_to_db(
                     logger.info(
                         "Inserted batch of %d records into %s table.",
                         len(chunk), table_name)
+                    if pbar:
+                        pbar.update(len(chunk))
+                if pbar:
+                    pbar.close()
             else:
                 cursor.executemany(insert_query, filtered_rows)
                 conn.commit()
@@ -264,11 +302,13 @@ def store_data_to_db(
                     "Inserted %d records into %s table.",
                     len(filtered_rows), table_name)
     except sqlite3.Error as e:
-        logger.error("SQLite error in store_data_to_db: %s", e)
+        logger.error(f"SQLite error while inserting into {table_name}: %s", e)
         raise
     finally:
-        if 'conn' in locals() and conn:
+        try:
             conn.close()
+        except Exception:
+            pass
 
 
 def validate_spp_data(data: dict) -> None:
@@ -363,7 +403,7 @@ def aggregate_spp_data(data: dict) -> dict:
 # Delegation functions for different models using local constants:
 def store_prices_to_db(data: dict[str, Any],
                        db_name: str = ERCOT_DB_NAME,
-                       filter_by_awards: bool = True,
+                       filter_by_awards: bool = False,
                        batch_size: int = 500) -> None:
     """
     Stores settlement point prices data into the database. If data is empty, does nothing.

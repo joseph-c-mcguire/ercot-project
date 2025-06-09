@@ -179,3 +179,15 @@ def normalize_data(data: dict[str, any], table_name: str) -> dict[str, any]:
                 data["fields"][data["fields"].index(
                     column_info)]["name"] = new_key
     return data
+
+
+def mask_headers(headers: dict) -> dict:
+    """Return a copy of headers with sensitive values masked."""
+    SENSITIVE = {
+        "authorization", "api-key", "subscription-key",
+        "x-api-key", "ocp-apim-subscription-key"
+    }
+    return {
+        k: ("***MASKED***" if k.lower() in SENSITIVE else v)
+        for k, v in headers.items()
+    }

@@ -47,7 +47,7 @@ PYTHON = "Z:\\programming (PYTHON)\\JOSEPH-MCGUIRE\\GITHUB\\ercot-project\\.venv
 #     "\\.venv_3.9\\Scripts\\python.exe"
 # )
 START_DATE = "2023-02-01"
-END_DATE = "2024-02-02"  # Adjust the date range as needed
+END_DATE = "2023-02-02"  # Adjust the date range as needed
 BATCH_DAYS = "100"  # Use 1 day batches for full range
 
 

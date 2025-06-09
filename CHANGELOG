@@ -1,8 +1,21 @@
+## [0.2.3] - 2025-06-09
+### Changed
+- All logging in `ercot_scraping/apis/archive_api.py` now uses print statements instead of logger for easier debugging and script output.
+- DAM and SPP archive batching now strictly use the per-type limits from `FILE_LIMITS` (`DAM`: 25, `SPP`: 1000) for all batch API calls and DB inserts.
+
+## [0.2.2] - 2025-06-09
+### Changed
+- The `download` CLI command now uses SPP dates as the reference for batching; DAM dates are lagged -60 days relative to SPP.
+- The default batch size for --batch-days is now 1 (was previously 3).
+- Documentation and README updated to clarify that batching and CLI --start/--end for `download` refer to SPP dates, not DAM dates.
+- Checkpoint and resume support remain available for interrupted downloads.
+- Removed references to deleted checkpoint files.
+
 ## [0.2.1] - 2025-06-08
 ### Added
 - Unified `download` CLI command: downloads both DAM and SPP data in batches, with checkpointing and automatic merging.
 - Resume support: interrupted downloads can be resumed from the last checkpoint.
-- Batch size and merge control: `--batch-days`, `--no-merge`, and `--resume` flags for the `download` command.
+- Batch size and merge control: --batch-days, --no-merge, and --resume flags for the `download` command.
 - Documentation and README updated to reflect new workflow and command.
 
 ## [0.2.0] - 2025-06-04

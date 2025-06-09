@@ -63,7 +63,7 @@ python -m ercot_scraping.run <command> [options]
 | `--db <filename>`       | Path to SQLite database file (default: `_data/ercot_data.db`)                               | `--db mydata.db`             |
 | `--start <YYYY-MM-DD>`  | Start date for data download/merge (required for historical/download commands)              | `--start 2024-01-01`         |
 | `--end <YYYY-MM-DD>`    | End date for data download/merge (optional; defaults to today for download commands)        | `--end 2024-01-31`           |
-| `--batch-days <N>`      | Batch size in days for the `download` command (default: 3)                                 | `--batch-days 5`             |
+| `--batch-days <N>`      | Batch size in days for the `download` command (default: 1)                                 | `--batch-days 5`             |
 | `--resume`              | Resume from last checkpoint (default: True for `download`)                                 | `--resume`                   |
 | `--no-merge`            | Skip merging after each batch (merge only at the end; for `download` command)              | `--no-merge`                 |
 | `--qse-filter <csv/list>` | QSE filter as CSV file or comma-separated list (optional)                                 | `--qse-filter qses.csv`      |
@@ -76,9 +76,13 @@ python -m ercot_scraping.run <command> [options]
 python -m ercot_scraping.run download --start 2024-01-01 --end 2024-01-31 --db mydata.db --batch-days 5
 ```
 
-## Important Note on SPP Date Lag
+## Important Note on SPP and DAM Date Alignment
 
-When using the `download` command, the date range you specify with `--start` and `--end` applies to DAM (Day-Ahead Market) data. The SPP (Settlement Point Prices) data is always lagged by 60 days relative to the DAM date range you enter. For example, if you request DAM data for January 2024, the corresponding SPP data will be fetched for March 2024.
+When using the `download` command, the date range you specify with `--start` and `--end` applies to **SPP (Settlement Point Prices)** data. The DAM (Day-Ahead Market) data is always lagged **-60 days** relative to the SPP date range you enter. For example, if you request SPP data for March 2024, the corresponding DAM data will be fetched for January 2024.
+
+- The batching for the `download` command is based on SPP dates (not DAM dates).
+- The default batch size for `--batch-days` is now **1** (was previously 3).
+- Checkpoints and resume support are available for interrupted downloads.
 
 ---
 
@@ -146,3 +150,13 @@ python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02 
 - `--qse-filter <csv or list>`: QSE filter as CSV file or comma-separated list (optional)
 - `--debug`: Enable detailed debug logging (optional)
 - `--quick-test`: Run a quick test with a small QSE set and short date range (optional)
+
+## Batch Limits for DAM and SPP Archive Downloads
+
+- **DAM archive API batch limit:** 25 files per request (enforced automatically)
+- **SPP archive API batch limit:** 1000 files per request (enforced automatically)
+- These limits are set in the code and always respected for all archive downloads and DB inserts.
+
+## Logging
+
+- All logging in `ercot_scraping/apis/archive_api.py` now uses print statements for easier debugging and script output.

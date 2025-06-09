@@ -53,6 +53,10 @@ DAM_FILENAMES = [
     "60d_DAM_EnergyOnlyOffers-",
 ]
 
+FILE_LIMITS = {
+    "DAM": 25,
+    "SPP": 1000,  # SPP archive files limit
+}
 
 # API Rate Limiting and Request Settings
 API_RATE_LIMIT_REQUESTS = 10
@@ -67,9 +71,10 @@ REQUEST_TIMEOUT = 30
 API_MAX_DAM_BATCH_SIZE = 25  # Maximum allowed by ERCOT DAM archive API
 
 # DAM switches to archive before this date
-DAM_ARCHIVE_CUTOFF_DATE = "2024-02-01"
+# Setting this to large date since the Archive API is faster than the current API for the DAM data.
+DAM_ARCHIVE_CUTOFF_DATE = "2099-02-01"
 # SPP switches to archive before this date
-SPP_ARCHIVE_CUTOFF_DATE = "2023-12-11"
+SPP_ARCHIVE_CUTOFF_DATE = "2099-12-11"
 
 DAM_TABLE_DATA_MAPPING = {
     "BID_AWARDS": {

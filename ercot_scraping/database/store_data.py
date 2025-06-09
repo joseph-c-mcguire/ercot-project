@@ -207,54 +207,88 @@ def store_data_to_db(
                 cursor.execute(f"PRAGMA table_info({table_name})")
                 columns = [row[1] for row in cursor.fetchall()]
                 if "DeliveryDate" in columns:
-                    cursor.execute(
-                        f"SELECT DISTINCT DeliveryDate FROM {table_name}")
-                    # Remove unused variable assignment (was:
-                    # existing_dates = ...)
-                    cursor.fetchall()
-            except sqlite3.Error as e:
-                logger.warning(
-                    "Could not fetch existing dates for %s: %s",
-                    table_name, e)
-            for record in data["data"]:
-                if not isinstance(record, dict):
-                    logger.error(
-                        "Invalid data record format for %s: %r",
-                        table_name, record)
-                    raise ValueError(
-                        "Invalid data record format for %s" % table_name)
-                if "deliveryDate" in record:
-                    record["deliveryDate"] = normalize_date_string(
-                        record["deliveryDate"])
-            # Get the set of valid field names for the dataclass
-            valid_fields = {f.name for f in fields(model_class)}
-            for record in data["data"]:
-                # Fix casing for inserted_at
-                if "INSERTED_AT" in record:
-                    record["inserted_at"] = record.pop("INSERTED_AT")
-                # Ensure inserted_at is always set
-                if "inserted_at" not in record or not record["inserted_at"]:
-                    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    record["inserted_at"] = ts
-                # Add uppercase DeliveryDate for merge compatibility if needed
-                if "DeliveryDate" not in record and "deliveryDate" in record:
-                    record["DeliveryDate"] = record["deliveryDate"]
-                # Only keep keys that match the dataclass fields
-                filtered_record = {
-                    k: v for k, v in record.items() if k in valid_fields
-                }
-                try:
-                    obj = model_class(**filtered_record)
-                    filtered_rows.append(obj.as_tuple())
-                except (TypeError, ValueError) as e:
-                    keys_str = ','.join(list(record.keys()))[:40]
-                    logger.error(
-                        "Error converting record to %s: %s. Keys: %s",
-                        model_class.__name__, e, keys_str)
-                    raise ValueError(
-                        "Invalid data for %s: %s" % (
-                            model_class.__name__, e)
-                    ) from e
+                    for record in data["data"]:
+                        # If record is a list, map to dict using model fields
+                        if isinstance(record, list):
+                            field_names = [f.name for f in fields(model_class)]
+                            record = dict(zip(field_names, record))
+                        if not isinstance(record, dict):
+                            logger.error(
+                                "Invalid data record format for %s: %r",
+                                table_name, record)
+                            continue  # skip this record
+                        # Fix casing for inserted_at
+                        if "INSERTED_AT" in record:
+                            record["inserted_at"] = record.pop("INSERTED_AT")
+                        # Ensure inserted_at is always set
+                        if (
+                            "inserted_at" not in record or
+                            not record["inserted_at"]
+                        ):
+                            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            record["inserted_at"] = ts
+                        # Add uppercase DeliveryDate for merge compatibility
+                        if (
+                            "DeliveryDate" not in record and
+                            "deliveryDate" in record
+                        ):
+                            record["DeliveryDate"] = record["deliveryDate"]
+                        # Only keep keys that match the dataclass fields
+                        valid_fields = {f.name for f in fields(model_class)}
+                        filtered_record = {
+                            k: v for k, v in record.items()
+                            if k in valid_fields
+                        }
+                        try:
+                            obj = model_class(**filtered_record)
+                            filtered_rows.append(obj.as_tuple())
+                        except (TypeError, ValueError) as e:
+                            keys_str = ','.join(list(record.keys()))[:40]
+                            logger.error(
+                                "Error converting record to %s: %s. Keys: %s",
+                                model_class.__name__, e, keys_str)
+                            continue  # skip this record
+                else:
+                    # If DeliveryDate is not a column, just filter and insert as dicts
+                    for record in data["data"]:
+                        # If record is a list, map to dict using model fields
+                        if isinstance(record, list):
+                            field_names = [f.name for f in fields(model_class)]
+                            record = dict(zip(field_names, record))
+                        if not isinstance(record, dict):
+                            logger.error(
+                                "Invalid data record format for %s: %r",
+                                table_name, record)
+                            continue  # skip this record
+                        # Fix casing for inserted_at
+                        if "INSERTED_AT" in record:
+                            record["inserted_at"] = record.pop("INSERTED_AT")
+                        # Ensure inserted_at is always set
+                        if (
+                            "inserted_at" not in record or
+                            not record["inserted_at"]
+                        ):
+                            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            record["inserted_at"] = ts
+                        # Only keep keys that match the dataclass fields
+                        valid_fields = {f.name for f in fields(model_class)}
+                        filtered_record = {
+                            k: v for k, v in record.items()
+                            if k in valid_fields
+                        }
+                        try:
+                            obj = model_class(**filtered_record)
+                            filtered_rows.append(obj.as_tuple())
+                        except (TypeError, ValueError) as e:
+                            keys_str = ','.join(list(record.keys()))[:40]
+                            logger.error(
+                                "Error converting record to %s: %s. Keys: %s",
+                                model_class.__name__, e, keys_str)
+                            continue  # skip this record
+            except Exception as e:
+                logger.error(
+                    "Error processing records for %s: %s", table_name, e)
+                raise
         else:
             logger.error(
                 "Data for %s is not a list of dicts.", table_name)
@@ -281,7 +315,7 @@ def store_data_to_db(
             if batch_size is not None and batch_size > 0:
                 pbar = None
                 if TQDM_AVAILABLE and len(filtered_rows) > batch_size:
-                    from tqdm import tqdm  # Ensure tqdm is only imported if available
+                    from tqdm import tqdm
                     pbar = tqdm(total=len(filtered_rows),
                                 desc=f"Inserting into {table_name}")
                 for i in range(0, len(filtered_rows), batch_size):
@@ -404,7 +438,7 @@ def aggregate_spp_data(data: dict) -> dict:
 def store_prices_to_db(data: dict[str, Any],
                        db_name: str = ERCOT_DB_NAME,
                        filter_by_awards: bool = False,
-                       batch_size: int = 500) -> None:
+                       batch_size: int = 1_000) -> None:
     """
     Stores settlement point prices data into the database. If data is empty, does nothing.
 
@@ -492,7 +526,7 @@ def store_bid_awards_to_db(
     data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
-    batch_size: int = 500
+    batch_size: int = 1_000
 ) -> None:
     """
     Batch version: Stores bid award records in batches.
@@ -514,7 +548,7 @@ def store_bids_to_db(
     data: dict[str, Any],
     db_name: Optional[str] = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
-    batch_size: int = 500
+    batch_size: int = 1_000
 ) -> None:
     """
     Batch version: Stores bid records in batches.
@@ -536,7 +570,7 @@ def store_offers_to_db(
     data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
-    batch_size: int = 500
+    batch_size: int = 1_000
 ) -> None:
     """
     Batch version: Stores offer records in batches.
@@ -558,7 +592,7 @@ def store_offer_awards_to_db(
     data: dict[str, Any],
     db_name: str = ERCOT_DB_NAME,
     qse_filter: Optional[Set[str]] = None,  # pylint: disable=unused-argument
-    batch_size: int = 500
+    batch_size: int = 1_000
 ) -> None:
     """
     Batch version: Stores offer award records in batches.

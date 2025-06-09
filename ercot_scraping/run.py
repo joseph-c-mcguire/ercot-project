@@ -25,6 +25,7 @@ from ercot_scraping.config.config import (
     ERCOT_DB_NAME,
     ERCOT_ARCHIVE_PRODUCT_IDS,
     QSE_FILTER_CSV,
+    FILE_LIMITS,  # <-- use this for batch sizes
 )
 from ercot_scraping.apis.archive_api import (
     get_archive_document_ids,
@@ -236,9 +237,7 @@ def _load_qse_filter(qse_filter: Optional[object]) -> Set[str]:
     elif isinstance(qse_filter, set):
         return qse_filter
     elif isinstance(qse_filter, str):
-        # Try to interpret as comma-separated list
-        if ',' in qse_filter:
-            return set(q.strip() for q in qse_filter.split(',') if q.strip())
+        return set(q.strip() for q in qse_filter.split(',') if q.strip())
         # Try to interpret as a file path
         path = Path(qse_filter)
         if path.exists():
@@ -278,14 +277,23 @@ def _download_dam_data_from_archive(
     logger.info(
         "Calling download_dam_archive_files with %d doc_ids", len(doc_ids)
     )
-    download_dam_archive_files(
-        ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"],
-        doc_ids,
-        db_name
-    )
+    for i in range(0, len(doc_ids), FILE_LIMITS["DAM"]):
+        batch = doc_ids[i:i + FILE_LIMITS["DAM"]]
+        logger.info(
+            "DAM archive docIds %s-%s (batch %d/%d)",
+            batch[0], batch[-1],
+            i // FILE_LIMITS["DAM"] + 1,
+            (len(doc_ids) + FILE_LIMITS["DAM"] - 1) // FILE_LIMITS["DAM"]
+        )
+        download_dam_archive_files(
+            ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"],
+            batch,
+            db_name,
+            batch_size=FILE_LIMITS["DAM"]
+        )
     logger.info(
-        "Completed download_dam_archive_files for product_id=%s", ERCOT_ARCHIVE_PRODUCT_IDS[
-            "DAM_BIDS"]
+        "Completed download_dam_archive_files for product_id=%s",
+        ERCOT_ARCHIVE_PRODUCT_IDS["DAM_BIDS"]
     )
 
 
@@ -661,29 +669,28 @@ def _add_download_parser(subparsers: argparse._SubParsersAction) -> None:
     """
     download = subparsers.add_parser(
         "download",
-        help="Download SPP and DAM data in batches with checkpointing"
+        help="Download DAM and SPP data in batches with checkpointing. "
+             "The --start/--end dates refer to DAM; SPP is always lagged by -60 days (SPP = DAM - 60d)."
     )
     download.add_argument(
         "--start", required=True,
-        help="Start date (YYYY-MM-DD, SPP date)")
+        help="Start date (YYYY-MM-DD, DAM date)")
     download.add_argument(
         "--end", required=True,
-        help="End date (YYYY-MM-DD, SPP date)")
+        help="End date (YYYY-MM-DD, DAM date)")
     download.add_argument(
-        "--batch-days", type=int, default=3,
-        help="Batch size in days (default: 3)")
+        "--batch-days", type=int, default=1,
+        help="Batch size in days (default: 1)")
     download.add_argument(
         "--db", default=ERCOT_DB_NAME,
         help="Database filename")
     download.add_argument(
         "--resume", action="store_true",
         default=True,
-        help="Resume from checkpoint (default: True)"
-    )
+        help="Resume from checkpoint (default: True)")
     download.add_argument(
         "--no-merge", action="store_true",
-        help="Skip merging after each batch"
-    )
+        help="Skip merging after each batch")
 
 
 def _setup_command_parser(
@@ -819,13 +826,14 @@ def download_and_merge_all_data(
     """
     Download and merge all DAM and SPP data for the specified date range,
     with checkpointing.
+    NOTE: The user-supplied start/end dates refer to DAM. SPP is always lagged by -60 days (SPP = DAM - 60d).
     """
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
     qse_filter = _load_qse_filter(qse_filter)
     checkpoint = load_checkpoint_safe()
     try:
-        # DAM data
+        # DAM data (user-supplied dates)
         archive_range, regular_range = split_date_range_by_cutoff(
             start_date, end_date, DAM_ARCHIVE_CUTOFF_DATE
         )
@@ -869,19 +877,19 @@ def download_and_merge_all_data(
                     header=ERCOT_API_REQUEST_HEADERS,
                     qse_names=qse_filter,
                     db_name=db_name,
-                    batch_size=1,
+                    batch_size=100,
                     log_every=merge_every,
                 )
                 merge_data(db_name)
                 save_checkpoint_atomic(
                     {"stage": stage, "details": {"dam_regular_func": i + 1}})
-        # SPP data (offset by 60 days)
+        # SPP data (lagged by -60 days)
         fmt = "%Y-%m-%d"
         spp_start = (
-            datetime.strptime(start_date, fmt) + timedelta(days=60)
+            datetime.strptime(start_date, fmt) - timedelta(days=60)
         ).strftime(fmt)
         spp_end = (
-            datetime.strptime(end_date, fmt) + timedelta(days=60)
+            datetime.strptime(end_date, fmt) - timedelta(days=60)
         ).strftime(fmt)
         archive_range, regular_range = split_date_range_by_cutoff(
             spp_start, spp_end, SPP_ARCHIVE_CUTOFF_DATE
@@ -924,7 +932,7 @@ def download_and_merge_all_data(
                     regular_range[0], regular_range[1],
                     header=ERCOT_API_REQUEST_HEADERS,
                     db_name=db_name,
-                    batch_size=1,
+                    batch_size=100,
                     log_every=merge_every,
                 )
                 merge_data(db_name)
@@ -949,18 +957,19 @@ def download_batched_data(
 ):
     """
     Downloads DAM and SPP data in batches, using archive or current API as
-    appropriate. The CLI start/end dates refer to DAM; SPP is shifted +60 days.
+    appropriate. The CLI start/end dates refer to DAM; SPP is shifted -60 days (SPP = DAM - 60d).
     """
     fmt = "%Y-%m-%d"
     dam_start = datetime.strptime(start_date, fmt)
     dam_end = datetime.strptime(end_date, fmt)
-    # Prepare DAM batches (user input)
+    # Prepare DAM batches (user input), newest to oldest
     batches = []
-    current = dam_start
-    while current <= dam_end:
-        batch_end = min(current + timedelta(days=batch_days - 1), dam_end)
-        batches.append((current.strftime(fmt), batch_end.strftime(fmt)))
-        current = batch_end + timedelta(days=1)
+    current = dam_end
+    while current >= dam_start:
+        batch_start = max(current - timedelta(days=batch_days - 1), dam_start)
+        batches.append((batch_start.strftime(fmt), current.strftime(fmt)))
+        current = batch_start - timedelta(days=1)
+    # Now batches is newest to oldest
 
     checkpoint = load_checkpoint_safe()
     last_batch_idx = checkpoint.get("details", {}).get(
@@ -975,14 +984,14 @@ def download_batched_data(
             continue
 
         spp_batch_start = (
-            datetime.strptime(dam_batch_start, fmt) + timedelta(days=60)
+            datetime.strptime(dam_batch_start, fmt) - timedelta(days=60)
         ).strftime(fmt)
         spp_batch_end = (
-            datetime.strptime(dam_batch_end, fmt) + timedelta(days=60)
+            datetime.strptime(dam_batch_end, fmt) - timedelta(days=60)
         ).strftime(fmt)
 
         logger.info(
-            "Batch %d/%d: DAM %s to %s | SPP (lagged +60d) %s to %s",
+            "Batch %d/%d: DAM %s to %s | SPP (lagged -60d) %s to %s",
             idx+1,
             len(batches),
             dam_batch_start,
@@ -1003,114 +1012,80 @@ def download_batched_data(
         )
 
         try:
-            # --- DAM: Archive or Current API ---
-            if dam_batch_end < DAM_ARCHIVE_CUTOFF_DATE:
-                for dam_type, product_id in ERCOT_ARCHIVE_PRODUCT_IDS["DAM"].items():
-                    doc_ids = get_archive_document_ids(
-                        product_id, dam_batch_start, dam_batch_end)
-                    logger.info(
-                        "[Batch %d/%d] Using DAM ARCHIVE API for %s to %s "
-                        "| dam_type=%s | product_id=%s | doc_ids_found=%d",
-                        idx+1,
-                        len(batches),
-                        dam_batch_start,
-                        dam_batch_end,
-                        dam_type,
-                        product_id,
-                        len(doc_ids) if doc_ids else 0
-                    )
-                    logger.debug(
-                        "[DEBUG] DAM ARCHIVE API: batch_idx=%d, dam_type=%s, "
-                        "product_id=%s, doc_ids=%s, db_name=%s",
-                        idx+1,
-                        dam_type,
-                        product_id,
-                        doc_ids,
-                        db_name
-                    )
-                    if doc_ids:
-                        try:
-                            total = len(doc_ids)
-                            for j, doc_id in enumerate(doc_ids, 1):
-                                logger.info(
-                                    "Downloading DAM archive doc_id %s (%d/%d) for product_id=%s",
-                                    doc_id, j, total, product_id
-                                )
-                                download_dam_archive_files(
-                                    product_id, [doc_id], db_name)
-                                logger.debug(
-                                    "Downloaded doc_id=%s for product_id=%s",
-                                    doc_id, product_id)
-                                for handler in logging.getLogger().handlers:
-                                    handler.flush()
-                        except Exception as inner_e:
-                            logger.error(
-                                "Error downloading DAM archive file for "
-                                "product_id=%s, doc_ids=%s: %s",
-                                product_id, doc_ids, inner_e)
-                            raise
+            # --- DAM: Split at DAM_ARCHIVE_CUTOFF_DATE ---
+            dam_archive_range, dam_regular_range = split_date_range_by_cutoff(
+                dam_batch_start, dam_batch_end, DAM_ARCHIVE_CUTOFF_DATE)
+            if dam_archive_range:
+                dam_archive_product_id = ERCOT_ARCHIVE_PRODUCT_IDS["DAM"].get(
+                    "BIDS")
+                doc_ids = get_archive_document_ids(
+                    dam_archive_product_id, dam_archive_range[0], dam_archive_range[1])
+                logger.info(
+                    "[Batch %d/%d] Using DAM ARCHIVE API for %s to %s | product_id=%s | doc_ids_found=%d",
+                    idx+1,
+                    len(batches),
+                    dam_archive_range[0],
+                    dam_archive_range[1],
+                    dam_archive_product_id,
+                    len(doc_ids) if doc_ids else 0
+                )
+                if doc_ids:
+                    for i in range(0, len(doc_ids), FILE_LIMITS["DAM"]):
+                        batch = doc_ids[i:i + FILE_LIMITS["DAM"]]
                         logger.info(
-                            "Completed download_dam_archive_files for "
-                            "product_id=%s, batch_idx=%d",
-                            product_id, idx+1)
-                    else:
-                        logger.warning(
-                            "No DAM archive doc_ids for %s (%s to %s)",
-                            dam_type,
-                            dam_batch_start,
-                            dam_batch_end)
-            else:
+                            "DAM archive docIds %s-%s (batch %d/%d)",
+                            batch[0], batch[-1],
+                            i // FILE_LIMITS["DAM"] + 1,
+                            (len(doc_ids) +
+                             FILE_LIMITS["DAM"] - 1) // FILE_LIMITS["DAM"]
+                        )
+                        logger.info("product_id=%s", dam_archive_product_id)
+                        download_dam_archive_files(
+                            dam_archive_product_id, batch, db_name,
+                            batch_size=FILE_LIMITS["DAM"])
+            if dam_regular_range:
                 logger.info(
                     "Using DAM CURRENT API for %s to %s",
-                    dam_batch_start, dam_batch_end)
+                    dam_regular_range[0], dam_regular_range[1])
                 fetch_dam_energy_bid_awards(
-                    dam_batch_start, dam_batch_end, db_name=db_name)
+                    dam_regular_range[0], dam_regular_range[1], db_name=db_name)
                 fetch_dam_energy_bids(
-                    dam_batch_start, dam_batch_end, db_name=db_name)
+                    dam_regular_range[0], dam_regular_range[1], db_name=db_name)
                 fetch_dam_energy_only_offer_awards(
-                    dam_batch_start, dam_batch_end, db_name=db_name)
+                    dam_regular_range[0], dam_regular_range[1], db_name=db_name)
                 fetch_dam_energy_only_offers(
-                    dam_batch_start, dam_batch_end, db_name=db_name)
+                    dam_regular_range[0], dam_regular_range[1], db_name=db_name)
 
-            # --- SPP: Settlement Point Price, delayed by 60 days ---
-            if spp_batch_end < SPP_ARCHIVE_CUTOFF_DATE:
+            # --- SPP: Split at SPP_ARCHIVE_CUTOFF_DATE ---
+            spp_archive_range, spp_regular_range = split_date_range_by_cutoff(
+                spp_batch_start, spp_batch_end, SPP_ARCHIVE_CUTOFF_DATE)
+            if spp_archive_range:
                 logger.info(
                     "Using SPP ARCHIVE API for %s to %s",
-                    spp_batch_start, spp_batch_end)
+                    spp_archive_range[0], spp_archive_range[1])
                 product_id = ERCOT_ARCHIVE_PRODUCT_IDS["SPP"]
                 doc_ids = get_archive_document_ids(
-                    product_id, spp_batch_start, spp_batch_end)
+                    product_id, spp_archive_range[0], spp_archive_range[1])
                 if doc_ids:
-                    try:
-                        total = len(doc_ids)
-                        for j, doc_id in enumerate(doc_ids, 1):
-                            logger.info(
-                                "Downloading SPP archive doc_id %s (%d/%d) for product_id=%s",
-                                doc_id, j, total, product_id
-                            )
-                            download_spp_archive_files(
-                                product_id, [doc_id], db_name)
-                            logger.debug(
-                                "Downloaded SPP doc_id=%s for product_id=%s",
-                                doc_id, product_id)
-                            for handler in logging.getLogger().handlers:
-                                handler.flush()
-                    except Exception as inner_e:
-                        logger.error(
-                            "Error downloading SPP archive file for "
-                            "product_id=%s, doc_ids=%s: %s",
-                            product_id, doc_ids, inner_e)
-                        raise
-                else:
-                    logger.warning(
-                        "No SPP archive doc_ids for %s to %s",
-                        spp_batch_start, spp_batch_end)
-            else:
+                    for i in range(0, len(doc_ids), FILE_LIMITS["SPP"]):
+                        batch = doc_ids[i:i + FILE_LIMITS["SPP"]]
+                        logger.info(
+                            "SPP archive docIds %s-%s (batch %d/%d)",
+                            batch[0], batch[-1],
+                            i // FILE_LIMITS["SPP"] + 1,
+                            (len(doc_ids) +
+                             FILE_LIMITS["SPP"] - 1) // FILE_LIMITS["SPP"]
+                        )
+                        logger.info("product_id=%s", product_id)
+                        download_spp_archive_files(
+                            product_id, batch, db_name,
+                            batch_size=FILE_LIMITS["SPP"])
+            if spp_regular_range:
                 logger.info(
                     "Using SPP CURRENT API for %s to %s",
-                    spp_batch_start, spp_batch_end)
+                    spp_regular_range[0], spp_regular_range[1])
                 fetch_settlement_point_prices(
-                    spp_batch_start, spp_batch_end, db_name=db_name)
+                    spp_regular_range[0], spp_regular_range[1], db_name=db_name)
 
             # --- Merge immediately after SPP for this batch ---
             logger.info("Merging data after SPP fetch/store for this batch...")

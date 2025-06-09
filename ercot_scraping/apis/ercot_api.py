@@ -15,7 +15,6 @@ from ercot_scraping.config.config import (
     ERCOT_API_BASE_URL_DAM,
     ERCOT_API_BASE_URL_SETTLEMENT,
     ERCOT_API_REQUEST_HEADERS,
-    LOGGER,
     DEFAULT_BATCH_DAYS,
     ERCOT_DB_NAME,
 )
@@ -33,6 +32,13 @@ from ercot_scraping.apis.batched_api import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # Or INFO
+
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 per_run_handler = setup_module_logging(__name__)
 
 try:
@@ -73,15 +79,10 @@ def fetch_data_from_endpoint(
     total_pages = 1
     current_page = 1
     first_response_json = None
-    # progress_bar = None
-    # use_progress = TQDM_AVAILABLE
     while current_page <= total_pages:
-        # if use_progress and progress_bar is None and total_pages > 1:
-        #     progress_bar = tqdm(total=total_pages, desc="API Pages")
         params["page"] = current_page
-        LOGGER.info(
-            "Fetching page %d/%d from endpoint: %s with params: %s",
-            current_page, total_pages, url, params
+        print(
+            f"Fetching page {current_page}/{total_pages} from endpoint: {url} with params: {params}"
         )
         for attempt in range(retries):
             response = rate_limited_request(
@@ -91,7 +92,7 @@ def fetch_data_from_endpoint(
                 params=params
             )
             if response.status_code == 401:
-                LOGGER.warning("Unauthorized. Refreshing access token.")
+                print("Unauthorized. Refreshing access token.")
                 id_token = refresh_access_token()
                 header["Authorization"] = f"Bearer {id_token}"
                 os.environ["ERCOT_ID_TOKEN"] = id_token
@@ -100,22 +101,17 @@ def fetch_data_from_endpoint(
                 response.raise_for_status()
                 response_json = response.json()
                 # --- PATCH START ---
-                # If the response is a list, wrap it in a dict
                 if isinstance(response_json, list):
-                    LOGGER.warning(
-                        "API returned a list instead of dict; "
-                        "wrapping in {'data': ...}"
+                    print(
+                        "API returned a list instead of dict; wrapping in {'data': ...}"
                     )
                     response_json = {"data": response_json}
-                # If the response is a dict but doesn't have 'data',
-                # treat the whole dict as data
                 elif (
                     isinstance(response_json, dict)
                     and "data" not in response_json
                 ):
-                    LOGGER.warning(
-                        "API response dict missing 'data' key; "
-                        "wrapping whole dict as data"
+                    print(
+                        "API response dict missing 'data' key; wrapping whole dict as data"
                     )
                     response_json = {"data": [response_json]}
                 # --- PATCH END ---
@@ -123,29 +119,17 @@ def fetch_data_from_endpoint(
                 if meta:
                     total_pages = meta.get("totalPages", 1)
                     current_page_num = meta.get("currentPage", current_page)
-                    # if use_progress and progress_bar:
-                    #     progress_bar.n = current_page_num
-                    #     progress_bar.total = total_pages
-                    #     progress_bar.refresh()
-                    # else:
-                    LOGGER.info(
-                        "Fetched page %d of %d (records this page: %d)",
-                        current_page_num,
-                        total_pages,
-                        len(response_json.get('data', []))
+                    print(
+                        f"Fetched page {current_page_num} of {total_pages} (records this page: {len(response_json.get('data', []))})"
                     )
                 else:
-                    LOGGER.info(
-                        "Fetched page %d (records this page: %d)",
-                        current_page,
-                        len(response_json.get('data', []))
+                    print(
+                        f"Fetched page {current_page} (records this page: {len(response_json.get('data', []))})"
                     )
                 if first_response_json is None:
                     first_response_json = response_json
                 if "data" not in response_json:
-                    LOGGER.error(
-                        "Unexpected response format: %s", response_json)
-                    # Checkpoint on error
+                    print(f"Unexpected response format: {response_json}")
                     if checkpoint_func:
                         checkpoint_func({
                             "stage": "api_fetch_error",
@@ -157,12 +141,10 @@ def fetch_data_from_endpoint(
                             }
                         })
                     return {}
-                # STREAMING STORAGE: Store each record as soon as it's fetched
                 if store_func is not None:
                     for record in response_json["data"]:
                         store_func(record, db_name)
                 all_data.extend(response_json["data"])
-                # Checkpoint after each page
                 if checkpoint_func:
                     checkpoint_func({
                         "stage": "api_fetch",
@@ -172,7 +154,6 @@ def fetch_data_from_endpoint(
                             "endpoint": endpoint
                         }
                     })
-                # Pagination logic
                 if meta:
                     total_pages = meta.get("totalPages", 1)
                 break  # Success, break retry loop
@@ -188,16 +169,13 @@ def fetch_data_from_endpoint(
                         }
                     })
                 if attempt < retries - 1:
-                    LOGGER.warning(
-                        "Request failed. Retrying... (%d/%d)",
-                        attempt + 1,
-                        retries)
+                    print(
+                        f"Request failed. Retrying... ({attempt + 1}/{retries})")
                 else:
-                    LOGGER.error(
-                        "Request failed after %d attempts: %s", retries, e)
+                    print(f"Request failed after {retries} attempts: {e}")
                     raise
             except requests.RequestException as e:
-                LOGGER.error("Request exception: %s", e)
+                print(f"Request exception: {e}")
                 if checkpoint_func:
                     checkpoint_func({
                         "stage": "api_fetch_error",
@@ -210,10 +188,6 @@ def fetch_data_from_endpoint(
                     })
                 raise
         current_page += 1
-    # if progress_bar:
-    #     progress_bar.n = total_pages
-    #     progress_bar.refresh()
-    #     progress_bar.close()
     if first_response_json is not None:
         first_response_json["data"] = all_data
         return first_response_json
@@ -229,7 +203,7 @@ def fetch_dam_energy_bids(
     qse_names: Optional[set[str]] = None,
     db_name: Optional[str] = None,
     log_every: int = 100,
-    batch_size: int = 500,
+    batch_size: int = 5000,  # Increased batch size for faster DB writes
     checkpoint_func: Optional[callable] = None,  # NEW
     batch_info: Optional[dict] = None,          # NEW
 ) -> None:
@@ -254,12 +228,11 @@ def fetch_dam_energy_bids(
             store_bids_to_db(
                 {"data": response_json["data"]},
                 db_name=db_name,
-                batch_size=batch_size
+                batch_size=batch_size  # Use larger batch size
             )
             count = len(response_json["data"])
-            logger.info(
-                "[BIDS] Progress: Inserted %d records into %s for %s to %s.",
-                count, db_name, s, e
+            print(
+                f"[BIDS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
             )
 
     fetch_in_batches(
@@ -281,7 +254,7 @@ def fetch_dam_energy_bid_awards(
     qse_names: Optional[set[str]] = None,
     db_name: Optional[str] = None,
     log_every: int = 100,
-    batch_size: int = 500,
+    batch_size: int = 5000,  # Increased batch size for faster DB writes
     checkpoint_func: Optional[callable] = None,  # NEW
     batch_info: Optional[dict] = None,          # NEW
 ) -> None:
@@ -307,12 +280,11 @@ def fetch_dam_energy_bid_awards(
             store_bid_awards_to_db(
                 {"data": response_json["data"]},
                 db_name=db_name,
-                batch_size=batch_size
+                batch_size=batch_size  # Use larger batch size
             )
             count = len(response_json["data"])
-            logger.info(
-                "[BID_AWARDS] Progress: Inserted %d records into %s for %s to %s.",
-                count, db_name, s, e
+            print(
+                f"[BID_AWARDS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
             )
 
     fetch_in_batches(
@@ -334,7 +306,7 @@ def fetch_dam_energy_only_offer_awards(
     qse_names: Optional[set[str]] = None,
     db_name: Optional[str] = None,
     log_every: int = 100,
-    batch_size: int = 500,
+    batch_size: int = 5000,  # Increased batch size for faster DB writes
     checkpoint_func: Optional[callable] = None,  # NEW
     batch_info: Optional[dict] = None,          # NEW
 ) -> None:
@@ -359,12 +331,11 @@ def fetch_dam_energy_only_offer_awards(
             store_offer_awards_to_db(
                 {"data": response_json["data"]},
                 db_name=db_name,
-                batch_size=batch_size
+                batch_size=batch_size  # Use larger batch size
             )
             count = len(response_json["data"])
-            logger.info(
-                "[OFFER_AWARDS] Progress: Inserted %d records into %s for %s to %s.",
-                count, db_name, s, e
+            print(
+                f"[OFFER_AWARDS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
             )
 
     fetch_in_batches(
@@ -386,7 +357,7 @@ def fetch_dam_energy_only_offers(
     qse_names: Optional[set[str]] = None,
     db_name: Optional[str] = None,
     log_every: int = 100,
-    batch_size: int = 500,
+    batch_size: int = 5000,  # Increased batch size for faster DB writes
     checkpoint_func: Optional[callable] = None,  # NEW
     batch_info: Optional[dict] = None,          # NEW
 ) -> None:
@@ -411,12 +382,11 @@ def fetch_dam_energy_only_offers(
             store_offers_to_db(
                 {"data": response_json["data"]},
                 db_name=db_name,
-                batch_size=batch_size
+                batch_size=batch_size  # Use larger batch size
             )
             count = len(response_json["data"])
-            logger.info(
-                "[OFFERS] Progress: Inserted %d records into %s for %s to %s.",
-                count, db_name, s, e
+            print(
+                f"[OFFERS] Progress: Inserted {count} records into {db_name} for {s} to {e}."
             )
 
     fetch_in_batches(
@@ -436,7 +406,7 @@ def fetch_settlement_point_prices(
     batch_days: int = DEFAULT_BATCH_DAYS,
     db_name: Optional[str] = None,
     log_every: int = 100,
-    batch_size: int = 500,
+    batch_size: int = 1_000,
     checkpoint_func: Optional[callable] = None,  # NEW
     batch_info: Optional[dict] = None,          # NEW
 ) -> None:
@@ -464,9 +434,8 @@ def fetch_settlement_point_prices(
                 batch_size=batch_size
             )
             count = len(response_json["data"])
-            logger.info(
-                "[SPP] Progress: Inserted %d records into %s for %s to %s.",
-                count, db_name, s, e
+            print(
+                f"[SPP] Progress: Inserted {count} records into {db_name} for {s} to {e}."
             )
 
     fetch_in_batches(

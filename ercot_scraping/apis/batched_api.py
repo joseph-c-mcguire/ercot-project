@@ -3,11 +3,12 @@ batched_api.py
 
 Batching and rate-limited API utilities for ERCOT data ingestion.
 
-This module provides functions to efficiently fetch large amounts of ERCOT market data
-by splitting date ranges into manageable batches and handling Qualified
-Scheduling Entities (QSEs) in a single API call per batch. It also implements
-thread-safe, rate-limited HTTP requests with logging and error handling,
-to comply with ERCOT API rate limits and ensure robust data collection.
+This module provides functions to efficiently fetch large amounts of ERCOT
+market data by splitting date ranges into manageable batches and handling
+Qualified Scheduling Entities (QSEs) in a single API call per batch.
+It also implements thread-safe, rate-limited HTTP requests with logging
+and error handling, to comply with ERCOT API rate limits and ensure robust
+data collection.
 
 Key features:
 - fetch_in_batches: Batches API calls over date ranges and QSE lists,
@@ -22,14 +23,11 @@ ingestion.
 """
 
 from typing import Optional
-import time
 from datetime import datetime, timedelta
-import logging
-import traceback
-import threading
-
-import requests
 from ratelimit import limits, sleep_and_retry
+import logging
+import threading
+import traceback
 
 from ercot_scraping.config.config import (
     API_RATE_LIMIT_REQUESTS,
@@ -38,14 +36,12 @@ from ercot_scraping.config.config import (
     DEFAULT_BATCH_DAYS,
 )
 from ercot_scraping.utils.logging_utils import setup_module_logging
+from ercot_scraping.utils.utils import mask_headers
 
 
 # Configure logging
 logger = logging.getLogger(__name__)
 per_run_handler = setup_module_logging(__name__)
-
-
-LOGGER = logging.getLogger(__name__)
 
 
 # Calculate the minimum interval between requests (in seconds)
@@ -60,7 +56,8 @@ def normalize_records(records, field_names):
     """Convert list-of-lists to list-of-dicts if needed."""
     if records and isinstance(records[0], list):
         logger.warning(
-            "Normalizing records: converting list-of-lists to list-of-dicts using fields: %s",
+            "Normalizing records: converting list-of-lists to list-of-dicts "
+            "using fields: %s",
             field_names)
         return [dict(zip(field_names, row)) for row in records]
     return records
@@ -74,6 +71,7 @@ def fetch_in_batches(
     qse_filter: Optional[set[str]] = None,
     max_concurrent: int = 1,  # ignored, for compatibility
     data_type: Optional[str] = None,  # NEW: specify type for field mapping
+    checkpoint_func: Optional[callable] = None,  # NEW: checkpoint callback
     **kwargs
 ) -> dict[str, any]:
     """
@@ -84,23 +82,22 @@ def fetch_in_batches(
     all QSEs are queried in a single API call for each batch. Additional
     keyword arguments (kwargs) are passed to the fetch_func.
     Parameters:
-        fetch_func (callable): The function to be used for fetching data from the API.
-                                It should accept parameters for start date,
-                                end date, qse_name, page, and any additional kwargs.
+        fetch_func (callable): The function to be used for fetching data from
+            the API.
         start_date (str): The start date for fetching data in the format
-                            "%Y-%m-%d".
-        end_date (str): The end date for fetching data in the format "%Y-%m-%d".
-        batch_days (int, optional): The maximal number of days to include
-                                    in each batch. Defaults to
-                                    DEFAULT_BATCH_DAYS.
-        qse_filter (Optional[set[str]], optional): An optional set of QSE names.
-                                                    If provided, the names are
-                                                    joined into a
-                                                    comma-separated string
-                                                    and passed to fetch_func.
-        max_concurrent (int, optional): Parameter for
-            compatibility with other interfaces; currently ignored.
-        data_type (Optional[str], optional): NEW: specify type for field mapping
+            "%Y-%m-%d".
+        end_date (str): The end date for fetching data in the format
+            "%Y-%m-%d".
+        batch_days (int, optional): The maximal number of days to include in
+            each batch.
+        qse_filter (Optional[set[str]], optional): An optional set of QSE
+            names.
+        max_concurrent (int, optional): Parameter for compatibility with other
+            interfaces; currently ignored.
+        data_type (Optional[str], optional): NEW: specify type for field
+            mapping
+        checkpoint_func (Optional[callable], optional): Callback to update
+            checkpoint after each batch.
         **kwargs: Additional keyword arguments to pass to fetch_func.
     Returns:
         dict[str, any]: A dictionary with the following structure:
@@ -138,62 +135,40 @@ def fetch_in_batches(
         remaining_days = total_days - 1
         next_day = dt_start + timedelta(days=1)
         while remaining_days > 0:
-            current_batch_days = min(batch_days, remaining_days)
-            batch_start = next_day.strftime(fmt)
-            batch_end = (
-                next_day +
-                timedelta(
-                    days=current_batch_days -
-                    1)).strftime(fmt)
-            batches.append((batch_start, batch_end))
-            next_day += timedelta(days=current_batch_days)
-            remaining_days -= current_batch_days
+            batch_end = min(next_day + timedelta(days=batch_days - 1), dt_end)
+            batches.append((next_day.strftime(fmt), batch_end.strftime(fmt)))
+            remaining_days -= (batch_end - next_day).days + 1
+            next_day = batch_end + timedelta(days=1)
     total_batches = len(batches)
-    LOGGER.info(
-        "Processing %d batches (sync)", total_batches)
+    LOGGER.info("Processing %d batches (sync)", total_batches)
     combined_data = []
     fields = None
-    from ercot_scraping.config.column_mappings import COLUMN_MAPPINGS
-    for batch_start, batch_end in batches:
-        batch_data = fetch_func(batch_start, batch_end)
-        if not isinstance(batch_data, dict) or "data" not in batch_data:
-            continue
-        records = batch_data["data"]
-        # Normalize records if needed
-        if records and isinstance(records[0], list):
-            # Try to get field names from batch_data['fields'] or
-            # COLUMN_MAPPINGS
-            if batch_data.get("fields"):
-                # Convert list of dicts to list of field name strings if needed
-                if isinstance(batch_data["fields"][0], dict):
-                    field_names = [f["name"] for f in batch_data["fields"]]
-                else:
-                    field_names = batch_data["fields"]
-            elif data_type and data_type in COLUMN_MAPPINGS:
-                field_names = list(COLUMN_MAPPINGS[data_type].values())
-            else:
-                logger.warning(
-                    "Could not determine field names for normalization; skipping normalization.")
-                field_names = []
-            if field_names:
-                records = normalize_records(records, field_names)
-        # Filter here if qse_filter is provided
-        if qse_filter:
-            records = [row for row in records if isinstance(
-                row, dict) and row.get("qseName") in qse_filter]
-        combined_data.extend(records)
-        # Log _meta and fields for traceability if present
-        meta = batch_data.get("_meta")
-        if meta:
-            LOGGER.debug(
-                "_meta field for batch %s-%s: %s",
-                batch_start,
-                batch_end,
-                meta)
-        fields_val = batch_data.get("fields")
-        if fields_val:
-            LOGGER.debug("fields field for batch %s-%s: %s",
-                         batch_start, batch_end, fields_val)
+    for batch_idx, (batch_start, batch_end) in enumerate(batches):
+        try:
+            LOGGER.info(
+                "[Batch %d/%d] Fetching data for %s to %s",
+                batch_idx+1, total_batches, batch_start, batch_end
+            )
+            result = fetch_func(batch_start, batch_end, **kwargs)
+            if result is not None:
+                if isinstance(result, dict) and "data" in result:
+                    combined_data.extend(result["data"])
+                    if fields is None and "fields" in result:
+                        fields = result["fields"]
+                elif isinstance(result, list):
+                    combined_data.extend(result)
+            if checkpoint_func:
+                checkpoint_func(batch_idx, batch_start, batch_end)
+            LOGGER.info(
+                "[Batch %d/%d] Completed fetch for %s to %s, total records so far: %d",
+                batch_idx +
+                1, total_batches, batch_start, batch_end, len(combined_data)
+            )
+        except Exception as e:
+            LOGGER.error(
+                "[Batch %d/%d] Exception in fetch for %s to %s: %s",
+                batch_idx+1, total_batches, batch_start, batch_end, e
+            )
     return {
         "data": combined_data,
         "fields": fields if fields is not None else []
@@ -202,23 +177,26 @@ def fetch_in_batches(
 
 @sleep_and_retry
 @limits(calls=API_RATE_LIMIT_REQUESTS, period=API_RATE_LIMIT_INTERVAL)
-def rate_limited_request(*args, **kwargs) -> requests.Response:
+def rate_limited_request(*args, **kwargs):
     """
     Sends an HTTP request with enforced rate limiting.
 
-    This function wraps the standard requests.request method to ensure that successive
-    HTTP requests are made with a minimum time interval specified by _MIN_REQUEST_INTERVAL.
-    It achieves this by acquiring a synchronization lock, checking the time elapsed since
-    the previous request, and sleeping if necessary to maintain the rate limit.
+    This function wraps the standard requests.request method to ensure that
+    successive HTTP requests are made with a minimum time interval specified
+    by _MIN_REQUEST_INTERVAL. It achieves this by acquiring a synchronization
+    lock, checking the time elapsed since the previous request, and sleeping
+    if necessary to maintain the rate limit.
 
     Details:
-        - Thread Safety: Uses _sync_rate_limit_lock to ensure that concurrent requests are properly
-          rate-limited.
-        - Timing: Compares the current time with the timestamp of the last request and sleeps if
-          the elapsed time is less than the configured minimum interval.
-        - Logging: Logs the request parameters but masks sensitive headers ("Authorization" and
-          "Ocp-Apim-Subscription-Key") for security.
-        - Timeout Management: Calls requests.request with a fixed timeout of 30 seconds.
+        - Thread Safety: Uses _sync_rate_limit_lock to ensure that concurrent
+          requests are properly rate-limited.
+        - Timing: Compares the current time with the timestamp of the last
+          request and sleeps if the elapsed time is less than the configured
+          minimum interval.
+        - Logging: Logs the request parameters but masks sensitive headers
+          ("Authorization" and "Ocp-Apim-Subscription-Key") for security.
+        - Timeout Management: Calls requests.request with a fixed timeout of
+          30 seconds.
 
     Parameters:
         *args: Positional arguments passed directly to requests.request,
@@ -227,8 +205,11 @@ def rate_limited_request(*args, **kwargs) -> requests.Response:
             such as headers, data, params, etc.
 
     Returns:
-        requests.Response: The HTTP response returned by the requests.request call.
+        requests.Response: The HTTP response returned by the
+        requests.request call.
     """
+    import time
+    import requests
     with _sync_rate_limit_lock:
         now = time.time()
         last_time = getattr(rate_limited_request, '_last_sync_request_time', 0)
@@ -239,15 +220,19 @@ def rate_limited_request(*args, **kwargs) -> requests.Response:
     # Mask sensitive headers for logging
     log_kwargs = dict(kwargs)
     headers = log_kwargs.get('headers', {})
-    if headers:
-        headers = dict(headers)  # copy
-        if 'Authorization' in headers:
-            headers['Authorization'] = '***MASKED***'
-        if 'Ocp-Apim-Subscription-Key' in headers:
-            headers['Ocp-Apim-Subscription-Key'] = '***MASKED***'
-        log_kwargs['headers'] = headers
+    log_kwargs['headers'] = mask_headers(headers) if headers else headers
     LOGGER.info(
         "[CALL] rate_limited_request(args=%s, kwargs=%s)", args, log_kwargs)
     response = requests.request(*args, timeout=30, **kwargs)
-    # Removed extra sleep; now strictly rate-limited by _MIN_REQUEST_INTERVAL
+    LOGGER.info(
+        "[RESPONSE] %s %s | status=%d | content_length=%d",
+        args[0] if args else kwargs.get('method', 'GET'),
+        kwargs.get('url', args[1] if len(args) > 1 else ''),
+        response.status_code,
+        len(response.content)
+    )
+    try:
+        LOGGER.debug("Response preview: %s", response.text[:200])
+    except Exception:
+        pass
     return response

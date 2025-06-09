@@ -54,14 +54,18 @@ python -m ercot_scraping.run <command> [options]
 | `update-dam`       | Download and update DAM data for the most recent day(s).                                         |
 | `update-spp`       | Download and update SPP data for the most recent day(s).                                         |
 | `merge-data`       | Merge data from BID_AWARDS, BIDS, and SETTLEMENT_POINT_PRICES into the FINAL table.              |
+| `download`         | Download SPP and DAM data in batches with checkpointing and merging.                             |
 
 ### Common Arguments
 
 | Argument                | Description                                                                                 | Example Input                |
 |-------------------------|---------------------------------------------------------------------------------------------|------------------------------|
 | `--db <filename>`       | Path to SQLite database file (default: `_data/ercot_data.db`)                               | `--db mydata.db`             |
-| `--start <YYYY-MM-DD>`  | Start date for data download/merge (required for historical commands)                       | `--start 2024-01-01`         |
+| `--start <YYYY-MM-DD>`  | Start date for data download/merge (required for historical/download commands)              | `--start 2024-01-01`         |
 | `--end <YYYY-MM-DD>`    | End date for data download/merge (optional; defaults to today for download commands)        | `--end 2024-01-31`           |
+| `--batch-days <N>`      | Batch size in days for the `download` command (default: 3)                                 | `--batch-days 5`             |
+| `--resume`              | Resume from last checkpoint (default: True for `download`)                                 | `--resume`                   |
+| `--no-merge`            | Skip merging after each batch (merge only at the end; for `download` command)              | `--no-merge`                 |
 | `--qse-filter <csv/list>` | QSE filter as CSV file or comma-separated list (optional)                                 | `--qse-filter qses.csv`      |
 | `--debug`               | Enable detailed debug logging                                                               | `--debug`                    |
 | `--quick-test`          | Run a quick test with a small QSE set and short date range                                 | `--quick-test`               |
@@ -69,62 +73,21 @@ python -m ercot_scraping.run <command> [options]
 #### Example Commands
 
 ```bash
-python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02 --db mydata.db
-python -m ercot_scraping.run historical-spp --start 2024-01-01 --end 2024-01-02 --db mydata.db
-python -m ercot_scraping.run merge-data --start 2024-01-01 --end 2024-01-02 --db mydata.db
+python -m ercot_scraping.run download --start 2024-01-01 --end 2024-01-31 --db mydata.db --batch-days 5
 ```
 
----
+## Important Note on SPP Date Lag
 
-## Expected Inputs
-
-- **Dates**: Must be in `YYYY-MM-DD` format.
-- **QSE Filter**: Either a CSV file with QSE names or a comma-separated string.
-- **Database**: Path to a writable SQLite file.
-
-## Expected Outputs
-
-- **Database Tables**:  
-  - `SETTLEMENT_POINT_PRICES`
-  - `BID_AWARDS`
-  - `BIDS`
-  - `OFFER_AWARDS`
-  - `OFFERS`
-  - `FINAL` (after merge)
-- **Logs**: Console and file logs (if enabled) with progress, errors, and debug info.
-- **Normalized Data**: All tables use consistent column names and types as defined in `data_models.py`.
-
----
-
-## Module Details
-
-- **data_models.py**: Defines the data structure for each table, ensuring consistent field names and types.
-- **ercot_api.py**: Handles live API requests, batching, pagination, and normalization.
-- **batched_api.py**: Splits large date ranges into batches, manages QSE filtering, and enforces API rate limits.
-- **archive_api.py**: Downloads and processes historical archive files, normalizes CSVs, and stores data in the database.
+When using the `download` command, the date range you specify with `--start` and `--end` applies to DAM (Day-Ahead Market) data. The SPP (Settlement Point Prices) data is always lagged by 60 days relative to the DAM date range you enter. For example, if you request DAM data for January 2024, the corresponding SPP data will be fetched for March 2024.
 
 ---
 
 ## Script Usage
 
-### `scripts/2025-06-04_JM_run-dam-to-latest.py`
-
-**Purpose**:  
-Automatically downloads DAM data from the latest date in your database up to today.
-
-**How to use**:
-1. Set `DB_FILE` and `PYTHON` path as needed.
-2. Run:
-   ```powershell
-   python scripts/2025-06-04_JM_run-dam-to-latest.py
-   ```
-
----
-
 ### `scripts/2025-06-04_JM_run-full-range.py`
 
 **Purpose**:  
-Downloads DAM and SPP data for a specified date range, then merges them into the FINAL table.
+Downloads DAM and SPP data for a specified date range, then merges them into the FINAL table. Now uses the unified `download` command with checkpointing and batching.
 
 **How to use**:
 1. Set `DB_FILE`, `PYTHON`, `START_DATE`, and `END_DATE` as needed.
@@ -170,6 +133,9 @@ Add `--debug` flag to any command for detailed logging:
 python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02 --debug
 ```
 
+> **Debugging API Requests:**
+> All API request logs now include the full URL, parameters, and headers (with sensitive values masked), as well as response status and a short preview. Use `--debug` for even more detail.
+
 ---
 
 ## CLI Defaults and Argument Details
@@ -180,5 +146,3 @@ python -m ercot_scraping.run historical-dam --start 2024-01-01 --end 2024-01-02 
 - `--qse-filter <csv or list>`: QSE filter as CSV file or comma-separated list (optional)
 - `--debug`: Enable detailed debug logging (optional)
 - `--quick-test`: Run a quick test with a small QSE set and short date range (optional)
-
-See the help output (`python -m ercot_scraping.run --help`) for full details on all arguments and their defaults.

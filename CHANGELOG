@@ -1,9 +1,16 @@
-## [0.1.0] - 2025-02-04
+## [0.2.1] - 2025-06-08
 ### Added
-- Ability to scrape SETTLEMENT_POINT_PRICES and add to a SQLite database.
+- Unified `download` CLI command: downloads both DAM and SPP data in batches, with checkpointing and automatic merging.
+- Resume support: interrupted downloads can be resumed from the last checkpoint.
+- Batch size and merge control: `--batch-days`, `--no-merge`, and `--resume` flags for the `download` command.
+- Documentation and README updated to reflect new workflow and command.
 
 ## [0.2.0] - 2025-06-04
 ### Added
 - Comprehensive CLI documentation: arguments, usage, expected inputs/outputs.
 - Detailed module and script usage documentation.
 - README updated with expanded CLI and script instructions.
+
+## [0.1.0] - 2025-02-04
+### Added
+- Ability to scrape SETTLEMENT_POINT_PRICES and add to a SQLite database.

@@ -495,3 +495,38 @@ def test_get_archive_document_ids(
     with patch("ercot_scraping.apis.archive_api.rate_limited_request", return_value=mock_response):
         doc_ids = get_archive_document_ids(product_id, start_date, end_date)
         assert doc_ids == expected_doc_ids
+
+
+@pytest.mark.parametrize(
+    "csv_bytes,expected_encoding,expected_warning",
+    [
+        ("col1,col2\n1,2".encode("utf-8"), "utf-8", None),
+        ("col1;col2\n3;4".encode("latin-1"), "latin-1",
+         "File data.csv decoded with fallback encoding: latin-1"),
+        ("col1,col2\n5,6".encode("windows-1252"), "windows-1252",
+         "File data.csv decoded with fallback encoding: windows-1252"),
+        (b"\xcf\x80\x81\x82", None,
+         "Skipping file data.csv: could not decode with known encodings."),
+    ]
+)
+@patch("ercot_scraping.apis.archive_api.DAM_TABLE_DATA_MAPPING", {"test_table": {"model_class": MagicMock(), "insert_query": "INSERT INTO test_table (col1, col2) VALUES (:col1, :col2)"}})
+@patch("ercot_scraping.apis.archive_api.COLUMN_MAPPINGS", {"test_table": {}})
+@patch("ercot_scraping.apis.archive_api.store_data_to_db")
+@patch("ercot_scraping.apis.archive_api.LOGGER.warning")
+@patch("ercot_scraping.apis.archive_api.LOGGER.error")
+@patch("ercot_scraping.apis.archive_api.LOGGER.info")
+def test_process_dam_file_encodings(mock_info, mock_error, mock_warning, mock_store_data, column_mappings, dam_table_mapping, csv_bytes, expected_encoding, expected_warning):
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+        zip_file.writestr("data.csv", csv_bytes)
+    zip_buffer.seek(0)
+    zip_folder = zipfile.ZipFile(zip_buffer)
+    db_name = "test_db"
+    process_dam_file(zip_folder, "data.csv", "test_table", db_name)
+    if expected_warning:
+        found = any(expected_warning in str(
+            call[0][0]) for call in mock_warning.call_args_list + mock_error.call_args_list)
+        assert found, f"Expected warning or error '{expected_warning}' not found in logs: {mock_warning.call_args_list + mock_error.call_args_list}"
+    else:
+        assert not mock_warning.called and not mock_error.called
+    zip_folder.close()

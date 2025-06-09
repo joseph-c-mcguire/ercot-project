@@ -38,10 +38,12 @@ QSE_FILTER_CSV = "_data/ERCOT_tracking_list.csv"
 ERCOT_ARCHIVE_API_BASE_URL = "https://api.ercot.com/api/public-reports/archive"
 ERCOT_ARCHIVE_PRODUCT_IDS = {
     "SPP": "NP6-905-CD",  # Settlement Point Prices
-    "DAM_BIDS": "NP3-966-er",  # DAM Energy Bids
-    "DAM_BID_AWARDS": "NP3-966-ER",  # DAM Energy Bid Awards
-    "DAM_OFFERS": "NP3-966-ER",  # DAM Energy Offers
-    "DAM_OFFER_AWARDS": "NP3-966-ER",  # DAM Energy Offer Awards
+    "DAM": {
+        "BIDS": "NP3-966-er",  # DAM Energy Bids
+        "BID_AWARDS": "NP3-966-ER",  # DAM Energy Bid Awards
+        "OFFERS": "NP3-966-ER",  # DAM Energy Offers
+        "OFFER_AWARDS": "NP3-966-ER",  # DAM Energy Offer Awards
+    }
 }
 # File names for the DAM archive data
 DAM_FILENAMES = [

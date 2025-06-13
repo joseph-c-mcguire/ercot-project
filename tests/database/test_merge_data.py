@@ -178,16 +178,16 @@ def create_table_with_pairs(conn, table, date_col, hour_col, pairs):
 def test_get_common_date_hour_pairs_all_tables_exist_and_overlap(in_memory_db):
     # All tables exist, with one common pair
     tables = [
-        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
-        ("BIDS", "DeliveryDate", "HourEnding"),
-        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
-        ("OFFERS", "DeliveryDate", "HourEnding"),
-        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BID_AWARDS", "deliveryDate", "hourEnding"),
+        ("BIDS", "deliveryDate", "hourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "deliveryDate", "hourEnding"),
+        ("OFFERS", "deliveryDate", "hourEnding"),
+        ("OFFER_AWARDS", "deliveryDate", "hourEnding"),
     ]
     common = [("2024-01-01", 1)]
     for table, date_col, hour_col in tables:
         create_table_with_pairs(in_memory_db, table, date_col, hour_col, common + [
-                                (f"2024-01-0{tables.index((table, date_col, hour_col))+2}", 2)])
+            (f"2024-01-0{tables.index((table, date_col, hour_col))+2}", 2)])
     result = get_common_date_hour_pairs(in_memory_db)
     assert result == [("2024-01-01", 1)]
 
@@ -242,11 +242,12 @@ def test_get_common_date_hour_pairs_empty_tables(in_memory_db):
 def test_get_common_date_hour_pairs_multiple_common_pairs(in_memory_db):
     # All tables have two common pairs
     tables = [
-        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
-        ("BIDS", "DeliveryDate", "HourEnding"),
-        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
-        ("OFFERS", "DeliveryDate", "HourEnding"),
-        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BID_AWARDS", "deliveryDate", "hourEnding"),
+        ("BIDS", "deliveryDate", "hourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "deliveryDate",
+         "hourEnding"),  # FIXED: use hourEnding
+        ("OFFERS", "deliveryDate", "hourEnding"),
+        ("OFFER_AWARDS", "deliveryDate", "hourEnding"),
     ]
     pairs = [("2024-01-01", 1), ("2024-01-02", 2)]
     for table, date_col, hour_col in tables:
@@ -254,3 +255,121 @@ def test_get_common_date_hour_pairs_multiple_common_pairs(in_memory_db):
                                 (f"2024-01-0{tables.index((table, date_col, hour_col))+3}", 3)])
     result = get_common_date_hour_pairs(in_memory_db)
     assert result == sorted(pairs)
+
+
+@pytest.fixture
+def simple_merge_module(monkeypatch):
+    import ercot_scraping.database.merge_data as merge_data_module
+    # Patch to use simple queries (no 'ba.' or 'oa.')
+    merge_data_module.CREATE_FINAL_TABLE_QUERY = "CREATE TABLE IF NOT EXISTS FINAL (id INTEGER PRIMARY KEY, val TEXT);"
+    merge_data_module.MERGE_DATA_QUERY = "INSERT INTO FINAL (val) SELECT val FROM SOURCE;"
+    return merge_data_module
+
+
+@pytest.fixture
+def batch_merge_module(monkeypatch):
+    import ercot_scraping.database.merge_data as merge_data_module
+    # Patch to use queries with 'ba.' and 'oa.' for batching
+    merge_data_module.CREATE_FINAL_TABLE_QUERY = "CREATE TABLE IF NOT EXISTS FINAL (deliveryDate TEXT, hourEnding INTEGER, val TEXT);"
+    merge_data_module.MERGE_DATA_QUERY = "INSERT INTO FINAL (deliveryDate, hourEnding, val) SELECT ba.DeliveryDate, ba.HourEnding, ba.val FROM BID_AWARDS ba JOIN OFFER_AWARDS oa ON ba.DeliveryDate = oa.DeliveryDate AND ba.HourEnding = oa.HourEnding"
+    return merge_data_module
+
+
+def test_merge_data_simple_query_runs_and_inserts(simple_merge_module):
+    conn = sqlite3.connect(":memory:")
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE SOURCE (val TEXT);")
+    cur.execute("INSERT INTO SOURCE VALUES ('foo'), ('bar');")
+    conn.commit()
+    merge_data(conn)
+    cur.execute("SELECT val FROM FINAL ORDER BY id;")
+    results = [row[0] for row in cur.fetchall()]
+    assert results == ['foo', 'bar']
+    conn.close()
+
+
+def test_merge_data_simple_query_idempotent(simple_merge_module):
+    conn = sqlite3.connect(":memory:")
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE SOURCE (val TEXT);")
+    cur.execute("INSERT INTO SOURCE VALUES ('baz');")
+    conn.commit()
+    merge_data(conn)
+    merge_data(conn)
+    cur.execute("SELECT val FROM FINAL;")
+    # Should insert again, so two rows
+    assert cur.fetchall() == [('baz',), ('baz',)]
+    conn.close()
+
+
+def test_merge_data_batching_merges_only_common_pairs(batch_merge_module):
+    conn = sqlite3.connect(":memory:")
+    cur = conn.cursor()
+    # Setup BID_AWARDS and OFFER_AWARDS with overlapping and non-overlapping pairs
+    cur.execute(
+        "CREATE TABLE BID_AWARDS (DeliveryDate TEXT, HourEnding INTEGER, val TEXT);")
+    cur.execute(
+        "CREATE TABLE OFFER_AWARDS (DeliveryDate TEXT, HourEnding INTEGER);")
+    # Common pair
+    cur.execute("INSERT INTO BID_AWARDS VALUES ('2024-01-01', 1, 'v1');")
+    cur.execute("INSERT INTO OFFER_AWARDS VALUES ('2024-01-01', 1);")
+    # Non-common pairs
+    cur.execute("INSERT INTO BID_AWARDS VALUES ('2024-01-02', 2, 'v2');")
+    cur.execute("INSERT INTO OFFER_AWARDS VALUES ('2024-01-03', 3);")
+    conn.commit()
+    # Patch get_common_date_hour_pairs to only return the common pair
+    import ercot_scraping.database.merge_data as merge_data_module
+    merge_data_module.get_common_date_hour_pairs = lambda c: [
+        ('2024-01-01', 1)]
+    merge_data(conn, batch_size=1)
+    cur.execute("SELECT deliveryDate, hourEnding, val FROM FINAL;")
+    rows = cur.fetchall()
+    assert rows == [('2024-01-01', 1, 'v1')]
+    conn.close()
+
+
+def test_merge_data_batching_no_common_pairs(batch_merge_module):
+    conn = sqlite3.connect(":memory:")
+    cur = conn.cursor()
+    cur.execute(
+        "CREATE TABLE BID_AWARDS (DeliveryDate TEXT, HourEnding INTEGER, val TEXT);")
+    cur.execute(
+        "CREATE TABLE OFFER_AWARDS (DeliveryDate TEXT, HourEnding INTEGER);")
+    conn.commit()
+    # Patch get_common_date_hour_pairs to return empty
+    import ercot_scraping.database.merge_data as merge_data_module
+    merge_data_module.get_common_date_hour_pairs = lambda c: []
+    merge_data(conn, batch_size=2)
+    cur.execute("SELECT * FROM FINAL;")
+    assert cur.fetchall() == []
+    conn.close()
+
+
+def test_merge_data_accepts_db_path(tmp_path, simple_merge_module):
+    db_path = tmp_path / "merge_test.db"
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE SOURCE (val TEXT);")
+    cur.execute("INSERT INTO SOURCE VALUES ('x');")
+    conn.commit()
+    conn.close()
+    merge_data(str(db_path))
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT val FROM FINAL;")
+    assert cur.fetchall() == [('x',)]
+    conn.close()
+
+
+def test_merge_data_handles_sqlite_error(monkeypatch, simple_merge_module):
+    # Simulate sqlite3.Error during execution
+    class DummyCursor:
+        def execute(self, *a, **kw):
+            raise sqlite3.Error("fail")
+
+    class DummyConn:
+        def cursor(self): return DummyCursor()
+        def commit(self): pass
+        def close(self): pass
+    with pytest.raises(sqlite3.Error):
+        merge_data(DummyConn())

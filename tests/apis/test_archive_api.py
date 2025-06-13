@@ -2,12 +2,17 @@ from unittest import mock
 import requests
 import pytest
 import zipfile
-from ercot_scraping.apis.archive_api import process_dam_csv_file
+import sqlite3
 from ercot_scraping.apis import archive_api
 from ercot_scraping.apis import ercot_api
-from ercot_scraping.apis.archive_api import process_dam_outer_zip
-from ercot_scraping.apis.archive_api import process_dam_nested_zip
-from ercot_scraping.apis.archive_api import get_archive_document_ids
+from ercot_scraping.apis.archive_api import (
+    process_dam_csv_file,
+    download_spp_archive_files,
+    process_dam_outer_zip,
+    process_dam_nested_zip,
+    get_archive_document_ids,
+    data_exists_in_db,
+)
 import io
 from ercot_scraping.apis.archive_api import process_spp_file_to_rows
 
@@ -935,3 +940,104 @@ def test_get_archive_document_ids_non_200(mock_request):
         )
     except Exception as e:
         assert "fail json" in str(e) or isinstance(e, Exception)
+
+
+def test_data_exists_in_db(tmp_path):
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE BIDS (DeliveryDate TEXT)")
+    conn.execute("INSERT INTO BIDS VALUES ('2024-01-01')")
+    conn.execute(
+        "CREATE TABLE SETTLEMENT_POINT_PRICES (DeliveryDate TEXT, HourEnding TEXT, IntervalEnding TEXT)")
+    conn.execute(
+        "INSERT INTO SETTLEMENT_POINT_PRICES VALUES ('2024-01-01', '01', '01')")
+    conn.commit()
+    assert data_exists_in_db(str(db_path), "BIDS", "2024-01-01")
+    assert not data_exists_in_db(str(db_path), "BIDS", "2024-01-02")
+    assert data_exists_in_db(
+        str(db_path), "SETTLEMENT_POINT_PRICES", "2024-01-01", "01", "01")
+    assert not data_exists_in_db(
+        str(db_path), "SETTLEMENT_POINT_PRICES", "2024-01-02", "01", "01")
+    conn.close()
+
+
+@mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
+def test_process_dam_csv_file_skips_existing(mock_store, tmp_path):
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE BIDS (DeliveryDate TEXT)")
+    conn.execute("INSERT INTO BIDS VALUES ('2024-01-01')")
+    conn.commit()
+    csv_content = "DeliveryDate\n2024-01-01\n2024-01-02\n"
+    file_obj = mock.MagicMock()
+    file_obj.read.return_value = csv_content.encode("utf-8")
+    process_dam_csv_file(
+        file_obj,
+        fname="test.csv",
+        table_name="BIDS",
+        db_name=str(db_path),
+        model_class=object,
+        insert_query="INSERT"
+    )
+    # Only the new date should be inserted
+    assert mock_store.called
+    args, kwargs = mock_store.call_args
+    assert len(kwargs["data"]["data"]) == 1
+    assert kwargs["data"]["data"][0]["DeliveryDate"] == "2024-01-02"
+    conn.close()
+
+
+@mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
+@mock.patch("ercot_scraping.apis.archive_api.process_spp_file_to_rows")
+@mock.patch("ercot_scraping.apis.archive_api.zipfile.ZipFile")
+@mock.patch("ercot_scraping.apis.archive_api.rate_limited_request")
+def test_download_spp_archive_files_skips_existing(
+    mock_request, mock_zipfile, mock_process_rows, mock_store, tmp_path
+):
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE SETTLEMENT_POINT_PRICES (DeliveryDate TEXT, HourEnding TEXT, IntervalEnding TEXT)")
+    conn.execute(
+        "INSERT INTO SETTLEMENT_POINT_PRICES VALUES ('2024-01-01', '01', '01')")
+    conn.commit()
+    mock_resp = mock.Mock()
+    mock_resp.status_code = 200
+    mock_resp.content = b"outerzip"
+    mock_request.return_value = mock_resp
+    mock_outer_zip = mock.MagicMock()
+    mock_outer_zip.__enter__.return_value = mock_outer_zip
+    mock_outer_zip.namelist.return_value = ["nested1.zip"]
+    mock_outer_zip.open.return_value.__enter__.return_value.read.return_value = b"innerzip"
+    mock_inner_zip = mock.MagicMock()
+    mock_inner_zip.__enter__.return_value = mock_inner_zip
+    mock_inner_zip.namelist.return_value = ["SETTLEMENT_POINT_PRICES.csv"]
+    mock_inner_zip.open.return_value.__enter__.return_value = mock.Mock()
+
+    def zipfile_side_effect(data):
+        if data.getvalue() == b"outerzip":
+            return mock_outer_zip
+        elif data.getvalue() == b"innerzip":
+            return mock_inner_zip
+        raise ValueError("Unexpected zip data")
+    mock_zipfile.side_effect = zipfile_side_effect
+    # One row already exists, one is new
+    mock_process_rows.return_value = [
+        {"deliverydate": "2024-01-01", "hourending": "01", "intervalending": "01"},
+        {"deliverydate": "2024-01-02", "hourending": "01", "intervalending": "01"}
+    ]
+    with mock.patch.dict(
+        "ercot_scraping.apis.archive_api.DAM_TABLE_DATA_MAPPING",
+        {"SETTLEMENT_POINT_PRICES": {"model_class": object, "insert_query": "INSERT"}}
+    ):
+        download_spp_archive_files(
+            product_id="SPP",
+            doc_ids=[1],
+            db_name=str(db_path)
+        )
+        # Only the new row should be inserted
+        assert mock_store.called
+        args, kwargs = mock_store.call_args
+        assert len(kwargs["data"]["data"]) == 1
+        assert kwargs["data"]["data"][0]["deliverydate"] == "2024-01-02"
+    conn.close()

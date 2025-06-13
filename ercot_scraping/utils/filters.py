@@ -31,13 +31,13 @@ def load_qse_shortnames(csv_file: Union[str, Path]) -> Set[str]:
     try:
         with open(csv_file, 'r', newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            if 'SHORT NAME' not in reader.fieldnames:
+            if not reader.fieldnames or 'SHORT NAME' not in reader.fieldnames:
                 return set()
             for row in reader:
-                name = row['SHORT NAME'].strip()
+                name = row.get('SHORT NAME', '').strip()
                 if name:
                     qse_names.add(name)
-    except (FileNotFoundError, KeyError):
+    except (FileNotFoundError, KeyError, UnicodeDecodeError):
         return set()
     return qse_names
 
@@ -95,38 +95,31 @@ def get_active_settlement_points(db_name: str) -> Set[str]:
     return points
 
 
-def filter_by_settlement_points(data: dict,
-                                settlement_points: Set[str]) -> dict:
+def filter_by_settlement_points(data, settlement_points):
     """
-    Filter data to only include records matching the given settlement points.
-
-    Args:
-        data (dict): Dictionary containing a 'data' key with records
-        settlement_points (Set[str]): Set of settlement point names to filter by
-
-    Returns:
-        dict: Filtered data dictionary containing only records matching settlement_points
+    Filter data by settlement points, supporting multiple field name variations.
+    For each item, match only on the first field found in field_variations.
     """
-    if not data or "data" not in data:
+    if data is None or not isinstance(data, dict):
         return {"data": []}
-
-    filtered_records = []
+    items = data.get("data", [])
+    if not isinstance(items, list):
+        return {"data": []}
     field_variations = [
+        "SettlementPoint",
         "settlementPointName",
         "SettlementPointName",
-        "SettlementPoint",
-        "settlementPoint"
+        "settlementPoint",
     ]
-
-    for record in data["data"]:
-        point_name = next(
-            (record[field] for field in field_variations if field in record),
-            None,
-        )
-        if point_name and point_name in settlement_points:
-            filtered_records.append(record)
-
-    return {"data": filtered_records}
+    filtered = []
+    for item in items:
+        for field in field_variations:
+            if field in item:
+                value = item.get(field)
+                if value and value in settlement_points:
+                    filtered.append(item)
+                break  # Only consider the first matching field
+    return {"data": filtered}
 
 
 def format_qse_filter_param(qse_names: Set[str]) -> str:

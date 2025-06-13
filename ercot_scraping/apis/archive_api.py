@@ -13,6 +13,7 @@ import io
 import zipfile
 import traceback
 import logging
+import sqlite3
 
 from ercot_scraping.config.config import (
     ERCOT_API_REQUEST_HEADERS,
@@ -209,16 +210,25 @@ def download_spp_archive_files(
                                 print(
                                     f"Processing SPP file: {nested_filename}"
                                 )
+                                # Extract date, hour, interval from filename or CSV rows
                                 rows = process_spp_file_to_rows(
                                     nested_zip,
                                     nested_filename,
                                     "SETTLEMENT_POINT_PRICES"
                                 )
+                                # Filter out rows that already exist
+                                filtered_rows = []
+                                for row in rows:
+                                    date = row.get("deliverydate")
+                                    hour = row.get("hourending")
+                                    interval = row.get("intervalending")
+                                    if not data_exists_in_db(db_name, "SETTLEMENT_POINT_PRICES", date, hour, interval):
+                                        filtered_rows.append(row)
                                 print(
-                                    f"[TRACE] Got {len(rows)} rows from "
-                                    f"{nested_filename}"
+                                    f"[TRACE] Got {len(filtered_rows)} new rows from "
+                                    f"{nested_filename} (skipped {len(rows)-len(filtered_rows)})"
                                 )
-                                all_rows.extend(rows)
+                                all_rows.extend(filtered_rows)
             # Store all rows for this batch at once
             if all_rows:
                 print(
@@ -442,12 +452,22 @@ def process_dam_csv_file(
             f"[TRACE] No data rows found in {fname}"
         )
         return
+    # Filter out rows that already exist
+    filtered_rows = []
+    for row in rows:
+        date = row.get("DeliveryDate") or row.get("deliveryDate")
+        if not data_exists_in_db(db_name, table_name, date):
+            filtered_rows.append(row)
+    if not filtered_rows:
+        print(
+            f"[TRACE] All rows in {fname} already exist in DB; skipping insert.")
+        return
     print(
-        f"[TRACE] Storing {len(rows)} rows from {fname} to {table_name}"
+        f"[TRACE] Storing {len(filtered_rows)} new rows from {fname} to {table_name}"
     )
     try:
         store_data_to_db(
-            data={"data": rows},
+            data={"data": filtered_rows},
             db_name=db_name,
             table_name=table_name,
             model_class=model_class,
@@ -537,4 +557,27 @@ def get_archive_document_ids(
     )
     return doc_ids
 
+
+def data_exists_in_db(db_name, table, date=None, hour=None, interval=None):
+    """
+    Check if data for a given date (and optionally hour/interval) exists in the database.
+    For SPP: check deliveryDate, Hour, Interval. For others: just date.
+    """
+    try:
+        with sqlite3.connect(db_name) as conn:
+            cur = conn.cursor()
+            if table == "SETTLEMENT_POINT_PRICES" and date and hour is not None and interval is not None:
+                cur.execute(
+                    "SELECT 1 FROM SETTLEMENT_POINT_PRICES WHERE DeliveryDate=? AND HourEnding=? AND IntervalEnding=? LIMIT 1",
+                    (date, hour, interval)
+                )
+            elif date:
+                cur.execute(
+                    f"SELECT 1 FROM {table} WHERE DeliveryDate=? LIMIT 1", (date,))
+            else:
+                return False
+            return cur.fetchone() is not None
+    except Exception as e:
+        print(f"[WARN] Could not check for existing data in {table}: {e}")
+        return False
 # --- END OF FILE ---

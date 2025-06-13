@@ -20,11 +20,11 @@ def get_common_date_hour_pairs(conn: Connection) -> List[Tuple[str, int]]:
     """
     cursor = conn.cursor()
     tables_and_cols = [
-        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
-        ("BIDS", "DeliveryDate", "HourEnding"),
-        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
-        ("OFFERS", "DeliveryDate", "HourEnding"),
-        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BID_AWARDS", "deliveryDate", "hourEnding"),
+        ("BIDS", "deliveryDate", "hourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "deliveryDate", "hourEnding"),
+        ("OFFERS", "deliveryDate", "hourEnding"),
+        ("OFFER_AWARDS", "deliveryDate", "hourEnding"),
     ]
     sets = []
     for table, date_col, hour_col in tables_and_cols:

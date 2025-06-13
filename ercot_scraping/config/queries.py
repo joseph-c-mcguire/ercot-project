@@ -209,7 +209,7 @@ INSERT INTO FINAL (
     INSERTED_AT
 )
 SELECT 
-    ba.DeliveryDate,
+    ba.deliveryDate,
     ba.HourEnding,
     ba.SettlementPoint as settlementPointName,
     ba.QSEName,

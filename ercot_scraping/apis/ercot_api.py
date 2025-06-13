@@ -28,6 +28,7 @@ from ercot_scraping.apis.batched_api import (
     fetch_in_batches,
     rate_limited_request
 )
+import sqlite3
 
 
 # Configure logging
@@ -46,6 +47,30 @@ try:
     TQDM_AVAILABLE = False
 except ImportError:
     TQDM_AVAILABLE = False
+
+
+def data_exists_in_db(db_name, table, date=None, hour=None, interval=None):
+    """
+    Check if data for a given date (and optionally hour/interval) exists in the database.
+    For SPP: check deliveryDate, Hour, Interval. For others: just date.
+    """
+    try:
+        with sqlite3.connect(db_name) as conn:
+            cur = conn.cursor()
+            if table == "SETTLEMENT_POINT_PRICES" and date and hour is not None and interval is not None:
+                cur.execute(
+                    "SELECT 1 FROM SETTLEMENT_POINT_PRICES WHERE DeliveryDate=? AND HourEnding=? AND IntervalEnding=? LIMIT 1",
+                    (date, hour, interval)
+                )
+            elif date:
+                cur.execute(
+                    f"SELECT 1 FROM {table} WHERE DeliveryDate=? LIMIT 1", (date,))
+            else:
+                return False
+            return cur.fetchone() is not None
+    except Exception as e:
+        print(f"[WARN] Could not check for existing data in {table}: {e}")
+        return False
 
 
 def fetch_data_from_endpoint(
@@ -428,12 +453,25 @@ def fetch_settlement_point_prices(
         # Batch insert for each page
         if response_json and "data" in response_json:
             from ercot_scraping.database.store_data import store_prices_to_db
+            # Filter out rows that already exist
+            filtered_rows = []
+            for row in response_json["data"]:
+                date = row.get("DeliveryDate") or row.get("deliveryDate")
+                hour = row.get("HourEnding") or row.get("hourending")
+                interval = row.get("IntervalEnding") or row.get(
+                    "intervalending")
+                if not data_exists_in_db(db_name, "SETTLEMENT_POINT_PRICES", date, hour, interval):
+                    filtered_rows.append(row)
+            if not filtered_rows:
+                print(
+                    f"[TRACE] All SPP rows for {s} to {e} already exist in DB; skipping insert.")
+                return
             store_prices_to_db(
-                {"data": response_json["data"]},
+                {"data": filtered_rows},
                 db_name=db_name,
                 batch_size=batch_size
             )
-            count = len(response_json["data"])
+            count = len(filtered_rows)
             print(
                 f"[SPP] Progress: Inserted {count} records into {db_name} for {s} to {e}."
             )

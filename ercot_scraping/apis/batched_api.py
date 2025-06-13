@@ -52,17 +52,6 @@ _MIN_REQUEST_INTERVAL = API_RATE_LIMIT_INTERVAL / \
 _sync_rate_limit_lock = threading.Lock()
 
 
-def normalize_records(records, field_names):
-    """Convert list-of-lists to list-of-dicts if needed."""
-    if records and isinstance(records[0], list):
-        logger.warning(
-            "Normalizing records: converting list-of-lists to list-of-dicts "
-            "using fields: %s",
-            field_names)
-        return [dict(zip(field_names, row)) for row in records]
-    return records
-
-
 def fetch_in_batches(
     fetch_func: callable,
     start_date: str,

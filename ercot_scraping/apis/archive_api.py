@@ -54,46 +54,55 @@ def process_spp_file_to_rows(
     except Exception:
         mapping = {}
 
-    with zip_folder.open(filename) as csv_file:
-        print(f"[TRACE] Opened file {filename} from zip_folder")
-        csv_content = csv_file.read().decode('utf-8')
-        print(f"[TRACE] Read {len(csv_content)} bytes from {filename}")
-        csv_buffer = io.StringIO(csv_content)
-        first_line = csv_buffer.readline().strip()
-        print(f"[TRACE] First line of {filename}: {first_line}")
-        if not first_line or ',' not in first_line:
-            print(f"[WARN] No headers found in {filename}")
-            return []
-        csv_buffer.seek(0)
-        reader = csv.DictReader(csv_buffer)
-        print(f"[TRACE] CSV fieldnames for {filename}: {reader.fieldnames}")
-        if not reader.fieldnames:
-            print(f"[WARN] No headers found in {filename}")
-            return []
-        # Normalize headers
-        normalized_headers = []
-        for h in reader.fieldnames:
-            norm = mapping.get(h.strip().lower())
-            if norm:
-                normalized_headers.append(norm)
-            else:
-                normalized_headers.append(h.strip().lower().replace(" ", "_"))
-        for row_num, row in enumerate(reader):
-            norm_row = {}
-            for idx, key in enumerate(normalized_headers):
-                orig_key = reader.fieldnames[idx]
-                val = row.get(orig_key)
-                # Split long line for PEP8
-                if isinstance(val, str) and val.strip() != "":
-                    norm_row[key] = val.strip()
+    try:
+        with zip_folder.open(filename) as csv_file:
+            print(f"[TRACE] Opened file {filename} from zip_folder")
+            try:
+                csv_content = csv_file.read().decode('utf-8')
+            except UnicodeDecodeError as e:
+                print(f"[ERROR] Could not decode {filename} as UTF-8: {e}")
+                return []
+            csv_buffer = io.StringIO(csv_content)
+            first_line = csv_buffer.readline().strip()
+            print(f"[TRACE] First line of {filename}: {first_line}")
+            if not first_line or ',' not in first_line:
+                print(f"[WARN] No headers found in {filename}")
+                return []
+            csv_buffer.seek(0)
+            reader = csv.DictReader(csv_buffer)
+            print(
+                f"[TRACE] CSV fieldnames for {filename}: {reader.fieldnames}")
+            if not reader.fieldnames:
+                print(f"[WARN] No headers found in {filename}")
+                return []
+            # Normalize headers
+            normalized_headers = []
+            for h in reader.fieldnames:
+                norm = mapping.get(h.strip().lower())
+                if norm:
+                    normalized_headers.append(norm)
                 else:
-                    norm_row[key] = None
-            if norm_row:
-                rows.append(norm_row)
-            if row_num < 3:
-                print(f"[TRACE] Row {row_num} in {filename}: {norm_row}")
-    print(f"[TRACE] Returning {len(rows)} rows from {filename}")
-    return rows
+                    normalized_headers.append(
+                        h.strip().lower().replace(" ", "_"))
+            for row_num, row in enumerate(reader):
+                norm_row = {}
+                for idx, key in enumerate(normalized_headers):
+                    orig_key = reader.fieldnames[idx]
+                    val = row.get(orig_key)
+                    # Split long line for PEP8
+                    if isinstance(val, str) and val.strip() != "":
+                        norm_row[key] = val.strip()
+                    else:
+                        norm_row[key] = None
+                if norm_row:
+                    rows.append(norm_row)
+                if row_num < 3:
+                    print(f"[TRACE] Row {row_num} in {filename}: {norm_row}")
+        print(f"[TRACE] Returning {len(rows)} rows from {filename}")
+        return rows
+    except Exception as e:
+        print(f"[ERROR] Exception processing {filename}: {e}")
+        return []
 
 
 def download_spp_archive_files(
@@ -271,12 +280,11 @@ def download_dam_archive_files(
         "[CALL] download_dam_archive_files(" +
         f"{product_id}, {doc_ids}, {db_name}, show_progress={show_progress}) "
     )
-    if not doc_ids:
+    print(f"[TRACE] batch_size set to {batch_size}")
+    if not isinstance(doc_ids, list) or not doc_ids:
         print(f"No document IDs found for DAM product {product_id}")
         print("Completed DAM archive download. Total docIds processed: 0")
         return
-
-    print(f"[TRACE] batch_size set to {batch_size}")
     print(f"Downloading {len(doc_ids)} DAM documents from archive API")
     total_batches = (len(doc_ids) + batch_size - 1) // batch_size
     batch_indices = list(range(0, len(doc_ids), batch_size))

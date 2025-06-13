@@ -59,3 +59,7 @@ exclude_lines = [
 show_missing = true
 skip_covered = true
 sort = "Cover"
+
+[tool.flake8]
+# Allow lines up to 88 characters (to match Black's default)
+max-line-length = 140

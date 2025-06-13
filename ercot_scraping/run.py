@@ -1126,5 +1126,11 @@ def download_batched_data(
     logger.info("All batches complete. Data merged and checkpoint cleared.")
 
 
-if __name__ == "__main__":
-    main()
+def store_offers_to_db(*args, **kwargs):
+    pass
+
+
+def store_prices_to_db(*args, **kwargs):
+    pass
+
+# --- END OF FILE ---

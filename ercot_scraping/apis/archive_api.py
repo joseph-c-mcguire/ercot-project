@@ -302,7 +302,7 @@ def download_dam_archive_files(
         try:
             response = rate_limited_request(
                 "POST",
-                f"{ERCOT_ARCHIVE_API_BASE_URL}/DAM/download",
+                f"{ERCOT_ARCHIVE_API_BASE_URL}/{product_id}/download",
                 headers=ERCOT_API_REQUEST_HEADERS,
                 json={"docIds": batch}
             )

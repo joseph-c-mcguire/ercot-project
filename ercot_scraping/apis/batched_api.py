@@ -22,12 +22,14 @@ Intended for use in the ERCOT data pipeline to optimize API usage and database
 ingestion.
 """
 
-from typing import Optional
-from datetime import datetime, timedelta
-from ratelimit import limits, sleep_and_retry
+import requests
 import logging
 import threading
 import traceback
+from typing import Optional
+from datetime import datetime, timedelta
+from ratelimit import limits, sleep_and_retry
+import time
 
 from ercot_scraping.config.config import (
     API_RATE_LIMIT_REQUESTS,
@@ -36,7 +38,6 @@ from ercot_scraping.config.config import (
     DEFAULT_BATCH_DAYS,
 )
 from ercot_scraping.utils.logging_utils import setup_module_logging
-from ercot_scraping.utils.utils import mask_headers
 
 
 # Configure logging
@@ -197,19 +198,24 @@ def rate_limited_request(*args, **kwargs):
         requests.Response: The HTTP response returned by the
         requests.request call.
     """
-    import time
-    import requests
     with _sync_rate_limit_lock:
         now = time.time()
-        last_time = getattr(rate_limited_request, '_last_sync_request_time', 0)
-        elapsed = now - last_time
-        if elapsed < _MIN_REQUEST_INTERVAL:
-            time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
-        rate_limited_request._last_sync_request_time = time.time()
+        last_time = getattr(rate_limited_request,
+                            "_last_sync_request_time", None)
+        if last_time is not None:
+            elapsed = now - last_time
+            if elapsed < _MIN_REQUEST_INTERVAL:
+                time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
+        rate_limited_request._last_sync_request_time = now
     # Mask sensitive headers for logging
-    log_kwargs = dict(kwargs)
-    headers = log_kwargs.get('headers', {})
-    log_kwargs['headers'] = mask_headers(headers) if headers else headers
+    log_kwargs = kwargs.copy()
+    headers = log_kwargs.get("headers", {})
+    if headers:
+        masked_headers = headers.copy()
+        for sensitive in ["Authorization", "Ocp-Apim-Subscription-Key"]:
+            if sensitive in masked_headers:
+                masked_headers[sensitive] = "****"
+        log_kwargs["headers"] = masked_headers
     LOGGER.info(
         "[CALL] rate_limited_request(args=%s, kwargs=%s)", args, log_kwargs)
     response = requests.request(*args, timeout=30, **kwargs)

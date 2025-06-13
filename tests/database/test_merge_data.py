@@ -2,6 +2,7 @@ import sqlite3
 import pytest
 from ercot_scraping.database.merge_data import create_final_table
 from ercot_scraping.database.merge_data import merge_data
+from ercot_scraping.database.merge_data import get_common_date_hour_pairs
 
 
 def test_merge_data():
@@ -55,13 +56,6 @@ def merge_data_module(monkeypatch):
     return merge_data_module
 
 
-@pytest.fixture
-def in_memory_db():
-    conn = sqlite3.connect(":memory:")
-    yield conn
-    conn.close()
-
-
 def setup_tables_and_data(conn, merge_data_module, with_data=True):
     # Patch queries to simple test queries
     merge_data_module.CREATE_FINAL_TABLE_QUERY = """
@@ -77,29 +71,29 @@ def setup_tables_and_data(conn, merge_data_module, with_data=True):
         INSERT INTO FINAL (award_val, bid_val, price_val)
         SELECT a.award_val, b.bid_val, s.price_val
         FROM BID_AWARDS a
-        JOIN BIDS b ON a.BidId = b.EnergyOnlyBidID
-        JOIN SETTLEMENT_POINT_PRICES s ON a.SettlementPoint = s.SettlementPointName
+        JOIN BIDS b ON a.BidId = b.EnergyOnlyBidID AND a.DeliveryDate = b.DeliveryDate AND a.HourEnding = b.HourEnding
+        JOIN SETTLEMENT_POINT_PRICES s ON a.SettlementPoint = s.SettlementPointName AND a.DeliveryDate = s.DeliveryDate AND a.HourEnding = s.DeliveryHour
     """
     cur = conn.cursor()
     cur.execute(
-        "CREATE TABLE BID_AWARDS (BidId INTEGER, SettlementPoint TEXT, DeliveryDate TEXT, award_val TEXT)")
+        "CREATE TABLE BID_AWARDS (BidId INTEGER, SettlementPoint TEXT, DeliveryDate TEXT, HourEnding INTEGER, award_val TEXT)")
     cur.execute(
-        "CREATE TABLE BIDS (EnergyOnlyBidID INTEGER, DeliveryDate TEXT, bid_val TEXT)")
+        "CREATE TABLE BIDS (EnergyOnlyBidID INTEGER, DeliveryDate TEXT, HourEnding INTEGER, bid_val TEXT)")
     cur.execute(
-        "CREATE TABLE SETTLEMENT_POINT_PRICES (SettlementPointName TEXT, DeliveryDate TEXT, price_val TEXT)")
+        "CREATE TABLE SETTLEMENT_POINT_PRICES (SettlementPointName TEXT, DeliveryDate TEXT, DeliveryHour INTEGER, price_val TEXT)")
     if with_data:
         # Insert matching data
         cur.execute(
-            "INSERT INTO BID_AWARDS VALUES (1, 'SP1', '2024-01-01', 'award1')")
-        cur.execute("INSERT INTO BIDS VALUES (1, '2024-01-01', 'bid1')")
+            "INSERT INTO BID_AWARDS VALUES (1, 'SP1', '2024-01-01', 1, 'award1')")
+        cur.execute("INSERT INTO BIDS VALUES (1, '2024-01-01', 1, 'bid1')")
         cur.execute(
-            "INSERT INTO SETTLEMENT_POINT_PRICES VALUES ('SP1', '2024-01-01', 'price1')")
+            "INSERT INTO SETTLEMENT_POINT_PRICES VALUES ('SP1', '2024-01-01', 1, 'price1')")
     conn.commit()
 
 
 def test_merge_data_merges_rows(in_memory_db, merge_data_module):
     setup_tables_and_data(in_memory_db, merge_data_module, with_data=True)
-    merge_data(in_memory_db)
+    merge_data(in_memory_db, batch_size=10)
     cur = in_memory_db.cursor()
     cur.execute("SELECT * FROM FINAL")
     rows = cur.fetchall()
@@ -112,14 +106,14 @@ def test_merge_data_no_rows_when_no_match(in_memory_db, merge_data_module):
     # Insert non-matching data
     cur = in_memory_db.cursor()
     cur.execute(
-        "INSERT INTO BID_AWARDS VALUES (1, 'SP1', '2024-01-01', 'award1')")
+        "INSERT INTO BID_AWARDS VALUES (1, 'SP1', '2024-01-01', 1, 'award1')")
     # Different ID
-    cur.execute("INSERT INTO BIDS VALUES (2, '2024-01-01', 'bid2')")
+    cur.execute("INSERT INTO BIDS VALUES (2, '2024-01-01', 1, 'bid2')")
     # Different SP
     cur.execute(
-        "INSERT INTO SETTLEMENT_POINT_PRICES VALUES ('SP2', '2024-01-01', 'price2')")
+        "INSERT INTO SETTLEMENT_POINT_PRICES VALUES ('SP2', '2024-01-01', 1, 'price2')")
     in_memory_db.commit()
-    merge_data(in_memory_db)
+    merge_data(in_memory_db, batch_size=10)
     cur.execute("SELECT * FROM FINAL")
     rows = cur.fetchall()
     assert len(rows) == 0
@@ -131,7 +125,7 @@ def test_merge_data_creates_final_table_if_missing(in_memory_db, merge_data_modu
     cur = in_memory_db.cursor()
     cur.execute("DROP TABLE IF EXISTS FINAL")
     in_memory_db.commit()
-    merge_data(in_memory_db)
+    merge_data(in_memory_db, batch_size=10)
     cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='FINAL';")
     assert cur.fetchone()[0] == "FINAL"
@@ -143,10 +137,10 @@ def test_merge_data_handles_missing_source_tables(in_memory_db, merge_data_modul
     merge_data_module.MERGE_DATA_QUERY = "INSERT INTO FINAL (award_val, bid_val, price_val) SELECT NULL, NULL, NULL WHERE 1=0;"
     cur = in_memory_db.cursor()
     cur.execute(
-        "CREATE TABLE BID_AWARDS (BidId INTEGER, SettlementPoint TEXT, DeliveryDate TEXT, award_val TEXT)")
+        "CREATE TABLE BID_AWARDS (BidId INTEGER, SettlementPoint TEXT, DeliveryDate TEXT, HourEnding INTEGER, award_val TEXT)")
     in_memory_db.commit()
     # Should not raise, even though BIDS and SETTLEMENT_POINT_PRICES are missing
-    merge_data(in_memory_db)
+    merge_data(in_memory_db, batch_size=10)
     cur.execute("SELECT * FROM FINAL")
     assert cur.fetchall() == []
 
@@ -156,10 +150,107 @@ def test_merge_data_accepts_db_path(tmp_path, merge_data_module):
     conn = sqlite3.connect(db_path)
     setup_tables_and_data(conn, merge_data_module, with_data=True)
     conn.close()
-    merge_data(str(db_path))
+    merge_data(str(db_path), batch_size=10)
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("SELECT * FROM FINAL")
     rows = cur.fetchall()
     assert len(rows) == 1
     conn.close()
+
+
+@pytest.fixture
+def in_memory_db():
+    conn = sqlite3.connect(":memory:")
+    yield conn
+    conn.close()
+
+
+def create_table_with_pairs(conn, table, date_col, hour_col, pairs):
+    cur = conn.cursor()
+    cur.execute(f"CREATE TABLE {table} ({date_col} TEXT, {hour_col} INTEGER)")
+    cur.executemany(
+        f"INSERT INTO {table} ({date_col}, {hour_col}) VALUES (?, ?)", pairs
+    )
+    conn.commit()
+
+
+def test_get_common_date_hour_pairs_all_tables_exist_and_overlap(in_memory_db):
+    # All tables exist, with one common pair
+    tables = [
+        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BIDS", "DeliveryDate", "HourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
+        ("OFFERS", "DeliveryDate", "HourEnding"),
+        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+    ]
+    common = [("2024-01-01", 1)]
+    for table, date_col, hour_col in tables:
+        create_table_with_pairs(in_memory_db, table, date_col, hour_col, common + [
+                                (f"2024-01-0{tables.index((table, date_col, hour_col))+2}", 2)])
+    result = get_common_date_hour_pairs(in_memory_db)
+    assert result == [("2024-01-01", 1)]
+
+
+def test_get_common_date_hour_pairs_no_common_pairs(in_memory_db):
+    # All tables exist, but no common pairs
+    tables = [
+        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BIDS", "DeliveryDate", "HourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
+        ("OFFERS", "DeliveryDate", "HourEnding"),
+        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+    ]
+    for i, (table, date_col, hour_col) in enumerate(tables):
+        create_table_with_pairs(in_memory_db, table, date_col, hour_col, [
+                                (f"2024-01-0{i+1}", i+1)])
+    result = get_common_date_hour_pairs(in_memory_db)
+    assert result == []
+
+
+def test_get_common_date_hour_pairs_missing_table_returns_empty(in_memory_db):
+    # One table missing
+    tables = [
+        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BIDS", "DeliveryDate", "HourEnding"),
+        # Skip SETTLEMENT_POINT_PRICES
+        ("OFFERS", "DeliveryDate", "HourEnding"),
+        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+    ]
+    pairs = [("2024-01-01", 1)]
+    for table, date_col, hour_col in tables:
+        create_table_with_pairs(in_memory_db, table, date_col, hour_col, pairs)
+    result = get_common_date_hour_pairs(in_memory_db)
+    assert result == []
+
+
+def test_get_common_date_hour_pairs_empty_tables(in_memory_db):
+    # All tables exist but are empty
+    tables = [
+        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BIDS", "DeliveryDate", "HourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
+        ("OFFERS", "DeliveryDate", "HourEnding"),
+        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+    ]
+    for table, date_col, hour_col in tables:
+        create_table_with_pairs(in_memory_db, table, date_col, hour_col, [])
+    result = get_common_date_hour_pairs(in_memory_db)
+    assert result == []
+
+
+def test_get_common_date_hour_pairs_multiple_common_pairs(in_memory_db):
+    # All tables have two common pairs
+    tables = [
+        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BIDS", "DeliveryDate", "HourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
+        ("OFFERS", "DeliveryDate", "HourEnding"),
+        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+    ]
+    pairs = [("2024-01-01", 1), ("2024-01-02", 2)]
+    for table, date_col, hour_col in tables:
+        create_table_with_pairs(in_memory_db, table, date_col, hour_col, pairs + [
+                                (f"2024-01-0{tables.index((table, date_col, hour_col))+3}", 3)])
+    result = get_common_date_hour_pairs(in_memory_db)
+    assert result == sorted(pairs)

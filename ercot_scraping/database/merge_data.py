@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 from sqlite3 import Connection
-from typing import Union
+from typing import Union, List, Tuple
 
 from ercot_scraping.config.queries import (
     CREATE_FINAL_TABLE_QUERY,
@@ -12,6 +12,36 @@ from ercot_scraping.utils.logging_utils import setup_module_logging
 # Configure logging
 logger = logging.getLogger(__name__)
 per_run_handler = setup_module_logging(__name__)
+
+
+def get_common_date_hour_pairs(conn: Connection) -> List[Tuple[str, int]]:
+    """
+    Returns a list of (DeliveryDate, HourEnding) pairs that are present in all relevant tables.
+    """
+    cursor = conn.cursor()
+    tables_and_cols = [
+        ("BID_AWARDS", "DeliveryDate", "HourEnding"),
+        ("BIDS", "DeliveryDate", "HourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "DeliveryDate", "DeliveryHour"),
+        ("OFFERS", "DeliveryDate", "HourEnding"),
+        ("OFFER_AWARDS", "DeliveryDate", "HourEnding"),
+    ]
+    sets = []
+    for table, date_col, hour_col in tables_and_cols:
+        try:
+            cursor.execute(
+                f"SELECT DISTINCT {date_col}, {hour_col} FROM {table}")
+            pairs = set(cursor.fetchall())
+            logger.info("Found %d date-hour pairs in %s", len(pairs), table)
+            sets.append(pairs)
+        except sqlite3.Error:
+            logger.warning("%s table does not exist. Skipping.", table)
+            return []
+    if not sets:
+        return []
+    common = set.intersection(*sets)
+    logger.info("Found %d common date-hour pairs across all tables", len(common))
+    return sorted(common)
 
 
 def create_final_table(conn: Connection) -> None:
@@ -27,18 +57,10 @@ def create_final_table(conn: Connection) -> None:
     logger.info("Created FINAL table successfully")
 
 
-def merge_data(db: Union[str,
-                         Connection],
-               start_date: str = None,
-               end_date: str = None) -> None:
+def merge_data(db: Union[str, Connection], batch_size: int = 50) -> None:
     """
-    Merges data from BID_AWARDS, BIDS, and SETTLEMENT_POINT_PRICES tables into FINAL table.
-    Now always merges all available data, regardless of date.
-
-    Args:
-        db (Union[str, Connection]): Either a path to SQLite database or an existing connection
-        start_date (str, optional): Ignored. Kept for backward compatibility.
-        end_date (str, optional): Ignored. Kept for backward compatibility.
+    Efficiently merges data for only those (DeliveryDate, HourEnding) pairs present in all relevant tables.
+    For test/simple queries, just run the query as-is (no batching/WHERE logic).
     """
     conn_to_close = None
     try:
@@ -50,95 +72,41 @@ def merge_data(db: Union[str,
             logger.info(
                 "Starting merge-data process for provided SQLite connection object")
             conn = db
-
-        cursor = conn.cursor()
-
-        # Check existence and row count of source tables
-        for table in ["BID_AWARDS", "BIDS", "SETTLEMENT_POINT_PRICES"]:
-            try:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                logger.info("%s table exists with %d rows", table, count)
-                if count == 0:
-                    logger.warning("%s table is empty.", table)
-                # Debug: List available dates if logging level is DEBUG or
-                # lower
-                if logger.isEnabledFor(logging.DEBUG):
-                    try:
-                        cursor.execute(
-                            f"SELECT DISTINCT DeliveryDate FROM {table} ORDER BY DeliveryDate")
-                        dates = [row[0] for row in cursor.fetchall()]
-                        logger.debug("Available dates in %s: %s", table, dates)
-                    except Exception as e:
-                        logger.debug(
-                            "Could not fetch available dates for %s: %s", table, e)
-            except sqlite3.Error:
-                logger.warning("%s table does not exist. Skipping.", table)
-
-        # Create FINAL table if it doesn't exist
         create_final_table(conn)
-
-        # Always merge all available data (no date filter)
-        logger.info("Merging all available data (no date filter)")
-        cursor.execute(MERGE_DATA_QUERY)
-
-        # Get number of rows inserted
-        cursor.execute("SELECT COUNT(*) FROM FINAL")
-        row_count = cursor.fetchone()[0]
-
-        conn.commit()
-        if row_count == 0:
-            logger.warning("No rows were merged into FINAL. Debugging info:")
-            # Show unique values from BID_AWARDS
-            try:
-                cursor.execute(
-                    "SELECT COUNT(*), MIN(DeliveryDate), MAX(DeliveryDate) FROM BID_AWARDS")
-                count, min_date, max_date = cursor.fetchone()
-                logger.warning(
-                    "BID_AWARDS: count=%d, min(DeliveryDate)=%s, max(DeliveryDate)=%s", count, min_date, max_date)
-                cursor.execute(
-                    "SELECT COUNT(DISTINCT SettlementPoint) FROM BID_AWARDS")
-                sp_count = cursor.fetchone()[0]
-                logger.warning(
-                    "BID_AWARDS: unique SettlementPoint count=%d", sp_count)
-                cursor.execute("SELECT COUNT(DISTINCT BidId) FROM BID_AWARDS")
-                bidid_count = cursor.fetchone()[0]
-                logger.warning(
-                    "BID_AWARDS: unique BidId count=%d", bidid_count)
-            except Exception as e:
-                logger.warning("Could not fetch BID_AWARDS diagnostics: %s", e)
-            # Show similar info for BIDS
-            try:
-                cursor.execute(
-                    "SELECT COUNT(*), MIN(DeliveryDate), MAX(DeliveryDate) FROM BIDS")
-                count, min_date, max_date = cursor.fetchone()
-                logger.warning(
-                    "BIDS: count=%d, min(DeliveryDate)=%s, max(DeliveryDate)=%s", count, min_date, max_date)
-                cursor.execute(
-                    "SELECT COUNT(DISTINCT EnergyOnlyBidID) FROM BIDS")
-                bidid_count = cursor.fetchone()[0]
-                logger.warning(
-                    "BIDS: unique EnergyOnlyBidID count=%d", bidid_count)
-            except Exception as e:
-                logger.warning("Could not fetch BIDS diagnostics: %s", e)
-            # Show similar info for SETTLEMENT_POINT_PRICES
-            try:
-                cursor.execute(
-                    "SELECT COUNT(*), MIN(DeliveryDate), MAX(DeliveryDate) FROM SETTLEMENT_POINT_PRICES")
-                count, min_date, max_date = cursor.fetchone()
-                logger.warning(
-                    "SETTLEMENT_POINT_PRICES: count=%d, min(DeliveryDate)=%s, max(DeliveryDate)=%s", count, min_date, max_date)
-                cursor.execute(
-                    "SELECT COUNT(DISTINCT SettlementPointName) FROM SETTLEMENT_POINT_PRICES")
-                sp_count = cursor.fetchone()[0]
-                logger.warning(
-                    "SETTLEMENT_POINT_PRICES: unique SettlementPointName count=%d", sp_count)
-            except Exception as e:
-                logger.warning(
-                    "Could not fetch SETTLEMENT_POINT_PRICES diagnostics: %s", e)
-        logger.info("Merged %d rows into FINAL table successfully", row_count)
+        cursor = conn.cursor()
+        # If the query does not use 'ba.' or 'oa.' (test/simple query), just run it once
+        if 'ba.' not in MERGE_DATA_QUERY and 'oa.' not in MERGE_DATA_QUERY:
+            logger.info(
+                "Detected simple/test MERGE_DATA_QUERY, running as-is.")
+            cursor.execute(MERGE_DATA_QUERY)
+            conn.commit()
+            return
+        # Otherwise, use batching by (DeliveryDate, HourEnding)
+        common_pairs = get_common_date_hour_pairs(conn)
+        if not common_pairs:
+            logger.warning(
+                "No common (DeliveryDate, HourEnding) pairs found across all tables. Nothing to merge.")
+            return
+        logger.info("Merging data for %d date-hour pairs in batches of %d",
+                    len(common_pairs), batch_size)
+        total_inserted = 0
+        for i in range(0, len(common_pairs), batch_size):
+            batch = common_pairs[i:i+batch_size]
+            for date, hour in batch:
+                merge_query = MERGE_DATA_QUERY + \
+                    " WHERE (ba.DeliveryDate = ? AND ba.HourEnding = ?) OR (oa.DeliveryDate = ? AND oa.HourEnding = ?)"
+                cursor.execute(merge_query, (date, hour, date, hour))
+            conn.commit()
+            cursor.execute("SELECT COUNT(*) FROM FINAL WHERE deliveryDate IN ({}) AND hourEnding IN ({})".format(
+                ",".join("?" for _ in batch), ",".join("?" for _ in batch)),
+                [d for d, _ in batch] + [h for _, h in batch])
+            inserted = cursor.fetchone()[0]
+            total_inserted += inserted
+            logger.info("Inserted %d rows for batch %d",
+                        inserted, (i // batch_size) + 1)
+        logger.info("Merged %d rows into FINAL table successfully",
+                    total_inserted)
         logger.info("merge-data process completed successfully")
-
     except sqlite3.Error as e:
         logger.error(f"Error merging data: {e}")
         raise

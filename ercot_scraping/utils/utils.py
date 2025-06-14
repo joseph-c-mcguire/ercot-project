@@ -170,14 +170,48 @@ def get_table_name(filename: str) -> str:
 
 def normalize_data(data: dict[str, any], table_name: str) -> dict[str, any]:
     # If no records or missing 'data', just return
-    if "fields" not in data:
+    if "data" not in data or not isinstance(data["data"], list):
         return data
 
-    for column_info in data["fields"]:
-        for old_key, new_key in COLUMN_MAPPINGS[table_name].items():
-            if old_key == column_info["name"]:
-                data["fields"][data["fields"].index(
-                    column_info)]["name"] = new_key
+    # Use the correct mapping for the table, default to identity if not found
+    mapping = COLUMN_MAPPINGS.get(table_name.lower(), {})
+    if not mapping:
+        # fallback for settlement_point_prices (SPP) table, which may be called as 'settlement_point_prices' or 'settlementpointprices'
+        if table_name.lower().replace('_', '') == 'settlementpointprices':
+            mapping = COLUMN_MAPPINGS.get('settlement_point_prices', {})
+        if not mapping:
+            return data
+
+    # For SPP, map to model field names (dataclass expects lowerCamelCase, not TitleCase)
+    spp_field_map = {
+        'DeliveryDate': 'deliveryDate',
+        'DeliveryHour': 'deliveryHour',
+        'DeliveryInterval': 'deliveryInterval',
+        'SettlementPointName': 'settlementPointName',
+        'SettlementPointType': 'settlementPointType',
+        'SettlementPointPrice': 'settlementPointPrice',
+        'DSTFlag': 'dstFlag',
+    } if table_name.lower().replace('_', '') == 'settlementpointprices' else None
+
+    def normalize_record(record):
+        if not isinstance(record, dict):
+            return record
+        new_record = {}
+        for k, v in record.items():
+            key_lower = k.lower()
+            mapped = mapping.get(key_lower) or mapping.get(
+                k) or mapping.get(k[0].lower() + k[1:])
+            if mapped:
+                # For SPP, map to dataclass field names
+                if spp_field_map and mapped in spp_field_map:
+                    new_record[spp_field_map[mapped]] = v
+                else:
+                    new_record[mapped] = v
+            else:
+                new_record[k] = v
+        return new_record
+
+    data["data"] = [normalize_record(rec) for rec in data["data"]]
     return data
 
 
@@ -191,3 +225,35 @@ def mask_headers(headers: dict) -> dict:
         k: ("***MASKED***" if k.lower() in SENSITIVE else v)
         for k, v in headers.items()
     }
+
+
+def robust_normalize_bid_award_data(data: dict[str, any]) -> dict[str, any]:
+    """
+    Normalize BID_AWARDS data dict so that CSV headers (any case) are mapped to model fields.
+    Adds logging for missing critical fields.
+    """
+    from ercot_scraping.config.column_mappings import COLUMN_MAPPINGS
+    import logging
+    mapping = COLUMN_MAPPINGS.get("bid_awards", {})
+    required_fields = {"DeliveryDate", "HourEnding", "SettlementPointName",
+                       "QSEName", "EnergyOnlyBidAwardInMW", "SettlementPointPrice", "BidId"}
+    logger = logging.getLogger(__name__)
+
+    def normalize_row(row):
+        new_row = {}
+        for k, v in row.items():
+            k_lower = k.lower()
+            mapped = mapping.get(k_lower) or mapping.get(
+                k) or mapping.get(k[0].lower() + k[1:])
+            if mapped:
+                new_row[mapped] = v
+            else:
+                new_row[k] = v
+        missing = required_fields - set(new_row.keys())
+        if missing:
+            logger.warning(
+                f"BID_AWARD row missing fields after mapping: {missing} | Row: {row}")
+        return new_row
+    if "data" in data and isinstance(data["data"], list):
+        data["data"] = [normalize_row(rec) for rec in data["data"]]
+    return data

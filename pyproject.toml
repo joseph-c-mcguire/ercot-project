@@ -13,7 +13,8 @@ dependencies = [
     "chardet",
     "aiosqlite",
     "aiohttp",
-    "tqdm"
+    "tqdm",
+    "pydantic"
 ]
 requires-python = "<=3.11.9 "
 

@@ -1015,20 +1015,14 @@ def download_batched_data(
             # --- DAM: Split at DAM_ARCHIVE_CUTOFF_DATE ---
             dam_archive_range, dam_regular_range = split_date_range_by_cutoff(
                 dam_batch_start, dam_batch_end, DAM_ARCHIVE_CUTOFF_DATE)
+            logger.info("[FIELD-TRACK] DAM batch: %s to %s",
+                        dam_batch_start, dam_batch_end)
             if dam_archive_range:
                 dam_archive_product_id = ERCOT_ARCHIVE_PRODUCT_IDS["DAM"].get(
                     "BIDS")
                 doc_ids = get_archive_document_ids(
                     dam_archive_product_id, dam_archive_range[0], dam_archive_range[1])
-                logger.info(
-                    "[Batch %d/%d] Using DAM ARCHIVE API for %s to %s | product_id=%s | doc_ids_found=%d",
-                    idx+1,
-                    len(batches),
-                    dam_archive_range[0],
-                    dam_archive_range[1],
-                    dam_archive_product_id,
-                    len(doc_ids) if doc_ids else 0
-                )
+                logger.info("[FIELD-TRACK] DAM archive doc_ids: %s", doc_ids)
                 if doc_ids:
                     for i in range(0, len(doc_ids), FILE_LIMITS["DAM"]):
                         batch = doc_ids[i:i + FILE_LIMITS["DAM"]]
@@ -1044,6 +1038,8 @@ def download_batched_data(
                             dam_archive_product_id, batch, db_name,
                             batch_size=FILE_LIMITS["DAM"])
             if dam_regular_range:
+                logger.info("[FIELD-TRACK] DAM regular range: %s to %s",
+                            dam_regular_range[0], dam_regular_range[1])
                 logger.info(
                     "Using DAM CURRENT API for %s to %s",
                     dam_regular_range[0], dam_regular_range[1])
@@ -1059,7 +1055,11 @@ def download_batched_data(
             # --- SPP: Split at SPP_ARCHIVE_CUTOFF_DATE ---
             spp_archive_range, spp_regular_range = split_date_range_by_cutoff(
                 spp_batch_start, spp_batch_end, SPP_ARCHIVE_CUTOFF_DATE)
+            logger.info("[FIELD-TRACK] SPP batch: %s to %s",
+                        spp_batch_start, spp_batch_end)
             if spp_archive_range:
+                logger.info("[FIELD-TRACK] SPP archive range: %s to %s",
+                            spp_archive_range[0], spp_archive_range[1])
                 logger.info(
                     "Using SPP ARCHIVE API for %s to %s",
                     spp_archive_range[0], spp_archive_range[1])
@@ -1081,6 +1081,8 @@ def download_batched_data(
                             product_id, batch, db_name,
                             batch_size=FILE_LIMITS["SPP"])
             if spp_regular_range:
+                logger.info("[FIELD-TRACK] SPP regular range: %s to %s",
+                            spp_regular_range[0], spp_regular_range[1])
                 logger.info(
                     "Using SPP CURRENT API for %s to %s",
                     spp_regular_range[0], spp_regular_range[1])

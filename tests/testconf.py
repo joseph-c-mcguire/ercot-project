@@ -52,7 +52,7 @@ SAMPLE_BID_AWARDS = {
         {
             "deliveryDate": "2023-10-01",
             "hourEnding": 1,
-            "settlementPointName": "XYZ",  # Use this field name consistently
+            "settlementPointName": "XYZ",
             "qseName": "Test QSE",
             "energyOnlyBidAwardInMW": 45.0,
             "settlementPointPrice": 28.5,

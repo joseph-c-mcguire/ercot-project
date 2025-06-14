@@ -76,6 +76,8 @@ def process_spp_file_to_rows(
             if not reader.fieldnames:
                 print(f"[WARN] No headers found in {filename}")
                 return []
+            print(
+                f"[FIELD-TRACK] {filename}: CSV headers: {reader.fieldnames}")
             # Normalize headers
             normalized_headers = []
             for h in reader.fieldnames:
@@ -435,7 +437,8 @@ def process_dam_csv_file(
     table_name: str,
     db_name: str,
     model_class,
-    insert_query
+    insert_query,
+    filter_by_active_settlement_points: bool = False
 ) -> None:
     """
     Process a single DAM CSV file and store its data in the database.
@@ -444,6 +447,11 @@ def process_dam_csv_file(
         csv_text = csv_file.read().decode("utf-8")
         csv_reader = csv.DictReader(io.StringIO(csv_text))
         rows = list(csv_reader)
+        if rows:
+            print(
+                f"[FIELD-TRACK] {fname}: First row keys: {list(rows[0].keys())}")
+        else:
+            print(f"[FIELD-TRACK] {fname}: No rows found.")
     except (csv.Error, UnicodeDecodeError, ValueError) as e:
         print(f"[TRACE] Error reading CSV {fname}: {e}")
         return
@@ -451,7 +459,45 @@ def process_dam_csv_file(
         print(
             f"[TRACE] No data rows found in {fname}"
         )
+        # Always call store_data_to_db with empty data to ensure downstream logic is triggered
+        try:
+            store_data_to_db(
+                data={"data": []},
+                db_name=db_name,
+                table_name=table_name,
+                insert_query=insert_query,
+                model_class=model_class,
+            )
+        except Exception as e:
+            print(f"Error storing data for {fname}: {e}")
         return
+    # Optionally filter by active settlement points
+    if filter_by_active_settlement_points:
+        from ercot_scraping.utils.filters import get_active_settlement_points
+        active_points = get_active_settlement_points(db_name)
+        if not active_points:
+            rows = []
+        elif rows and "SettlementPoint" in rows[0]:
+            rows = [
+                row for row in rows
+                if row.get("SettlementPoint") in active_points
+            ]
+        print(
+            f"[TRACE] Filtered to {len(rows)} rows by active settlement points")
+        if not rows:
+            print(f"[TRACE] No data rows to store for {fname} after filtering")
+            # Always call store_data_to_db with empty data to ensure downstream logic is triggered
+            try:
+                store_data_to_db(
+                    data={"data": []},
+                    db_name=db_name,
+                    table_name=table_name,
+                    insert_query=insert_query,
+                    model_class=model_class,
+                )
+            except Exception as e:
+                print(f"Error storing data for {fname}: {e}")
+            return
     # Filter out rows that already exist
     filtered_rows = []
     for row in rows:
@@ -461,6 +507,17 @@ def process_dam_csv_file(
     if not filtered_rows:
         print(
             f"[TRACE] All rows in {fname} already exist in DB; skipping insert.")
+        # Always call store_data_to_db with empty data to ensure downstream logic is triggered
+        try:
+            store_data_to_db(
+                data={"data": []},
+                db_name=db_name,
+                table_name=table_name,
+                insert_query=insert_query,
+                model_class=model_class,
+            )
+        except Exception as e:
+            print(f"Error storing data for {fname}: {e}")
         return
     print(
         f"[TRACE] Storing {len(filtered_rows)} new rows from {fname} to {table_name}"
@@ -471,7 +528,8 @@ def process_dam_csv_file(
             db_name=db_name,
             table_name=table_name,
             model_class=model_class,
-            insert_query=insert_query
+            insert_query=insert_query,
+            filter_by_active_settlement_points=filter_by_active_settlement_points
         )
     except (ValueError, TypeError) as e:
         print(f"[TRACE] Error storing data for {fname}: {e}")

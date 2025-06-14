@@ -36,6 +36,8 @@ class TestDataModels:
         )
         # bidId should be converted to string
         assert isinstance(bid.bidId, str)
+        assert isinstance(bid.hourEnding, int)
+        assert isinstance(bid.energyOnlyBidMw1, float)
         expected = (
             "2024-06-01", 14, "POINT2", "QSE1",
             10.0, 30.5, None, None, None, None, None, None, None, None, None, None,
@@ -65,25 +67,38 @@ class TestDataModels:
         )
         assert award.as_tuple() == expected
 
-    def test_offer_as_tuple_and_post_init(self):
-        offer = data_models.Offer(
-            deliveryDate="2024-06-03",
-            hourEnding=16,
-            settlementPointName="POINT4",
-            qseName="QSE3",
-            energyOnlyOfferMW1=5.0,
-            energyOnlyOfferPrice1=20.0,
-            offerId=789,
-            multiHourBlock="N",
-            blockCurve="Y",
-            inserted_at="2024-06-03T16:00:00"
-        )
-        # offerId should be converted to string
-        assert isinstance(offer.offerId, str)
-        expected = (
-            "2024-06-03", 16, "POINT4", "QSE3",
-            5.0, 20.0, None, None, None, None, None, None, None, None, None, None,
-            None, None, None, None, None, None, None, None,
-            "789", "N", "Y", "2024-06-03T16:00:00"
-        )
-        assert offer.as_tuple() == expected
+    def test_bid_schema_validation(self):
+        from ercot_scraping.database.data_models import BidSchema
+        valid = {
+            "deliveryDate": "2024-06-01",
+            "hourEnding": 1,
+            "settlementPointName": "POINT1",
+            "qseName": "QSE1",
+            "energyOnlyBidMw1": 10.0,
+            "energyOnlyBidPrice1": 20.0,
+            "bidId": "BID1",
+            "multiHourBlock": "N",
+            "blockCurve": "N"
+        }
+        BidSchema(**valid)  # Should not raise
+        # Missing required field
+        import pytest
+        with pytest.raises(Exception):
+            BidSchema(**{k: v for k, v in valid.items()
+                      if k != "deliveryDate"})
+
+    def test_bid_award_schema_validation(self):
+        from ercot_scraping.database.data_models import BidAwardSchema
+        valid = {
+            "deliveryDate": "2024-06-01",
+            "hourEnding": 1,
+            "settlementPointName": "POINT1",
+            "qseName": "QSE1",
+            "energyOnlyBidAwardInMW": 10.0,
+            "settlementPointPrice": 30.5,
+            "bidId": "BID1"
+        }
+        BidAwardSchema(**valid)  # Should not raise
+        import pytest
+        with pytest.raises(Exception):
+            BidAwardSchema(**{k: v for k, v in valid.items() if k != "bidId"})

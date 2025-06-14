@@ -54,12 +54,20 @@ def create_ercot_tables(save_path: str = ERCOT_DB_NAME) -> None:
     conn = sqlite3.connect(save_path)
     cursor = conn.cursor()
 
+    # Log table creation for field tracking
+    print(f"[FIELD-TRACK] Creating tables in DB: {save_path}")
+
     # Create tables
     cursor.execute(SETTLEMENT_POINT_PRICES_TABLE_CREATION_QUERY)
+    print("[FIELD-TRACK] Created table: SETTLEMENT_POINT_PRICES")
     cursor.execute(BIDS_TABLE_CREATION_QUERY)
+    print("[FIELD-TRACK] Created table: BIDS")
     cursor.execute(BID_AWARDS_TABLE_CREATION_QUERY)
+    print("[FIELD-TRACK] Created table: BID_AWARDS")
     cursor.execute(OFFERS_TABLE_CREATION_QUERY)
+    print("[FIELD-TRACK] Created table: OFFERS")
     cursor.execute(OFFER_AWARDS_TABLE_CREATION_QUERY)
+    print("[FIELD-TRACK] Created table: OFFER_AWARDS")
 
     # Commit changes and close the connection
     conn.commit()

@@ -4,6 +4,7 @@ Module for the data classes to use as archetypes for the DB tables.
 
 from dataclasses import dataclass
 from typing import Optional
+from pydantic import BaseModel
 
 
 @dataclass
@@ -107,46 +108,34 @@ class Bid:
             Returns a tuple of all attribute values in the order they are defined.
     """
 
-    deliveryDate: str
-    hourEnding: int
-    settlementPointName: str
-    qseName: str
-    energyOnlyBidMw1: Optional[float] = None
-    energyOnlyBidPrice1: Optional[float] = None
-    energyOnlyBidMw2: Optional[float] = None
-    energyOnlyBidPrice2: Optional[float] = None
-    energyOnlyBidMw3: Optional[float] = None
-    energyOnlyBidPrice3: Optional[float] = None
-    energyOnlyBidMw4: Optional[float] = None
-    energyOnlyBidPrice4: Optional[float] = None
-    energyOnlyBidMw5: Optional[float] = None
-    energyOnlyBidPrice5: Optional[float] = None
-    energyOnlyBidMw6: Optional[float] = None
-    energyOnlyBidPrice6: Optional[float] = None
-    energyOnlyBidMw7: Optional[float] = None
-    energyOnlyBidPrice7: Optional[float] = None
-    energyOnlyBidMw8: Optional[float] = None
-    energyOnlyBidPrice8: Optional[float] = None
-    energyOnlyBidMw9: Optional[float] = None
-    energyOnlyBidPrice9: Optional[float] = None
-    energyOnlyBidMw10: Optional[float] = None
-    energyOnlyBidPrice10: Optional[float] = None
-    bidId: Optional[str] = None
-    multiHourBlock: Optional[str] = None
-    blockCurve: Optional[str] = None
+    DeliveryDate: str
+    HourEnding: int
+    SettlementPoint: str
+    QSEName: str
+    EnergyOnlyBidMW1: Optional[float] = None
+    EnergyOnlyBidPrice1: Optional[float] = None
+    EnergyOnlyBidMW2: Optional[float] = None
+    EnergyOnlyBidPrice2: Optional[float] = None
+    EnergyOnlyBidMW3: Optional[float] = None
+    EnergyOnlyBidPrice3: Optional[float] = None
+    EnergyOnlyBidMW4: Optional[float] = None
+    EnergyOnlyBidPrice4: Optional[float] = None
+    EnergyOnlyBidMW5: Optional[float] = None
+    EnergyOnlyBidPrice5: Optional[float] = None
+    EnergyOnlyBidMW6: Optional[float] = None
+    EnergyOnlyBidPrice6: Optional[float] = None
+    EnergyOnlyBidMW7: Optional[float] = None
+    EnergyOnlyBidPrice7: Optional[float] = None
+    EnergyOnlyBidMW8: Optional[float] = None
+    EnergyOnlyBidPrice8: Optional[float] = None
+    EnergyOnlyBidMW9: Optional[float] = None
+    EnergyOnlyBidPrice9: Optional[float] = None
+    EnergyOnlyBidMW10: Optional[float] = None
+    EnergyOnlyBidPrice10: Optional[float] = None
+    EnergyOnlyBidID: Optional[str] = None
+    MultiHourBlockIndicator: Optional[str] = None
+    BlockCurveIndicator: Optional[str] = None
     inserted_at: Optional[str] = None
-
-    def __post_init__(self):
-        """
-        Post-initialization processing for the instance.
-
-        This method ensures that the bidId attribute is converted to a string
-        if it has a non-null value. It guarantees that bidId is consistently
-        handled as a string throughout the application.
-        """
-        # Convert energyOnlyBidID to string if it's not already
-        if self.bidId is not None:
-            self.bidId = str(self.bidId)
 
     def as_tuple(self):
         """
@@ -187,35 +176,49 @@ class Bid:
                 specified.
         """
         return (
-            self.deliveryDate,
-            self.hourEnding,
-            self.settlementPointName,
-            self.qseName,
-            self.energyOnlyBidMw1,
-            self.energyOnlyBidPrice1,
-            self.energyOnlyBidMw2,
-            self.energyOnlyBidPrice2,
-            self.energyOnlyBidMw3,
-            self.energyOnlyBidPrice3,
-            self.energyOnlyBidMw4,
-            self.energyOnlyBidPrice4,
-            self.energyOnlyBidMw5,
-            self.energyOnlyBidPrice5,
-            self.energyOnlyBidMw6,
-            self.energyOnlyBidPrice6,
-            self.energyOnlyBidMw7,
-            self.energyOnlyBidPrice7,
-            self.energyOnlyBidMw8,
-            self.energyOnlyBidPrice8,
-            self.energyOnlyBidMw9,
-            self.energyOnlyBidPrice9,
-            self.energyOnlyBidMw10,
-            self.energyOnlyBidPrice10,
-            self.bidId,
-            self.multiHourBlock,
-            self.blockCurve,
+            self.DeliveryDate,
+            self.HourEnding,
+            self.SettlementPoint,
+            self.QSEName,
+            self.EnergyOnlyBidMW1,
+            self.EnergyOnlyBidPrice1,
+            self.EnergyOnlyBidMW2,
+            self.EnergyOnlyBidPrice2,
+            self.EnergyOnlyBidMW3,
+            self.EnergyOnlyBidPrice3,
+            self.EnergyOnlyBidMW4,
+            self.EnergyOnlyBidPrice4,
+            self.EnergyOnlyBidMW5,
+            self.EnergyOnlyBidPrice5,
+            self.EnergyOnlyBidMW6,
+            self.EnergyOnlyBidPrice6,
+            self.EnergyOnlyBidMW7,
+            self.EnergyOnlyBidPrice7,
+            self.EnergyOnlyBidMW8,
+            self.EnergyOnlyBidPrice8,
+            self.EnergyOnlyBidMW9,
+            self.EnergyOnlyBidPrice9,
+            self.EnergyOnlyBidMW10,
+            self.EnergyOnlyBidPrice10,
+            self.EnergyOnlyBidID,
+            self.MultiHourBlockIndicator,
+            self.BlockCurveIndicator,
             self.inserted_at,
         )
+
+
+class BidSchema(BaseModel):
+    deliveryDate: str
+    hourEnding: int
+    settlementPointName: str
+    qseName: str
+    energyOnlyBidMw1: float = 0.0
+    energyOnlyBidPrice1: float = 0.0
+    bidId: str
+    multiHourBlock: str = "N"
+    blockCurve: str = "N"
+    # ... add all other fields as Optional[float] = 0.0
+    # For brevity, only a subset is shown here
 
 
 @dataclass
@@ -226,39 +229,14 @@ class BidAward:
     to maintain compatibility with existing code.
     """
 
-    deliveryDate: str  # API uses lowercase
-    hourEnding: int  # API uses lowercase
-    settlementPointName: str  # API uses lowercase
-    qseName: str  # API uses lowercase
-    energyOnlyBidAwardInMW: float  # API uses lowercase
-    settlementPointPrice: float  # API uses lowercase
-    bidId: str  # API uses lowercase
+    DeliveryDate: str  # API uses lowercase
+    HourEnding: int  # API uses lowercase
+    SettlementPoint: str  # API uses lowercase
+    QSEName: str  # API uses lowercase
+    EnergyOnlyBidAwardMW: float  # API uses lowercase
+    SettlementPointPrice: float  # API uses lowercase
+    BidId: str  # API uses lowercase
     inserted_at: Optional[str] = None
-
-    def __post_init__(self):
-        """
-        Post-initialization method to enforce type conversion for the object's
-        attributes.
-
-        This method is automatically called right after the object's initialization
-        to ensure that:
-        - 'hourEnding' is converted to an integer if it is not None.
-        - 'energyOnlyBidAwardInMW' is converted to a float if it is not None.
-        - 'settlementPointPrice' is converted to a float if it is not None.
-        - 'bidId' is converted to a string if it is not None.
-
-        Each conversion is performed conditionally to gracefully handle cases where
-        attributes may be None.
-        """
-        # Ensure types are correct and handle None gracefully
-        if self.hourEnding is not None:
-            self.hourEnding = int(self.hourEnding)
-        if self.energyOnlyBidAwardInMW is not None:
-            self.energyOnlyBidAwardInMW = float(self.energyOnlyBidAwardInMW)
-        if self.settlementPointPrice is not None:
-            self.settlementPointPrice = float(self.settlementPointPrice)
-        if self.bidId is not None:
-            self.bidId = str(self.bidId)
 
     def as_tuple(self):
         """
@@ -280,15 +258,26 @@ class BidAward:
             settlementPointPrice, bidId, inserted_at).
         """
         return (
-            self.deliveryDate,
-            self.hourEnding,
-            self.settlementPointName,
-            self.qseName,
-            self.energyOnlyBidAwardInMW,
-            self.settlementPointPrice,
-            self.bidId,
+            self.DeliveryDate,
+            self.HourEnding,
+            self.SettlementPoint,
+            self.QSEName,
+            self.EnergyOnlyBidAwardMW,
+            self.SettlementPointPrice,
+            self.BidId,
             self.inserted_at,
         )
+
+
+class BidAwardSchema(BaseModel):
+    deliveryDate: str
+    hourEnding: int
+    settlementPointName: str
+    qseName: str
+    energyOnlyBidAwardInMW: float
+    settlementPointPrice: float
+    bidId: str
+    inserted_at: str = None
 
 
 @dataclass
@@ -365,7 +354,7 @@ class Offer:
         If offerId is not None, converts it to a string. This simplifies subsequent operations
         that work with offerId by guaranteeing a consistent data type.
         """
-        # Convert energyOnlyOfferID to string if it's not already
+        # Convert offerId to string if it's not already
         if self.offerId is not None:
             self.offerId = str(self.offerId)
 
@@ -466,16 +455,6 @@ class OfferAward:
     settlementPointPrice: float
     offerId: str
     inserted_at: Optional[str] = None
-
-    def __post_init__(self):
-        """
-        Post-initialization method that ensures the `offerId` attribute is stored as a string.
-
-        This function converts the `offerId` to a string, which helps maintain consistency
-        and avoids type errors in subsequent operations.
-        """
-        # Convert offerID to string if it's not already
-        self.offerId = str(self.offerId)
 
     def as_tuple(self):
         """

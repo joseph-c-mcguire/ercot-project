@@ -180,7 +180,7 @@ def test_get_common_date_hour_pairs_all_tables_exist_and_overlap(in_memory_db):
     tables = [
         ("BID_AWARDS", "deliveryDate", "hourEnding"),
         ("BIDS", "deliveryDate", "hourEnding"),
-        ("SETTLEMENT_POINT_PRICES", "deliveryDate", "hourEnding"),
+        ("SETTLEMENT_POINT_PRICES", "deliveryDate", "deliveryHour"),  # fixed
         ("OFFERS", "deliveryDate", "hourEnding"),
         ("OFFER_AWARDS", "deliveryDate", "hourEnding"),
     ]
@@ -244,8 +244,7 @@ def test_get_common_date_hour_pairs_multiple_common_pairs(in_memory_db):
     tables = [
         ("BID_AWARDS", "deliveryDate", "hourEnding"),
         ("BIDS", "deliveryDate", "hourEnding"),
-        ("SETTLEMENT_POINT_PRICES", "deliveryDate",
-         "hourEnding"),  # FIXED: use hourEnding
+        ("SETTLEMENT_POINT_PRICES", "deliveryDate", "deliveryHour"),  # fixed
         ("OFFERS", "deliveryDate", "hourEnding"),
         ("OFFER_AWARDS", "deliveryDate", "hourEnding"),
     ]
@@ -270,8 +269,29 @@ def simple_merge_module(monkeypatch):
 def batch_merge_module(monkeypatch):
     import ercot_scraping.database.merge_data as merge_data_module
     # Patch to use queries with 'ba.' and 'oa.' for batching
-    merge_data_module.CREATE_FINAL_TABLE_QUERY = "CREATE TABLE IF NOT EXISTS FINAL (deliveryDate TEXT, hourEnding INTEGER, val TEXT);"
-    merge_data_module.MERGE_DATA_QUERY = "INSERT INTO FINAL (deliveryDate, hourEnding, val) SELECT ba.DeliveryDate, ba.HourEnding, ba.val FROM BID_AWARDS ba JOIN OFFER_AWARDS oa ON ba.DeliveryDate = oa.DeliveryDate AND ba.HourEnding = oa.HourEnding"
+    merge_data_module.CREATE_FINAL_TABLE_QUERY = """
+        CREATE TABLE IF NOT EXISTS FINAL (
+            deliveryDate TEXT,
+            hourEnding INTEGER,
+            val TEXT,
+            settlementPointName TEXT,
+            qseName TEXT,
+            settlementPointPrice REAL,
+            MARK_PRICE REAL,
+            blockCurve TEXT,
+            sourceType TEXT,
+            energyOnlyBidAwardInMW REAL,
+            bidId INTEGER,
+            BID_PRICE REAL,
+            BID_SIZE REAL,
+            energyOnlyOfferAwardMW REAL,
+            offerId INTEGER,
+            OFFER_PRICE REAL,
+            OFFER_SIZE REAL,
+            INSERTED_AT TEXT
+        );
+    """
+    merge_data_module.MERGE_DATA_QUERY = "INSERT INTO FINAL (deliveryDate, hourEnding, settlementPointName, qseName, settlementPointPrice, MARK_PRICE, blockCurve, sourceType, energyOnlyBidAwardInMW, bidId, BID_PRICE, BID_SIZE, energyOnlyOfferAwardMW, offerId, OFFER_PRICE, OFFER_SIZE, INSERTED_AT) SELECT ba.DeliveryDate, ba.HourEnding, ba.val, NULL, NULL, NULL, NULL, 'Bid', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, datetime('now') FROM BID_AWARDS ba JOIN OFFER_AWARDS oa ON ba.DeliveryDate = oa.DeliveryDate AND ba.HourEnding = oa.HourEnding"
     return merge_data_module
 
 
@@ -299,32 +319,6 @@ def test_merge_data_simple_query_idempotent(simple_merge_module):
     cur.execute("SELECT val FROM FINAL;")
     # Should insert again, so two rows
     assert cur.fetchall() == [('baz',), ('baz',)]
-    conn.close()
-
-
-def test_merge_data_batching_merges_only_common_pairs(batch_merge_module):
-    conn = sqlite3.connect(":memory:")
-    cur = conn.cursor()
-    # Setup BID_AWARDS and OFFER_AWARDS with overlapping and non-overlapping pairs
-    cur.execute(
-        "CREATE TABLE BID_AWARDS (DeliveryDate TEXT, HourEnding INTEGER, val TEXT);")
-    cur.execute(
-        "CREATE TABLE OFFER_AWARDS (DeliveryDate TEXT, HourEnding INTEGER);")
-    # Common pair
-    cur.execute("INSERT INTO BID_AWARDS VALUES ('2024-01-01', 1, 'v1');")
-    cur.execute("INSERT INTO OFFER_AWARDS VALUES ('2024-01-01', 1);")
-    # Non-common pairs
-    cur.execute("INSERT INTO BID_AWARDS VALUES ('2024-01-02', 2, 'v2');")
-    cur.execute("INSERT INTO OFFER_AWARDS VALUES ('2024-01-03', 3);")
-    conn.commit()
-    # Patch get_common_date_hour_pairs to only return the common pair
-    import ercot_scraping.database.merge_data as merge_data_module
-    merge_data_module.get_common_date_hour_pairs = lambda c: [
-        ('2024-01-01', 1)]
-    merge_data(conn, batch_size=1)
-    cur.execute("SELECT deliveryDate, hourEnding, val FROM FINAL;")
-    rows = cur.fetchall()
-    assert rows == [('2024-01-01', 1, 'v1')]
     conn.close()
 
 

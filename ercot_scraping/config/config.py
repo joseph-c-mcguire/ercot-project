@@ -61,7 +61,7 @@ FILE_LIMITS = {
 # API Rate Limiting and Request Settings
 API_RATE_LIMIT_REQUESTS = 10
 API_RATE_LIMIT_INTERVAL = 60
-DEFAULT_BATCH_DAYS = 30
+DEFAULT_BATCH_DAYS = 7
 MAX_DATE_RANGE = 100  # example value; tests assume a high cap
 # New flag to disable sleep during tests to reduce runtime
 DISABLE_RATE_LIMIT_SLEEP = False

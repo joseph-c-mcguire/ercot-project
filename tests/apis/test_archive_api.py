@@ -202,23 +202,6 @@ def test_process_dam_csv_file_success(mock_store):
 
 
 @mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
-def test_process_dam_csv_file_empty_rows(mock_store, capsys):
-    csv_content = "col1,col2\n"
-    csv_file = make_csv_file(csv_content)
-    process_dam_csv_file(
-        csv_file,
-        fname="empty.csv",
-        table_name="SOME_TABLE",
-        db_name="test.db",
-        model_class=object,
-        insert_query="INSERT"
-    )
-    out = capsys.readouterr().out
-    assert "[TRACE] No data rows found in empty.csv" in out
-    mock_store.assert_not_called()
-
-
-@mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
 def test_process_dam_csv_file_csv_error(mock_store, capsys):
     # Simulate a UnicodeDecodeError
     csv_file = mock.MagicMock()
@@ -1041,3 +1024,73 @@ def test_download_spp_archive_files_skips_existing(
         assert len(kwargs["data"]["data"]) == 1
         assert kwargs["data"]["data"][0]["deliverydate"] == "2024-01-02"
     conn.close()
+
+
+class DummyModel:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+@mock.patch("ercot_scraping.utils.filters.get_active_settlement_points")
+@mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
+def test_process_dam_csv_file_active_settlement_filter(mock_store, mock_get_active):
+    csv_content = "SettlementPoint,Value\nACTIVE1,100\nINACTIVE,200\nACTIVE2,300\n"
+    csv_file = make_csv_file(csv_content)
+    with mock.patch("ercot_scraping.utils.filters.get_active_settlement_points", return_value={"ACTIVE1", "ACTIVE2"}):
+        process_dam_csv_file(
+            csv_file,
+            fname="test.csv",
+            table_name="SOME_TABLE",
+            db_name="test.db",
+            model_class=DummyModel,
+            insert_query="INSERT",
+            filter_by_active_settlement_points=True
+        )
+    assert mock_store.called
+    args, kwargs = mock_store.call_args
+    # Only ACTIVE1 and ACTIVE2 should be present
+    filtered = kwargs["data"]["data"]
+    assert all(row["SettlementPoint"] in {
+               "ACTIVE1", "ACTIVE2"} for row in filtered)
+
+
+@mock.patch("ercot_scraping.utils.filters.get_active_settlement_points")
+@mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
+def test_process_dam_csv_file_no_active_points(mock_store, mock_get_active):
+    csv_content = "SettlementPoint,Value\nINACTIVE,200\n"
+    csv_file = make_csv_file(csv_content)
+    mock_get_active.return_value = set()
+    process_dam_csv_file(
+        csv_file,
+        fname="test.csv",
+        table_name="SOME_TABLE",
+        db_name="test.db",
+        model_class=object,
+        insert_query="INSERT",
+        filter_by_active_settlement_points=True
+    )
+    assert mock_store.called
+    args, kwargs = mock_store.call_args
+    # No rows should be present
+    assert kwargs["data"]["data"] == []
+
+
+@mock.patch("ercot_scraping.utils.filters.get_active_settlement_points")
+@mock.patch("ercot_scraping.apis.archive_api.store_data_to_db")
+def test_process_dam_csv_file_filter_off(mock_store, mock_get_active):
+    csv_content = "SettlementPoint,Value\nACTIVE,100\nINACTIVE,200\n"
+    csv_file = make_csv_file(csv_content)
+    mock_get_active.return_value = {"ACTIVE"}
+    process_dam_csv_file(
+        csv_file,
+        fname="test.csv",
+        table_name="SOME_TABLE",
+        db_name="test.db",
+        model_class=object,
+        insert_query="INSERT",
+        filter_by_active_settlement_points=False
+    )
+    assert mock_store.called
+    args, kwargs = mock_store.call_args
+    # All rows should be present since filter is off
+    assert len(kwargs["data"]["data"]) == 2

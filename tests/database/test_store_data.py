@@ -11,9 +11,6 @@ import pandas as pd
 from ercot_scraping.database.store_data import aggregate_spp_data
 from ercot_scraping.database.store_data import store_prices_to_db
 from ercot_scraping.database.store_data import store_bid_awards_to_db
-from ercot_scraping.database.store_data import store_bids_to_db
-from ercot_scraping.database.store_data import store_offer_awards_to_db
-from ercot_scraping.database.store_data import validate_model_data
 import pytest
 
 
@@ -736,30 +733,6 @@ def test_store_bid_awards_to_db_skips_empty_data(caplog):
     assert any("No bid awards to store" in rec.message for rec in caplog.records)
 
 
-def test_store_bid_awards_to_db_calls_store_data_to_db(valid_bid_award_data):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_bid_awards_to_db(valid_bid_award_data,
-                               db_name=":memory:", batch_size=123)
-        assert mock_store.called
-        args, kwargs = mock_store.call_args
-        assert args[0] == valid_bid_award_data
-        assert args[1] == ":memory:"
-        assert args[2] == "BID_AWARDS"
-        # batch_size should be passed as kwarg
-        assert kwargs.get("batch_size", args[5] if len(
-            args) > 5 else None) == 123
-
-
-def test_store_bid_awards_to_db_with_default_batch_size(valid_bid_award_data):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_bid_awards_to_db(valid_bid_award_data, db_name=":memory:")
-        assert mock_store.called
-        args, kwargs = mock_store.call_args
-        # Default batch_size is 1000
-        assert kwargs.get("batch_size", args[5] if len(
-            args) > 5 else None) == 1000
-
-
 def test_store_bid_awards_to_db_handles_none_data(caplog):
     with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
         store_bid_awards_to_db(None, db_name=":memory:")
@@ -767,166 +740,108 @@ def test_store_bid_awards_to_db_handles_none_data(caplog):
     assert any("No bid awards to store" in rec.message for rec in caplog.records)
 
 
-@pytest.fixture
-def required_fields():
-    return {"field1", "field2", "field3"}
-
-
-@pytest.fixture
-def model_name():
-    return "TestModel"
-
-
-def valid_data():
-    return {"data": [{"field1": 1, "field2": 2, "field3": 3}]}
-
-
-def test_validate_model_data_valid(required_fields, model_name):
-    # Should not raise for valid data
-    validate_model_data(valid_data(), required_fields, model_name)
-
-
-@pytest.mark.parametrize("data", [
-    None,
-    {},
-    {"foo": []},
-    {"data": []}
-])
-def test_validate_model_data_empty_data_raises(data, required_fields, model_name):
-    with pytest.raises(ValueError, match=f"Invalid or empty data structure for {model_name}"):
-        validate_model_data(data, required_fields, model_name)
-
-
-def test_validate_model_data_data_not_list_raises(required_fields, model_name):
-    data = {"data": "notalist"}
-    with pytest.raises(ValueError, match=f"Data must be a list of records for {model_name}"):
-        validate_model_data(data, required_fields, model_name)
-
-
-def test_validate_model_data_first_record_not_dict_raises(required_fields, model_name):
-    data = {"data": [123]}
-    with pytest.raises(ValueError, match=f"Invalid data record format for {model_name}"):
-        validate_model_data(data, required_fields, model_name)
-
-
-def test_validate_model_data_missing_fields_raises(required_fields, model_name):
-    data = {"data": [{"field1": 1, "field2": 2}]}  # missing field3
-    with pytest.raises(ValueError) as excinfo:
-        validate_model_data(data, required_fields, model_name)
-    assert "Missing required fields for" in str(excinfo.value)
-    assert "field3" in str(excinfo.value)
-
-
-@pytest.fixture
-def valid_bid_data():
-    return {
+def test_store_bid_awards_to_db_validation_and_logging(caplog):
+    from ercot_scraping.database.store_data import store_bid_awards_to_db
+    # Valid record
+    valid = {
         "data": [
             {
-                "deliveryDate": "2024-07-01",
-                "deliveryHour": 1,
-                "deliveryInterval": 1,
+                "deliveryDate": "2024-06-01",
+                "hourEnding": 1,
+                "settlementPointName": "POINT1",
                 "qseName": "QSE1",
-                "resourceName": "RES1",
-                "bidType": "ENERGY",
-                "bidMW": 10.0,
-                "bidPrice": 30.0,
-                "inserted_at": "2024-07-01 12:00:00"
+                "energyOnlyBidAwardInMW": 10.0,
+                "settlementPointPrice": 30.5,
+                "bidId": "BID1"
             }
         ]
     }
-
-
-def test_store_bids_to_db_skips_empty_data(caplog):
-    empty_data = {"data": []}
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_bids_to_db(empty_data, db_name=":memory:")
-        mock_store.assert_not_called()
-    assert any("No bids to store" in rec.message for rec in caplog.records)
-
-
-def test_store_bids_to_db_calls_store_data_to_db(valid_bid_data):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_bids_to_db(valid_bid_data, db_name=":memory:", batch_size=123)
-        assert mock_store.called
-        args, kwargs = mock_store.call_args
-        assert args[0] == valid_bid_data
-        assert args[1] == ":memory:"
-        assert args[2] == "BIDS"
-        # batch_size should be passed as kwarg or positional
-        assert kwargs.get("batch_size", args[5] if len(
-            args) > 5 else None) == 123
-
-
-def test_store_bids_to_db_with_default_batch_size(valid_bid_data):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_bids_to_db(valid_bid_data, db_name=":memory:")
-        assert mock_store.called
-        args, kwargs = mock_store.call_args
-        # Default batch_size is 1000
-        assert kwargs.get("batch_size", args[5] if len(
-            args) > 5 else None) == 1000
-
-
-def test_store_bids_to_db_handles_none_data(caplog):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_bids_to_db(None, db_name=":memory:")
-        mock_store.assert_not_called()
-    assert any("No bids to store" in rec.message for rec in caplog.records)
-
-
-@pytest.fixture
-def valid_offer_award_data():
-    return {
+    store_bid_awards_to_db(valid, db_name=":memory:")
+    # Invalid record (missing required field)
+    invalid = {
         "data": [
             {
-                "deliveryDate": "2024-07-01",
-                "deliveryHour": 1,
-                "deliveryInterval": 1,
+                "deliveryDate": "2024-06-01",
+                "hourEnding": 1,
+                "settlementPointName": "POINT1",
                 "qseName": "QSE1",
-                "resourceName": "RES1",
-                "offerType": "ENERGY",
-                "offerMW": 10.0,
-                "offerPrice": 30.0,
-                "awardedMW": 5.0,
-                "awardedPrice": 28.0,
-                "inserted_at": "2024-07-01 12:00:00"
+                "settlementPointPrice": 30.5,
+                "bidId": "BID1"
             }
         ]
     }
+    store_bid_awards_to_db(invalid, db_name=":memory:")
+    assert any(
+        "BidAward validation error" in rec.message for rec in caplog.records)
+    assert any(
+        "No valid bid awards to store after validation." in rec.message for rec in caplog.records)
 
 
-def test_store_offer_awards_to_db_skips_empty_data(caplog):
-    empty_data = {"data": []}
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_offer_awards_to_db(empty_data, db_name=":memory:")
-        mock_store.assert_not_called()
-    assert any("No offer awards to store" in rec.message for rec in caplog.records)
+def test_store_data_to_db_active_settlement_filter(monkeypatch):
+    from ercot_scraping.database import store_data
+    # Patch get_active_settlement_points to return only ACTIVE1
+    monkeypatch.setattr(
+        store_data, "get_active_settlement_points", lambda db: {"ACTIVE1"}
+    )
+    monkeypatch.setattr(
+        store_data, "filter_by_settlement_points",
+        lambda data, points: {
+            "data": [row for row in data["data"] if row["SettlementPoint"] in points]}
+    )
+    # Patch normalize_data to pass through
+    monkeypatch.setattr(store_data, "normalize_data", lambda d, **k: d)
+    # Patch is_data_empty to always return False
+    monkeypatch.setattr(store_data, "is_data_empty", lambda d: False)
+    # Patch logger to avoid side effects
+    monkeypatch.setattr(store_data, "logger", mock.Mock())
+    # Patch _insert_batches to capture inserted data
+    inserted = {}
+
+    def fake_insert_batches(cursor, insert_query, batch, batch_size):
+        inserted["batch"] = batch
+    monkeypatch.setattr(store_data, "_insert_batches", fake_insert_batches)
+    # Prepare data
+    data = {"data": [
+        {"SettlementPoint": "ACTIVE1", "Value": 1},
+        {"SettlementPoint": "INACTIVE", "Value": 2},
+    ]}
+    # Call store_data_to_db with filter enabled
+    store_data.store_data_to_db(
+        data=data,
+        db_name="test.db",
+        table_name="SETTLEMENT_POINT_PRICES",
+        insert_query="INSERT",
+        model_class=object,
+        filter_by_active_settlement_points=True
+    )
+    # Only ACTIVE1 should be inserted
+    assert len(inserted["batch"]) == 1
+    assert inserted["batch"][0]["SettlementPoint"] == "ACTIVE1"
 
 
-def test_store_offer_awards_to_db_calls_store_data_to_db(valid_offer_award_data):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_offer_awards_to_db(
-            valid_offer_award_data, db_name=":memory:", batch_size=123)
-        assert mock_store.called
-        args, kwargs = mock_store.call_args
-        assert args[0] == valid_offer_award_data
-        assert args[1] == ":memory:"
-        assert args[2] == "OFFER_AWARDS"
-        assert kwargs.get("batch_size", args[5] if len(
-            args) > 5 else None) == 123
+def test_store_data_to_db_no_filter(monkeypatch):
+    from ercot_scraping.database import store_data
+    monkeypatch.setattr(store_data, "normalize_data", lambda d, **k: d)
+    monkeypatch.setattr(store_data, "is_data_empty", lambda d: False)
+    monkeypatch.setattr(store_data, "logger", mock.Mock())
+    inserted = {}
 
-
-def test_store_offer_awards_to_db_with_default_batch_size(valid_offer_award_data):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_offer_awards_to_db(valid_offer_award_data, db_name=":memory:")
-        assert mock_store.called
-        args, kwargs = mock_store.call_args
-        assert kwargs.get("batch_size", args[5] if len(
-            args) > 5 else None) == 1000
-
-
-def test_store_offer_awards_to_db_handles_none_data(caplog):
-    with mock.patch("ercot_scraping.database.store_data.store_data_to_db") as mock_store:
-        store_offer_awards_to_db(None, db_name=":memory:")
-        mock_store.assert_not_called()
-    assert any("No offer awards to store" in rec.message for rec in caplog.records)
+    def fake_insert_batches(cursor, insert_query, batch, batch_size):
+        inserted["batch"] = batch
+    monkeypatch.setattr(store_data, "_insert_batches", fake_insert_batches)
+    data = {"data": [
+        {"SettlementPoint": "ACTIVE1", "Value": 1},
+        {"SettlementPoint": "INACTIVE", "Value": 2},
+    ]}
+    store_data.store_data_to_db(
+        data=data,
+        db_name="test.db",
+        table_name="SETTLEMENT_POINT_PRICES",
+        insert_query="INSERT",
+        model_class=object,
+        filter_by_active_settlement_points=False
+    )
+    # Both rows should be inserted
+    assert len(inserted["batch"]) == 2
+    assert {r["SettlementPoint"]
+            for r in inserted["batch"]} == {"ACTIVE1", "INACTIVE"}

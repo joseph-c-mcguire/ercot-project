@@ -5,6 +5,7 @@ Module for the data classes to use as archetypes for the DB tables.
 from dataclasses import dataclass
 from typing import Optional
 from pydantic import BaseModel
+import datetime
 
 
 @dataclass
@@ -12,7 +13,7 @@ class SettlementPointPrice:
     """
     Represents settlement price details for a delivery period.
     Attributes:
-                 deliveryDate (str): The date when the delivery occurs.
+        deliveryDate (str): The date when the delivery occurs.
         deliveryHour (int): The hour of delivery.
         deliveryInterval (int): The specific interval within the delivery hour.
         settlementPointName (str): The name of the settlement point.
@@ -54,6 +55,9 @@ class SettlementPointPrice:
         Returns:
             tuple: A tuple containing the instance attributes as listed above.
         """
+        # Ensure inserted_at is set to current timestamp if None
+        inserted_at_val = self.inserted_at or datetime.datetime.utcnow().strftime(
+            "%Y-%m-%d %H:%M:%S")
         return (
             self.deliveryDate,
             self.deliveryHour,
@@ -62,7 +66,7 @@ class SettlementPointPrice:
             self.settlementPointType,
             self.settlementPointPrice,
             self.dstFlag,
-            self.inserted_at,
+            inserted_at_val,
         )
 
 
@@ -233,7 +237,7 @@ class BidAward:
     HourEnding: int  # API uses lowercase
     SettlementPoint: str  # API uses lowercase
     QSEName: str  # API uses lowercase
-    EnergyOnlyBidAwardMW: float  # API uses lowercase
+    EnergyOnlyBidAwardInMW: float  # API uses lowercase
     SettlementPointPrice: float  # API uses lowercase
     BidId: str  # API uses lowercase
     inserted_at: Optional[str] = None
@@ -257,15 +261,18 @@ class BidAward:
             settlementPointName, qseName, energyOnlyBidAwardInMW,
             settlementPointPrice, bidId, inserted_at).
         """
+        # Ensure inserted_at is set to current timestamp if None
+        inserted_at_val = self.inserted_at or datetime.datetime.utcnow().strftime(
+            "%Y-%m-%d %H:%M:%S")
         return (
             self.DeliveryDate,
             self.HourEnding,
             self.SettlementPoint,
             self.QSEName,
-            self.EnergyOnlyBidAwardMW,
+            self.EnergyOnlyBidAwardInMW,  # Fixed typo here
             self.SettlementPointPrice,
             self.BidId,
-            self.inserted_at,
+            inserted_at_val,
         )
 
 
@@ -395,6 +402,8 @@ class Offer:
         Returns:
             tuple: A tuple containing the object's attribute values in the specified order.
         """
+        inserted_at_val = self.inserted_at or datetime.datetime.utcnow().strftime(
+            "%Y-%m-%d %H:%M:%S")
         return (
             self.deliveryDate,
             self.hourEnding,
@@ -423,7 +432,7 @@ class Offer:
             self.offerId,
             self.multiHourBlock,
             self.blockCurve,
-            self.inserted_at,
+            inserted_at_val,
         )
 
 
@@ -473,6 +482,8 @@ class OfferAward:
         Returns:
             tuple: A tuple of the aforementioned attributes.
         """
+        inserted_at_val = self.inserted_at or datetime.datetime.utcnow().strftime(
+            "%Y-%m-%d %H:%M:%S")
         return (
             self.deliveryDate,
             self.hourEnding,
@@ -481,5 +492,5 @@ class OfferAward:
             self.energyOnlyOfferAwardInMW,
             self.settlementPointPrice,
             self.offerId,
-            self.inserted_at,
+            inserted_at_val,
         )

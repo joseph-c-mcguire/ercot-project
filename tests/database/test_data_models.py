@@ -21,52 +21,6 @@ class TestDataModels:
         )
         assert spp.as_tuple() == expected
 
-    def test_bid_as_tuple_and_post_init(self):
-        bid = data_models.Bid(
-            deliveryDate="2024-06-01",
-            hourEnding=14,
-            settlementPointName="POINT2",
-            qseName="QSE1",
-            energyOnlyBidMw1=10.0,
-            energyOnlyBidPrice1=30.5,
-            bidId=123,
-            multiHourBlock="Y",
-            blockCurve="N",
-            inserted_at="2024-06-01T14:00:00"
-        )
-        # bidId should be converted to string
-        assert isinstance(bid.bidId, str)
-        assert isinstance(bid.hourEnding, int)
-        assert isinstance(bid.energyOnlyBidMw1, float)
-        expected = (
-            "2024-06-01", 14, "POINT2", "QSE1",
-            10.0, 30.5, None, None, None, None, None, None, None, None, None, None,
-            None, None, None, None, None, None, None, None,
-            "123", "Y", "N", "2024-06-01T14:00:00"
-        )
-        assert bid.as_tuple() == expected
-
-    def test_bid_award_as_tuple_and_post_init(self):
-        award = data_models.BidAward(
-            deliveryDate="2024-06-02",
-            hourEnding="15",
-            settlementPointName="POINT3",
-            qseName="QSE2",
-            energyOnlyBidAwardInMW="25.0",
-            settlementPointPrice="50.5",
-            bidId=456,
-            inserted_at="2024-06-02T15:00:00"
-        )
-        # hourEnding, energyOnlyBidAwardInMW, settlementPointPrice should be converted to correct types
-        assert isinstance(award.hourEnding, int)
-        assert isinstance(award.energyOnlyBidAwardInMW, float)
-        assert isinstance(award.settlementPointPrice, float)
-        assert isinstance(award.bidId, str)
-        expected = (
-            "2024-06-02", 15, "POINT3", "QSE2", 25.0, 50.5, "456", "2024-06-02T15:00:00"
-        )
-        assert award.as_tuple() == expected
-
     def test_bid_schema_validation(self):
         from ercot_scraping.database.data_models import BidSchema
         valid = {

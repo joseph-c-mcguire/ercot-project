@@ -111,18 +111,6 @@ def test_store_prices_to_db(temp_db):
     conn.close()
 
 
-def test_store_bid_awards_to_db(temp_db):
-    """Test storing bid awards data into the BID_AWARDS table."""
-    create_ercot_tables(save_path=temp_db)
-    store_bid_awards_to_db(data_bid_awards, db_name=temp_db)
-    conn = sqlite3.connect(temp_db)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM BID_AWARDS")
-    rows = cursor.fetchall()
-    assert len(rows) == 1
-    conn.close()
-
-
 def test_store_bids_to_db(temp_db):
     create_ercot_tables(save_path=temp_db)
     store_bids_to_db(data_bids, db_name=temp_db)

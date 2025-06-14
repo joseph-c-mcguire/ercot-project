@@ -138,7 +138,7 @@ SELECT
     spp.SettlementPointPrice as MARK_PRICE,
     b.BlockCurveIndicator as blockCurve,
     'Bid' as sourceType,
-    ba.EnergyOnlyBidAwardMW as energyOnlyBidAwardInMW,
+    ba.EnergyOnlyBidAwardInMW as energyOnlyBidAwardInMW,
     ba.BidId,
     CASE
         WHEN b.EnergyOnlyBidMW1 IS NOT NULL THEN b.EnergyOnlyBidPrice1
@@ -156,7 +156,7 @@ SELECT
         WHEN b.EnergyOnlyBidMW5 IS NOT NULL THEN b.EnergyOnlyBidMW5
         ELSE NULL
     END as BID_SIZE,
-    NULL as energyOnlyOfferAwardMW,
+    NULL as energyOnlyOfferAwardInMW,
     NULL as offerId,
     NULL as OFFER_PRICE,
     NULL as OFFER_SIZE,

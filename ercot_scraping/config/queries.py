@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS BID_AWARDS (
     HourEnding INTEGER,
     SettlementPoint TEXT,
     QSEName TEXT,
-    EnergyOnlyBidAwardMW REAL,
+    EnergyOnlyBidAwardInMW REAL,
     SettlementPointPrice REAL,
     BidId TEXT,
     INSERTED_AT TEXT DEFAULT (datetime('now'))
@@ -136,7 +136,7 @@ SETTLEMENT_POINT_PRICES_INSERT_QUERY = """
 
 BID_AWARDS_INSERT_QUERY = """
     INSERT INTO BID_AWARDS (DeliveryDate, HourEnding, SettlementPoint, QSEName,
-                            EnergyOnlyBidAwardMW, SettlementPointPrice, BidId, INSERTED_AT)
+                            EnergyOnlyBidAwardInMW, SettlementPointPrice, BidId, INSERTED_AT)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """
 
@@ -217,7 +217,7 @@ SELECT
     spp.SettlementPointPrice as MARK_PRICE,
     b.BlockCurveIndicator as blockCurve,
     'Bid' as sourceType,
-    ba.EnergyOnlyBidAwardMW as energyOnlyBidAwardInMW,
+    ba.EnergyOnlyBidAwardInMW as energyOnlyBidAwardInMW,
     ba.BidId,
     CASE 
         WHEN b.EnergyOnlyBidMW1 IS NOT NULL THEN b.EnergyOnlyBidPrice1

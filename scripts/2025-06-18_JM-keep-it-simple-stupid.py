@@ -54,17 +54,25 @@ class NormalizedBaseModel(BaseModel):
         if isinstance(values, dict):
             values = normalize_dict_keys(values)
             # map raw 'SETTLEMENTPOINT' to 'SETTLEMENTPOINTNAME'
-            if 'SETTLEMENTPOINT' in values and 'SETTLEMENTPOINTNAME' not in values:
+            if ('SETTLEMENTPOINT' in values and
+                    'SETTLEMENTPOINTNAME' not in values):
                 values['SETTLEMENTPOINTNAME'] = values.pop('SETTLEMENTPOINT')
+
             # map various BID ID field variations to BIDID
-            bid_id_variations = ['ENERGYONLYBIDID', 'ENERGYONLY_BID_ID',
-                                 'BID_ID', "OFFER_ID", "ENERGYONLYOFFERID", "ENERGYONLY_OFFER_ID"]
+            bid_id_variations = [
+                'ENERGYONLYBIDID', 'ENERGYONLY_BID_ID', 'BID_ID'
+            ]
             for bid_variation in bid_id_variations:
                 if bid_variation in values and 'BIDID' not in values:
                     values['BIDID'] = values.pop(bid_variation)
-                # Also map to OFFERID for offers
-                if bid_variation in values and 'OFFERID' not in values:
-                    values['OFFERID'] = values.pop(bid_variation)
+
+            # map various OFFER ID field variations to OFFERID
+            offer_id_variations = [
+                'ENERGYONLYOFFERID', 'ENERGYONLY_OFFER_ID', 'OFFER_ID'
+            ]
+            for offer_variation in offer_id_variations:
+                if offer_variation in values and 'OFFERID' not in values:
+                    values['OFFERID'] = values.pop(offer_variation)
 
             # Convert empty strings to None for numeric fields
             for key, value in list(values.items()):
@@ -847,12 +855,12 @@ class ERCOTDataPipeline:
 
         # Set all DAM processing flags to 1 for archives on this date
         cursor.execute("""
-            UPDATE dam_archives_metadata
-            SET bids_extracted = 1,
-                bid_awards_extracted = 1,
-                offers_extracted = 1,
-                offer_awards_extracted = 1
-            WHERE date_extracted = ?
+            UPDATE DAMARCHIVESMETADATA
+            SET BIDSEXTRACTED = 1,
+                BIDAWARDSEXTRACTED = 1,
+                OFFERSEXTRACTED = 1,
+                OFFERAWARDSEXTRACTED = 1
+            WHERE DATEEXTRACTED = ?
         """, (dam_date_str,))
 
         rows_updated = cursor.rowcount
@@ -871,9 +879,9 @@ class ERCOTDataPipeline:
 
         # Set SPP extracted flag to 1 for documents on this date
         cursor.execute("""
-            UPDATE spp_documents_metadata
-            SET extracted = 1
-            WHERE date_extracted = ?
+            UPDATE SPPARCHIVESMETADATA
+            SET EXTRACTED = 1
+            WHERE DATEEXTRACTED = ?
         """, (spp_date_str,))
 
         rows_updated = cursor.rowcount
@@ -883,104 +891,104 @@ class ERCOTDataPipeline:
         logger.debug(
             f"Marked {rows_updated} SPP documents as completed for {spp_date_str}")
 
-    def mark_date_failed(self, spp_date: datetime, dam_date: datetime, error: str):
-        """Mark date as failed in checkpoint (metadata tables remain unchanged for retry)"""
-        logger.warning(
-            f"Marking SPP {spp_date.date()} / DAM {dam_date.date()} as failed: {error}")
+    # def mark_date_failed(self, spp_date: datetime, dam_date: datetime, error: str):
+    #     """Mark date as failed in checkpoint (metadata tables remain unchanged for retry)"""
+    #     logger.warning(
+    #         f"Marking SPP {spp_date.date()} / DAM {dam_date.date()} as failed: {error}")
 
-        # Only update checkpoint - leave metadata flags unchanged so we can retry
-        date_entry = {
-            'spp_date': spp_date.isoformat(),
-            'dam_date': dam_date.isoformat(),
-            'error': str(error),
-            'failed_at': datetime.now().isoformat()
-        }
-        self.checkpoint_data['failed_dates'].append(date_entry)
-        self.save_checkpoint()
+    #     # Only update checkpoint - leave metadata flags unchanged so we can retry
+    #     date_entry = {
+    #         'spp_date': spp_date.isoformat(),
+    #         'dam_date': dam_date.isoformat(),
+    #         'error': str(error),
+    #         'failed_at': datetime.now().isoformat()
+    #     }
+    #     self.checkpoint_data['failed_dates'].append(date_entry)
+    #     self.save_checkpoint()
 
-    def is_date_completed(self, spp_date: datetime) -> bool:
-        """Check if both DAM and SPP data processing is completed for a date pair using metadata tables"""
-        dam_date = spp_date + timedelta(days=60)
+    # def is_date_completed(self, spp_date: datetime) -> bool:
+    #     """Check if both DAM and SPP data processing is completed for a date pair using metadata tables"""
+    #     dam_date = spp_date + timedelta(days=60)
 
-        # Check if DAM processing is completed
-        dam_completed = self.is_dam_processing_completed(dam_date)
+    #     # Check if DAM processing is completed
+    #     dam_completed = self.is_dam_processing_completed(dam_date)
 
-        # Check if SPP processing is completed
-        spp_completed = self.is_spp_processing_completed(spp_date)
+    #     # Check if SPP processing is completed
+    #     spp_completed = self.is_spp_processing_completed(spp_date)
 
-        logger.debug(
-            f"Date completion check for SPP {spp_date.date()}: DAM={dam_completed}, SPP={spp_completed}")
-        return dam_completed and spp_completed
+    #     logger.debug(
+    #         f"Date completion check for SPP {spp_date.date()}: DAM={dam_completed}, SPP={spp_completed}")
+    #     return dam_completed and spp_completed
 
-    def is_dam_processing_completed(self, dam_date: datetime) -> bool:
-        """Check if DAM processing is completed using metadata table flags"""
-        dam_date_str = dam_date.strftime("%Y-%m-%d")
+    # def is_dam_processing_completed(self, dam_date: datetime) -> bool:
+    #     """Check if DAM processing is completed using metadata table flags"""
+    #     dam_date_str = dam_date.strftime("%Y-%m-%d")
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    #     conn = sqlite3.connect(self.db_path)
+    #     cursor = conn.cursor()
 
-        # Check if all DAM processing flags are set for this date
-        cursor.execute("""
-            SELECT COUNT(*) FROM dam_archives_metadata
-            WHERE date_extracted = ?
-            AND bids_extracted = 1
-            AND bid_awards_extracted = 1
-            AND offers_extracted = 1
-            AND offer_awards_extracted = 1
-        """, (dam_date_str,))
+    #     # Check if all DAM processing flags are set for this date
+    #     cursor.execute("""
+    #         SELECT COUNT(*) FROM DAMARCHIVESMETADATA
+    #         WHERE DATEEXTRACTED = ?
+    #         AND BIDSEXTRACTED = 1
+    #         AND BIDAWARDSEXTRACTED = 1
+    #         AND OFFERSEXTRACTED = 1
+    #         AND OFFERAWARDSEXTRACTED = 1
+    #     """, (dam_date_str,))
 
-        completed_count = cursor.fetchone()[0]
+    #     completed_count = cursor.fetchone()[0]
 
-        # Also check if there are any DAM archives for this date
-        cursor.execute("""
-            SELECT COUNT(*) FROM dam_archives_metadata
-            WHERE date_extracted = ?
-        """, (dam_date_str,))
+    #     # Also check if there are any DAM archives for this date
+    #     cursor.execute("""
+    #         SELECT COUNT(*) FROM DAMARCHIVESMETADATA
+    #         WHERE DATEEXTRACTED = ?
+    #     """, (dam_date_str,))
 
-        total_count = cursor.fetchone()[0]
-        conn.close()
+    #     total_count = cursor.fetchone()[0]
+    #     conn.close()
 
-        if total_count == 0:
-            logger.debug(f"No DAM archives found for {dam_date_str}")
-            return False
+    #     if total_count == 0:
+    #         logger.debug(f"No DAM archives found for {dam_date_str}")
+    #         return False
 
-        is_completed = completed_count > 0
-        logger.debug(
-            f"DAM processing for {dam_date_str}: {completed_count}/{total_count} archives fully processed")
-        return is_completed
+    #     is_completed = completed_count > 0
+    #     logger.debug(
+    #         f"DAM processing for {dam_date_str}: {completed_count}/{total_count} archives fully processed")
+    #     return is_completed
 
-    def is_spp_processing_completed(self, spp_date: datetime) -> bool:
-        """Check if SPP processing is completed using metadata table flags"""
-        spp_date_str = spp_date.strftime("%Y-%m-%d")
+    # def is_spp_processing_completed(self, spp_date: datetime) -> bool:
+    #     """Check if SPP processing is completed using metadata table flags"""
+    #     spp_date_str = spp_date.strftime("%Y-%m-%d")
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    #     conn = sqlite3.connect(self.db_path)
+    #     cursor = conn.cursor()
 
-        # Check if all SPP documents are extracted for this date
-        cursor.execute("""
-            SELECT COUNT(*) FROM spp_documents_metadata
-            WHERE date_extracted = ? AND extracted = 1
-        """, (spp_date_str,))
+    #     # Check if all SPP documents are extracted for this date
+    #     cursor.execute("""
+    #         SELECT COUNT(*) FROM SPPARCHIVESMETADATA
+    #         WHERE DATEEXTRACTED = ? AND EXTRACTED = 1
+    #     """, (spp_date_str,))
 
-        completed_count = cursor.fetchone()[0]
+    #     completed_count = cursor.fetchone()[0]
 
-        # Also check if there are any SPP documents for this date
-        cursor.execute("""
-            SELECT COUNT(*) FROM spp_documents_metadata
-            WHERE date_extracted = ?
-        """, (spp_date_str,))
+    #     # Also check if there are any SPP documents for this date
+    #     cursor.execute("""
+    #         SELECT COUNT(*) FROM SPPARCHIVESMETADATA
+    #         WHERE DATEEXTRACTED = ?
+    #     """, (spp_date_str,))
 
-        total_count = cursor.fetchone()[0]
-        conn.close()
+    #     total_count = cursor.fetchone()[0]
+    #     conn.close()
 
-        if total_count == 0:
-            logger.debug(f"No SPP documents found for {spp_date_str}")
-            return False
+    #     if total_count == 0:
+    #         logger.debug(f"No SPP documents found for {spp_date_str}")
+    #         return False
 
-        is_completed = completed_count > 0
-        logger.debug(
-            f"SPP processing for {spp_date_str}: {completed_count}/{total_count} documents processed")
-        return is_completed
+    #     is_completed = completed_count > 0
+    #     logger.debug(
+    #         f"SPP processing for {spp_date_str}: {completed_count}/{total_count} documents processed")
+    #     return is_completed
 
     def wait_for_rate_limit(self):
         current_time = time.time()
@@ -1054,19 +1062,19 @@ class ERCOTDataPipeline:
         cursor = conn.cursor()
         # List of expected tables and columns (normalized)
         expected_schemas = {
-            'DAM_ENERGY_BID_AWARDS': [
+            'DAMENERGYBIDAWARDS': [
                 'DELIVERYDATE', 'HOURENDING', 'SETTLEMENTPOINTNAME', 'QSENAME',
                 'ENERGYONLYBIDAWARDINMW', 'SETTLEMENTPOINTPRICE', 'BIDID', 'INSERTEDAT'
             ],
-            'DAM_ENERGY_BIDS': [
+            'DAMENERGYBIDS': [
                 'DELIVERYDATE', 'HOURENDING', 'SETTLEMENTPOINTNAME', 'QSENAME', 'BIDID',
                 'MULTIHOURBLOCK', 'BLOCKCURVE', 'ENERGYONLYBIDMW', 'ENERGYONLYBIDPRICE', 'BIDSEGMENT', 'INSERTEDAT'
             ],
-            'DAM_ENERGY_OFFER_AWARDS': [
+            'DAMENERGYOFFERAWARDS': [
                 'DELIVERYDATE', 'HOURENDING', 'SETTLEMENTPOINTNAME', 'QSENAME',
                 'ENERGYONLYOFFERAWARDINMW', 'SETTLEMENTPOINTPRICE', 'OFFERID', 'INSERTEDAT'
             ],
-            'DAM_ENERGY_OFFERS': [
+            'DAMENERGYOFFERS': [
                 'DELIVERYDATE', 'HOURENDING', 'SETTLEMENTPOINTNAME', 'QSENAME', 'OFFERID',
                 'MULTIHOURBLOCK', 'BLOCKCURVE', 'ENERGYONLYOFFERMW', 'ENERGYONLYOFFERPRICE', 'OFFERSEGMENT', 'INSERTEDAT'
             ],
@@ -1113,7 +1121,7 @@ class ERCOTDataPipeline:
                 logger.info(f"Table {table} migrated to normalized schema.")
         # --- Create tables if not exist ---
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS DAM_ENERGY_BID_AWARDS (
+            CREATE TABLE IF NOT EXISTS DAMENERGYBIDAWARDS (
                 DELIVERYDATE TEXT,
                 HOURENDING INTEGER,
                 SETTLEMENTPOINTNAME TEXT,
@@ -1126,7 +1134,7 @@ class ERCOTDataPipeline:
             )
         ''')
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS DAM_ENERGY_BIDS (
+            CREATE TABLE IF NOT EXISTS DAMENERGYBIDS (
                 DELIVERYDATE TEXT,
                 HOURENDING INTEGER,
                 SETTLEMENTPOINTNAME TEXT,
@@ -1142,7 +1150,7 @@ class ERCOTDataPipeline:
             )
         ''')
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS DAM_ENERGY_OFFER_AWARDS (
+            CREATE TABLE IF NOT EXISTS DAMENERGYOFFERAWARDS (
                 DELIVERYDATE TEXT,
                 HOURENDING INTEGER,
                 SETTLEMENTPOINTNAME TEXT,
@@ -1155,7 +1163,7 @@ class ERCOTDataPipeline:
             )
         ''')
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS DAM_ENERGY_OFFERS (
+            CREATE TABLE IF NOT EXISTS DAMENERGYOFFERS (
                 DELIVERYDATE TEXT,
                 HOURENDING INTEGER,
                 SETTLEMENTPOINTNAME TEXT,
@@ -1203,75 +1211,75 @@ class ERCOTDataPipeline:
 
         # Create DAM archives metadata table
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS dam_archives_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT NOT NULL,
-                post_datetime TEXT NOT NULL,
-                download_url TEXT NOT NULL,
-                cached_at TEXT NOT NULL,
-                date_extracted TEXT
+            CREATE TABLE IF NOT EXISTS DAMARCHIVESMETADATA (
+                DOCID INTEGER PRIMARY KEY,
+                FRIENDLYNAME TEXT NOT NULL,
+                POSTDATETIME TEXT NOT NULL,
+                DOWNLOADURL TEXT NOT NULL,
+                CACHEDATE TEXT NOT NULL,
+                DATEEXTRACTED TEXT
             )
         """)
 
-        # Create indexes for dam_archives_metadata
+        # Create indexes for DAMARCHIVESMETADATA
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_dam_date_extracted ON dam_archives_metadata(date_extracted)")
+            "CREATE INDEX IF NOT EXISTS IDXDAMPOSTDATETIME ON DAMARCHIVESMETADATA(POSTDATETIME)")
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_dam_post_datetime ON dam_archives_metadata(post_datetime)")
+            "CREATE INDEX IF NOT EXISTS IDXDAMDATEEXTRACTED ON DAMARCHIVESMETADATA(DATEEXTRACTED)")
 
-        # Create SPP documents metadata table
+        # Create SPP archives metadata table
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS spp_documents_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT NOT NULL,
-                post_datetime TEXT NOT NULL,
-                download_url TEXT NOT NULL,
-                cached_at TEXT NOT NULL,
-                date_extracted TEXT
+            CREATE TABLE IF NOT EXISTS SPPARCHIVESMETADATA (
+                DOCID INTEGER PRIMARY KEY,
+                FRIENDLYNAME TEXT NOT NULL,
+                POSTDATETIME TEXT NOT NULL,
+                DOWNLOADURL TEXT NOT NULL,
+                CACHEDATE TEXT NOT NULL,
+                DATEEXTRACTED TEXT
             )
         """)
 
-        # Create indexes for spp_documents_metadata
+        # Create indexes for spp_archives_metadata
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_spp_date_extracted ON spp_documents_metadata(date_extracted)")
+            "CREATE INDEX IF NOT EXISTS IDXSPPDATEEXTRACTED ON SPPARCHIVESMETADATA(DATEEXTRACTED)")
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_spp_post_datetime ON spp_documents_metadata(post_datetime)")
+            "CREATE INDEX IF NOT EXISTS IDXSPPPOSTDATETIME ON SPPARCHIVESMETADATA(POSTDATETIME)")
 
         # Create metadata cache status table
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS metadata_cache_status (
-                cache_type TEXT PRIMARY KEY,
-                last_updated TEXT NOT NULL,
-                total_records INTEGER NOT NULL,
-                is_complete BOOLEAN NOT NULL DEFAULT 0
+            CREATE TABLE IF NOT EXISTS METADATACACHESTATUS (
+                CACHETYPE TEXT PRIMARY KEY,
+                LASTUPDATED TEXT NOT NULL,
+                TOTALRECORDS INTEGER NOT NULL,
+                ISCOMPLETE BOOLEAN NOT NULL DEFAULT 0
             )
         """)
 
         # Create indexes for metadata cache status
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_cache_last_updated ON metadata_cache_status(last_updated)")
+            "CREATE INDEX IF NOT EXISTS IDXCACHELASTUPDATED ON METADATACACHESTATUS(LASTUPDATED)")
 
         # Create indexes for performance
         tables_indexes = [
-            ("dam_energy_bid_awards", "idx_bid_awards_date_hour",
-             "(deliveryDate, hourEnding)"),
-            ("dam_energy_bid_awards", "idx_bid_awards_qse", "(qseName)"),
-            ("dam_energy_bid_awards", "idx_bid_awards_settlement",
-             "(settlementPointName)"),
-            ("dam_energy_bids", "idx_bids_date_hour", "(deliveryDate, hourEnding)"),
-            ("dam_energy_bids", "idx_bids_qse", "(qseName)"),
-            ("dam_energy_offer_awards", "idx_offer_awards_date_hour",
-             "(deliveryDate, hourEnding)"),
-            ("dam_energy_offer_awards", "idx_offer_awards_qse", "(qseName)"),
-            ("dam_energy_offers", "idx_offers_date_hour",
-             "(deliveryDate, hourEnding)"),
-            ("dam_energy_offers", "idx_offers_qse", "(qseName)"),
-            ("settlement_point_prices", "idx_spp_date_hour",
-             "(deliveryDate, deliveryHour)"),
-            ("settlement_point_prices", "idx_spp_settlement", "(settlementPoint)"),
-            ("FINAL", "idx_final_date_hour", "(deliveryDate, hourEnding)"),
-            ("FINAL", "idx_final_qse", "(qseName)"),
-            ("FINAL", "idx_final_settlement_point", "(settlementPointName)")
+            ("DAMENERGYBIDAWARDS", "IDXBIDAWARDSDATEHOUR",
+             "(DELIVERYDATE, HOURENDING)"),
+            ("DAMENERGYBIDAWARDS", "IDXBIDAWARDQSE", "(QSENAME)"),
+            ("DAMENERGYBIDAWARDS", "IDXBIDAWARDSSETTLEMENT", "(SETTLEMENTPOINTNAME)"),
+            ("DAMENERGYBIDS", "IDXBIDS_DATE_HOUR", "(DELIVERYDATE, HOURENDING)"),
+            ("DAMENERGYBIDAWARDS", "IDXBIDSQSE", "(QSENAME)"),
+            ("DAMENERGYOFFERAWARDS", "IDXOFFERAWARDSDATEHOUR",
+             "(DELIVERYDATE, HOURENDING)"),
+            ("DAMENERGYOFFERAWARDS", "IDXOFFERAWARDSQSE", "(QSENAME)"),
+            ("DAMENERGYOFFERS", "IDXOFFERSDATEHOUR",
+             "(DELIVERYDATE, HOURENDING)"),
+            ("DAMENERGYOFFERS", "IDXOFFERSQSE", "(QSENAME)"),
+            ("SETTLEMENTPOINTPRICES", "IDXSPPDATEHOUR",
+             "(DELIVERYDATE, DELIVERYHOUR)"),  # <-- FIXED: use DELIVERYHOUR, not HOURENDING
+            ("SETTLEMENTPOINTPRICES", "IDXSPPSETTLEMENT",
+             "(SETTLEMENTPOINT)"),  # FIXED: use SETTLEMENTPOINT
+            ("FINAL", "IDXFINALDATEHOUR", "(DELIVERYDATE, HOURENDING)"),
+            ("FINAL", "IDXFINALQSE", "(QSENAME)"),
+            ("FINAL", "IDXFINALSETTLEMENTPOINT", "(SETTLEMENTPOINTNAME)")
         ]
 
         for table, index_name, columns in tables_indexes:
@@ -1444,6 +1452,7 @@ class ERCOTDataPipeline:
 
                 response = self.make_request_with_retry(url, params)
                 data = response.json()
+                logger.debug(f"Response data: {data.keys()}")
 
                 archives = data.get('archives', [])
                 logger.debug(
@@ -1501,9 +1510,10 @@ class ERCOTDataPipeline:
                     'size': page_size
                 }
 
+                logger.debug(f"Request URL: {url} with params: {params}")
                 response = self.make_request_with_retry(url, params)
                 data = response.json()
-
+                logger.debug(f"Response data: {data.keys()}")
                 docs = data.get('archives', [])
                 logger.debug(
                     f"Retrieved {len(docs)} SPP documents from page {page}")
@@ -1551,6 +1561,8 @@ class ERCOTDataPipeline:
 
         attempts = 0
         while True:
+            # ensure at least 2s between requests to avoid rate limiting
+            time.sleep(2)
             response = self.session.get(url, headers=headers, stream=True)
             # handle unauthorized: refresh token
             if response.status_code == 401:
@@ -1582,12 +1594,19 @@ class ERCOTDataPipeline:
 
         # --- METADATA CACHING: Use metadata cache for download URL if possible ---
         meta_lookup = None
-        if archive_type == "DAM":
-            meta_lookup = self.get_dam_doc_id_and_url(
-                datetime.strptime(str(doc_id), "%Y%m%d"))
-        elif archive_type == "SPP":
-            meta_lookup = self.get_spp_doc_id_and_url(
-                datetime.strptime(str(doc_id), "%Y%m%d"))
+        try:
+            if archive_type == "DAM":
+                meta_lookup = self.get_dam_doc_id_and_url(
+                    datetime.strptime(str(doc_id), "%Y%m%d"))
+            elif archive_type == "SPP":
+                meta_lookup = self.get_spp_doc_id_and_url(
+                    datetime.strptime(str(doc_id), "%Y%m%d"))
+        except ValueError:
+            # doc_id is not in YYYYMMDD format, skip metadata lookup
+            logger.debug(
+                f"doc_id {doc_id} is not in YYYYMMDD format, skipping metadata cache lookup")
+            meta_lookup = None
+
         if meta_lookup:
             download_url = meta_lookup['download_url']
             logger.debug(f"(Metadata) Download URL: {download_url}")
@@ -1662,6 +1681,13 @@ class ERCOTDataPipeline:
             logger.warning("Could not preview SPP file: %s", e)
         return spp_path
 
+    def download_spp_data(self, doc_id: str, temp_dir: str) -> str:
+        """Download SPP data file - wrapper around download_archive for SPP type"""
+        logger.debug(f"Downloading SPP data with docId: {doc_id}")
+
+        # Use the existing download_archive method with SPP type
+        return self.download_archive(int(doc_id), temp_dir, archive_type="SPP")
+
     def process_dam_bid_awards(self, file_path: str):
         """Process DAM Energy Bid Awards into separate table with validation and deduplication"""
         logger.info(f"Processing DAM Bid Awards: {file_path}")
@@ -1669,36 +1695,52 @@ class ERCOTDataPipeline:
         cursor = conn.cursor()
         processed_count = 0
         batch_data = []
-        for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
-            chunk.columns = normalize_headers(chunk.columns)
-            for _, row in chunk.iterrows():
-                logger.debug(f"Processing row: {row.to_dict()}")
-                row_dict = normalize_dict_keys(row.to_dict())
-                try:
-                    logger.debug(f"Validating row: {row_dict}")
-                    bid_award = DAMEnergyBidAward(**row_dict)
-                    batch_data.append((
-                        bid_award.delivery_date,
-                        bid_award.hour_ending,
-                        bid_award.settlement_point_name,
-                        bid_award.qse_name,
-                        bid_award.energy_only_bid_award_in_mw,
-                        bid_award.settlement_point_price,
-                        bid_award.bid_id
-                    ))
-                    processed_count += 1
-                except Exception as e:
-                    logger.warning(f"Skipping invalid bid award row: {e}")
-                    continue
-        if batch_data:
-            cursor.executemany('''
-                INSERT OR REPLACE INTO DAM_ENERGY_BID_AWARDS (
-                    DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
-                    ENERGYONLYBIDAWARDINMW, SETTLEMENTPOINTPRICE, BIDID
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', batch_data)
-            conn.commit()
-        conn.close()
+
+        try:
+            for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
+                chunk.columns = normalize_headers(chunk.columns)
+                for _, row in chunk.iterrows():
+                    row_dict = normalize_dict_keys(row.to_dict())
+                    try:
+                        bid_award = DAMEnergyBidAward(**row_dict)
+                        batch_data.append((
+                            bid_award.delivery_date,
+                            bid_award.hour_ending,
+                            bid_award.settlement_point_name,
+                            bid_award.qse_name,
+                            bid_award.energy_only_bid_award_in_mw,
+                            bid_award.settlement_point_price,
+                            bid_award.bid_id
+                        ))
+                        processed_count += 1
+                    except Exception as e:
+                        if processed_count < 10:  # Only log first 10 errors
+                            logger.warning(
+                                f"Skipping invalid bid award row: {e}")
+                        continue
+
+                    # Batch insert when we hit the batch size
+                    if len(batch_data) >= BATCH_SIZE:
+                        cursor.executemany('''
+                            INSERT OR REPLACE INTO DAMENERGYBIDAWARDS (
+                                DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                                ENERGYONLYBIDAWARDINMW, SETTLEMENTPOINTPRICE, BIDID
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', batch_data)
+                        conn.commit()
+                        batch_data = []
+
+            # Insert any remaining data
+            if batch_data:
+                cursor.executemany('''
+                    INSERT OR REPLACE INTO DAMENERGYBIDAWARDS (
+                        DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                        ENERGYONLYBIDAWARDINMW, SETTLEMENTPOINTPRICE, BIDID
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', batch_data)
+                conn.commit()
+        finally:
+            conn.close()
         logger.info(f"Processed {processed_count} DAM bid awards")
 
     def process_dam_bids(self, file_path: str):
@@ -1708,43 +1750,62 @@ class ERCOTDataPipeline:
         cursor = conn.cursor()
         processed_count = 0
         batch_data = []
-        for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
-            chunk.columns = normalize_headers(chunk.columns)
-            for _, row in chunk.iterrows():
-                row_dict = normalize_dict_keys(row.to_dict())
-                try:
-                    bid = DAMEnergyBid(**row_dict)
-                    # Example: extract up to 10 price/MW pairs
-                    for i in range(1, 11):
-                        mw = getattr(bid, f"energy_only_bid_mw{i}", None)
-                        price = getattr(bid, f"energy_only_bid_price{i}", None)
-                        if mw is not None and price is not None:
-                            batch_data.append((
-                                bid.delivery_date,
-                                bid.hour_ending,
-                                bid.settlement_point_name,
-                                bid.qse_name,
-                                str(bid.bid_id),
-                                bid.multi_hour_block,
-                                bid.block_curve,
-                                mw,
-                                price,
-                                i
-                            ))
-                            processed_count += 1
-                except Exception as e:
-                    logger.warning(f"Skipping invalid bid row: {e}")
-                    continue
-        if batch_data:
-            cursor.executemany('''
-                INSERT OR REPLACE INTO DAM_ENERGY_BIDS (
-                    DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
-                    BIDID, MULTIHOURBLOCK, BLOCKCURVE, ENERGYONLYBIDMW,
-                    ENERGYONLYBIDPRICE, BIDSEGMENT
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', batch_data)
-            conn.commit()
-        conn.close()
+
+        try:
+            for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
+                chunk.columns = normalize_headers(chunk.columns)
+                for _, row in chunk.iterrows():
+                    row_dict = normalize_dict_keys(row.to_dict())
+                    try:
+                        bid = DAMEnergyBid(**row_dict)
+                        # Extract up to 10 price/MW pairs
+                        for i in range(1, 11):
+                            mw = getattr(bid, f"energy_only_bid_mw{i}", None)
+                            price = getattr(
+                                bid, f"energy_only_bid_price{i}", None)
+                            if mw is not None and price is not None:
+                                batch_data.append((
+                                    bid.delivery_date,
+                                    bid.hour_ending,
+                                    bid.settlement_point_name,
+                                    bid.qse_name,
+                                    str(bid.bid_id),
+                                    bid.multi_hour_block,
+                                    bid.block_curve,
+                                    mw,
+                                    price,
+                                    i
+                                ))
+                                processed_count += 1
+                    except Exception as e:
+                        if processed_count < 10:  # Only log first 10 errors
+                            logger.warning(f"Skipping invalid bid row: {e}")
+                        continue
+
+                    # Batch insert when we hit the batch size
+                    if len(batch_data) >= BATCH_SIZE:
+                        cursor.executemany('''
+                            INSERT OR REPLACE INTO DAMENERGYBIDS (
+                                DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                                BIDID, MULTIHOURBLOCK, BLOCKCURVE, ENERGYONLYBIDMW,
+                                ENERGYONLYBIDPRICE, BIDSEGMENT
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', batch_data)
+                        conn.commit()
+                        batch_data = []
+
+            # Insert any remaining data
+            if batch_data:
+                cursor.executemany('''
+                    INSERT OR REPLACE INTO DAMENERGYBIDS (
+                        DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                        BIDID, MULTIHOURBLOCK, BLOCKCURVE, ENERGYONLYBIDMW,
+                        ENERGYONLYBIDPRICE, BIDSEGMENT
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', batch_data)
+                conn.commit()
+        finally:
+            conn.close()
         logger.info(f"Processed {processed_count} DAM bids")
 
     def process_dam_offer_awards(self, file_path: str):
@@ -1754,34 +1815,52 @@ class ERCOTDataPipeline:
         cursor = conn.cursor()
         processed_count = 0
         batch_data = []
-        for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
-            chunk.columns = normalize_headers(chunk.columns)
-            for _, row in chunk.iterrows():
-                row_dict = normalize_dict_keys(row.to_dict())
-                try:
-                    offer_award = DAMEnergyOfferAward(**row_dict)
-                    batch_data.append((
-                        offer_award.delivery_date,
-                        offer_award.hour_ending,
-                        offer_award.settlement_point_name,
-                        offer_award.qse_name,
-                        offer_award.energy_only_offer_award_in_mw,
-                        offer_award.settlement_point_price,
-                        offer_award.offer_id
-                    ))
-                    processed_count += 1
-                except Exception as e:
-                    logger.warning(f"Skipping invalid offer award row: {e}")
-                    continue
-        if batch_data:
-            cursor.executemany('''
-                INSERT OR REPLACE INTO DAM_ENERGY_OFFER_AWARDS (
-                    DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
-                    ENERGYONLYOFFERAWARDINMW, SETTLEMENTPOINTPRICE, OFFERID
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', batch_data)
-            conn.commit()
-        conn.close()
+
+        try:
+            for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
+                chunk.columns = normalize_headers(chunk.columns)
+                for _, row in chunk.iterrows():
+                    row_dict = normalize_dict_keys(row.to_dict())
+                    try:
+                        offer_award = DAMEnergyOfferAward(**row_dict)
+                        batch_data.append((
+                            offer_award.delivery_date,
+                            offer_award.hour_ending,
+                            offer_award.settlement_point_name,
+                            offer_award.qse_name,
+                            offer_award.energy_only_offer_award_in_mw,
+                            offer_award.settlement_point_price,
+                            offer_award.offer_id
+                        ))
+                        processed_count += 1
+                    except Exception as e:
+                        if processed_count < 10:  # Only log first 10 errors
+                            logger.warning(
+                                f"Skipping invalid offer award row: {e}")
+                        continue
+
+                    # Batch insert when we hit the batch size
+                    if len(batch_data) >= BATCH_SIZE:
+                        cursor.executemany('''
+                            INSERT OR REPLACE INTO DAMENERGYOFFERAWARDS (
+                                DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                                ENERGYONLYOFFERAWARDINMW, SETTLEMENTPOINTPRICE, OFFERID
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', batch_data)
+                        conn.commit()
+                        batch_data = []
+
+            # Insert any remaining data
+            if batch_data:
+                cursor.executemany('''
+                    INSERT OR REPLACE INTO DAMENERGYOFFERAWARDS (
+                        DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                        ENERGYONLYOFFERAWARDINMW, SETTLEMENTPOINTPRICE, OFFERID
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', batch_data)
+                conn.commit()
+        finally:
+            conn.close()
         logger.info(f"Processed {processed_count} DAM offer awards")
 
     def get_dam_offer_count(self) -> int:
@@ -1789,7 +1868,7 @@ class ERCOTDataPipeline:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM dam_energy_offers")
+            cursor.execute("SELECT COUNT(*) FROM DAMENERGYOFFERS")
             count = cursor.fetchone()[0]
             conn.close()
             logger.debug(f"Current DAM offers count in database: {count}")
@@ -1806,7 +1885,7 @@ class ERCOTDataPipeline:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             insert_query = """
-            INSERT OR REPLACE INTO DAM_ENERGY_OFFERS (
+            INSERT OR REPLACE INTO DAMENERGYOFFERS (
                 DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
                 OFFERID, MULTIHOURBLOCK, BLOCKCURVE, ENERGYONLYOFFERMW,
                 ENERGYONLYOFFERPRICE, OFFERSEGMENT
@@ -1821,6 +1900,7 @@ class ERCOTDataPipeline:
                     offer = DAMEnergyOffer(**offer_data)
                     for i in range(1, 11):
                         mw = getattr(offer, f"energy_only_offer_mw{i}", None)
+
                         price = getattr(
                             offer, f"energy_only_offer_price{i}", None)
                         if mw is not None and price is not None:
@@ -1851,66 +1931,75 @@ class ERCOTDataPipeline:
             return 0
 
     def process_dam_offers(self, dam_offer_file: str, tracked_qses: set, dam_date: datetime):
-        logger.debug(f"Processing DAM offers from file: {dam_offer_file}")
-        offers_parsed = 0
-        offers_inserted = 0
-        offers_skipped = 0
-        offers_failed = 0
-        count_before = self.get_dam_offer_count()
-        logger.debug(f"DAM offers count before processing: {count_before}")
-        batch_offers = []
+        """Process DAM Energy Offers into separate table with validation and deduplication"""
+        logger.info("Processing DAM Offers: %s", dam_offer_file)
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        processed_count = 0
+        batch_data = []
         try:
-            with open(dam_offer_file, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                reader.fieldnames = normalize_headers(reader.fieldnames)
-                for row in reader:
-                    row = normalize_dict_keys(row)
-                    offers_parsed += 1
+            for chunk in pd.read_csv(dam_offer_file, chunksize=CHUNK_SIZE):
+                chunk.columns = normalize_headers(chunk.columns)
+                for _, row in chunk.iterrows():
+                    row_dict = normalize_dict_keys(row.to_dict())
                     try:
-                        offer = DAMEnergyOffer(**row)
+                        offer = DAMEnergyOffer(**row_dict)
                         for i in range(1, 11):
                             mw = getattr(
                                 offer, f"energy_only_offer_mw{i}", None)
                             price = getattr(
                                 offer, f"energy_only_offer_price{i}", None)
-                            logger.debug("Checking offer: " + str(offer))
-                            logger.debug("MW: " + str(mw))
                             if mw is not None and price is not None:
-                                batch_offers.append({
-                                    'delivery_date': offer.delivery_date,
-                                    'hour_ending': offer.hour_ending,
-                                    'settlement_point_name': offer.settlement_point_name,
-                                    'qse_name': offer.qse_name,
-                                    'offer_id': str(offer.offer_id),
-                                    'multi_hour_block': offer.multi_hour_block,
-                                    'block_curve': offer.block_curve,
-                                    'energy_only_offer_mw': mw,
-                                    'energy_only_offer_price': price,
-                                    'offer_segment': i
-                                })
+                                batch_data.append((
+                                    offer.delivery_date,
+                                    offer.hour_ending,
+                                    offer.settlement_point_name,
+                                    offer.qse_name,
+                                    str(offer.offer_id),
+                                    offer.multi_hour_block,
+                                    offer.block_curve,
+                                    mw,
+                                    price,
+                                    i
+                                ))
+                                processed_count += 1
                     except Exception as e:
-                        offers_failed += 1
-                        logger.warning(f"Skipping invalid offer row: {e}")
+                        if processed_count < 10:
+                            logger.warning("Skipping invalid offer row: %s", e)
                         continue
-                    if len(batch_offers) >= BATCH_SIZE:
-                        offers_inserted += self.insert_dam_offers_batch(
-                            batch_offers)
-                        batch_offers = []
-            if batch_offers:
-                offers_inserted += self.insert_dam_offers_batch(batch_offers)
-        except Exception as e:
-            logger.error(f"Failed to process DAM offers: {e}")
-        logger.info(
-            f"Processed {offers_parsed} offers, inserted {offers_inserted}, failed {offers_failed}")
+                    if len(batch_data) >= BATCH_SIZE:
+                        cursor.executemany(
+                            '''INSERT OR REPLACE INTO DAMENERGYOFFERS (
+                                DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                                OFFERID, MULTIHOURBLOCK, BLOCKCURVE, ENERGYONLYOFFERMW,
+                                ENERGYONLYOFFERPRICE, OFFERSEGMENT
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                            batch_data
+                        )
+                        conn.commit()
+                        batch_data = []
+            if batch_data:
+                cursor.executemany(
+                    '''INSERT OR REPLACE INTO DAMENERGYOFFERS (
+                        DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
+                        OFFERID, MULTIHOURBLOCK, BLOCKCURVE, ENERGYONLYOFFERMW,
+                        ENERGYONLYOFFERPRICE, OFFERSEGMENT
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    batch_data
+                )
+                conn.commit()
+        finally:
+            conn.close()
+        logger.info("Processed %d DAM offers", processed_count)
 
     def ensure_dam_metadata_flags(self):
         """Ensure DAM metadata table has all processing flag columns."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        for col in ["bids_extracted", "bid_awards_extracted", "offers_extracted", "offer_awards_extracted"]:
+        for col in ["BIDSEXTRACTED", "BIDAWARDSEXTRACTED", "OFFERSEXTRACTED", "OFFERAWARDSEXTRACTED"]:
             try:
                 cursor.execute(
-                    f"ALTER TABLE dam_archives_metadata ADD COLUMN {col} INTEGER DEFAULT 0")
+                    f"ALTER TABLE DAMARCHIVESMETADATA ADD COLUMN {col} INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 # Column already exists
                 pass
@@ -1929,64 +2018,82 @@ class ERCOTDataPipeline:
         conn.commit()
         conn.close()
 
-    def update_dam_flag(self, doc_id, flag):
-        conn = sqlite3.connect(self.db_path)
+    def update_dam_flag(self, doc_id, flag, conn=None):
+        """Update DAM flag with optional connection reuse"""
+        close_conn = conn is None
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(
-            f"UPDATE dam_archives_metadata SET {flag}=1 WHERE doc_id=?", (doc_id,))
+            f"UPDATE DAMARCHIVESMETADATA SET {flag}=1 WHERE doc_id=?", (doc_id,))
         conn.commit()
-        conn.close()
+        if close_conn:
+            conn.close()
 
-    def update_spp_flag(self, doc_id):
-        conn = sqlite3.connect(self.db_path)
+    def update_spp_flag(self, doc_id, conn=None):
+        """Update SPP flag with optional connection reuse"""
+        close_conn = conn is None
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE spp_documents_metadata SET extracted=1 WHERE doc_id=?", (doc_id,))
+            "UPDATE SPPARCHIVESMETADATA SET extracted=1 WHERE doc_id=?", (doc_id,))
         conn.commit()
-        conn.close()
+        if close_conn:
+            conn.close()
 
     def process_dam_archives(self, temp_dir):
         self.ensure_dam_metadata_flags()
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT doc_id, download_url, bids_extracted, bid_awards_extracted, offers_extracted, offer_awards_extracted FROM dam_archives_metadata")
-        docs = cursor.fetchall()
-        conn.close()
 
-        for doc_id, download_url, bids_flag, bid_awards_flag, offers_flag, offer_awards_flag in docs:
-            file_path = os.path.join(temp_dir, f"{doc_id}.zip")
-            if not all([bids_flag, bid_awards_flag, offers_flag, offer_awards_flag]):
-                # Download if needed
-                if not os.path.exists(file_path):
-                    logger.info(f"Downloading DAM archive doc_id={doc_id}")
-                    headers = self.get_bearer_headers()
-                    response = self.session.get(
-                        download_url, stream=True, headers=headers)
-                    response.raise_for_status()
-                    with open(file_path, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                # Extract files
-                extracted_files = self.extract_dam_files(file_path, temp_dir)
-                # Process each file type if not already done
-                if not bids_flag and '60d_DAM_EnergyBids' in extracted_files:
-                    self.process_dam_bids(
-                        extracted_files['60d_DAM_EnergyBids'])
-                    self.update_dam_flag(doc_id, 'bids_extracted')
-                if not bid_awards_flag and '60d_DAM_EnergyBidAwards' in extracted_files:
-                    self.process_dam_bid_awards(
-                        extracted_files['60d_DAM_EnergyBidAwards'])
-                    self.update_dam_flag(doc_id, 'bid_awards_extracted')
-                if not offers_flag and '60d_DAM_EnergyOnlyOffers' in extracted_files:
-                    self.process_dam_offers(
-                        extracted_files['60d_DAM_EnergyOnlyOffers'], self.tracking_qse_short_names, None)
-                    self.update_dam_flag(doc_id, 'offers_extracted')
-                if not offer_awards_flag and '60d_DAM_EnergyOnlyOfferAwards' in extracted_files:
-                    self.process_dam_offer_awards(
-                        extracted_files['60d_DAM_EnergyOnlyOfferAwards'])
-                    self.update_dam_flag(doc_id, 'offer_awards_extracted')
+        # Reuse connection for flag updates
+        flag_conn = sqlite3.connect(self.db_path)
+
+        try:
+            cursor = flag_conn.cursor()
+            cursor.execute(
+                "SELECT DOCID, DOWNLOADURL, BIDS, BIDAWARDSEXTRACTED, OFFERSEXTRACTED, OFFERAWARDSEXTRACTED FROM DAMARCHIVESMETADATA")
+            docs = cursor.fetchall()
+
+            for doc_id, download_url, bids_flag, bid_awards_flag, offers_flag, offer_awards_flag in docs:
+                file_path = os.path.join(temp_dir, f"{doc_id}.zip")
+                if not all([bids_flag, bid_awards_flag, offers_flag, offer_awards_flag]):
+                    # Download if needed
+                    if not os.path.exists(file_path):
+                        logger.info(f"Downloading DAM archive doc_id={doc_id}")
+                        headers = self.get_bearer_headers()
+                        response = self.session.get(
+                            download_url, stream=True, headers=headers)
+                        response.raise_for_status()
+                        with open(file_path, "wb") as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                    # Extract files
+                    extracted_files = self.extract_dam_files(
+                        file_path, temp_dir)
+                    # Process each file type if not already done (reuse connection for flags)
+                    if not bids_flag and '60d_DAM_EnergyBids' in extracted_files:
+                        self.process_dam_bids(
+                            extracted_files['60d_DAM_EnergyBids'])
+                        self.update_dam_flag(
+                            doc_id, 'BIDSEXTRACTED', flag_conn)
+                    if not bid_awards_flag and '60d_DAM_EnergyBidAwards' in extracted_files:
+                        self.process_dam_bid_awards(
+                            extracted_files['60d_DAM_EnergyBidAwards'])
+                        self.update_dam_flag(
+                            doc_id, 'BIDAWARDSEXTRACTED', flag_conn)
+                    if not offers_flag and '60d_DAM_EnergyOnlyOffers' in extracted_files:
+                        self.process_dam_offers(
+                            extracted_files['60d_DAM_EnergyOnlyOffers'], self.tracking_qse_short_names, None)
+                        self.update_dam_flag(
+                            doc_id, 'OFFERSEXTRACTED', flag_conn)
+                    if not offer_awards_flag and '60d_DAM_EnergyOnlyOfferAwards' in extracted_files:
+                        self.process_dam_offer_awards(
+                            extracted_files['60d_DAM_EnergyOnlyOfferAwards'])
+                        self.update_dam_flag(
+                            doc_id, 'OFFERAWARDSEXTRACTED', flag_conn)
+        finally:
+            flag_conn.close()
 
     def process_spp_archives(self, temp_dir):
         self.ensure_spp_metadata_flag()
@@ -2000,9 +2107,9 @@ class ERCOTDataPipeline:
         # Get settlement points from both awards tables (union)
         conn = sqlite3.connect(self.db_path)
         bid_points = set(row[0] for row in conn.execute(
-            "SELECT DISTINCT settlementPointName FROM dam_energy_bid_awards"))
+            "SELECT DISTINCT SETTLEMENTPOINTNAME FROM DAMENERGYBIDAWARDS"))
         offer_points = set(row[0] for row in conn.execute(
-            "SELECT DISTINCT settlementPointName FROM dam_energy_offer_awards"))
+            "SELECT DISTINCT SETTLEMENTPOINTNAME FROM DAMENERGYOFFERAWARDS"))
         all_points = bid_points | offer_points
         conn.close()
 
@@ -2017,52 +2124,67 @@ class ERCOTDataPipeline:
                 with open(file_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
+                            # Process SPP file, filtering by settlement points
                             f.write(chunk)
-                # Process SPP file, filtering by settlement points
                 self.process_spp_data(file_path, all_points)
                 self.update_spp_flag(doc_id)
 
     def process_spp_data(self, file_path, offers_points):
         import pandas as pd
         logger.debug(f"Processing SPP file: {file_path}")
-        for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
-            # Normalize headers and columns
-            chunk.columns = normalize_headers(chunk.columns)
-            # Normalize offers_points for matching
-            norm_offers_points = set(normalize_header(pt)
-                                     for pt in offers_points)
-            # Filter by settlement points (normalized)
-            logger.debug(f"Processing chunk with {len(chunk)} rows")
-            logger.debug("Settlement points in offers: " + str(offers_points))
-            filtered = chunk[chunk["SETTLEMENTPOINTNAME"].apply(
-                lambda x: normalize_header(str(x)) in norm_offers_points)]
-            # Aggregate by DeliveryDate, DeliveryHour, SettlementPointName, SettlementPointType
-            grouped = (
-                filtered.groupby([
-                    "DELIVERYDATE", "DELIVERYHOUR", "SETTLEMENTPOINTNAME", "SETTLEMENTPOINTTYPE"
-                ], as_index=False)["SETTLEMENTPOINTPRICE"].mean()
-            )
-            # Insert aggregated rows into settlement_point_prices table
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            batch_data = [
-                (
-                    row["DELIVERYDATE"],
-                    row["DELIVERYHOUR"],
-                    row["SETTLEMENTPOINTNAME"],
-                    row["SETTLEMENTPOINTTYPE"],
-                    row["SETTLEMENTPOINTPRICE"],
-                    None,  # dstFlag, if available
-                )
-                for _, row in grouped.iterrows()
-            ]
-            if batch_data:
-                cursor.executemany('''
-                    INSERT OR REPLACE INTO SETTLEMENTPOINTPRICES (
-                        DELIVERYDATE, DELIVERYHOUR, SETTLEMENTPOINT, SETTLEMENTPOINTTYPE, AVGSETTLEMENTPOINTPRICE, DSTFLAG
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                ''', batch_data)
-                conn.commit()
+
+        # Normalize offers_points once outside the loop for performance
+        def normalize(s):
+            return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
+
+        norm_offers_points = set(normalize(pt) for pt in offers_points)
+
+        # Open DB connection once for the entire file
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            for chunk in pd.read_csv(file_path, chunksize=CHUNK_SIZE):
+                # Normalize headers and columns
+                chunk.columns = normalize_headers(chunk.columns)
+
+                # Vectorized settlement point filtering - much faster than apply()
+                if "SETTLEMENTPOINTNAME" in chunk.columns and len(chunk) > 0:
+                    # Normalize settlement point names vectorized
+                    chunk["NORM_SPT"] = chunk["SETTLEMENTPOINTNAME"].astype(
+                        str).str.replace(r'[^A-Za-z0-9]', '', regex=True).str.upper()
+                    filtered = chunk[chunk["NORM_SPT"].isin(
+                        norm_offers_points)]
+
+                    if len(filtered) > 0:
+                        # Aggregate by DeliveryDate, DeliveryHour, SettlementPointName, SettlementPointType
+                        grouped = (
+                            filtered.groupby([
+                                "DELIVERYDATE", "DELIVERYHOUR", "SETTLEMENTPOINTNAME", "SETTLEMENTPOINTTYPE"
+                            ], as_index=False)["SETTLEMENTPOINTPRICE"].mean()
+                        )
+
+                        # Batch insert data
+                        if len(grouped) > 0:
+                            batch_data = [
+                                (
+                                    row["DELIVERYDATE"],
+                                    row["DELIVERYHOUR"],
+                                    row["SETTLEMENTPOINTNAME"],
+                                    row["SETTLEMENTPOINTTYPE"],
+                                    row["SETTLEMENTPOINTPRICE"],
+                                    None,  # dstFlag, if available
+                                )
+                                for _, row in grouped.iterrows()
+                            ]
+                            cursor.executemany('''
+                                INSERT OR REPLACE INTO SETTLEMENTPOINTPRICES (
+                                    DELIVERYDATE, DELIVERYHOUR, SETTLEMENTPOINT, SETTLEMENTPOINTTYPE, AVGSETTLEMENTPOINTPRICE, DSTFLAG
+                                ) VALUES (?, ?, ?, ?, ?, ?)
+                            ''', batch_data)
+
+            conn.commit()
+        finally:
             conn.close()
 
     def run_pipeline(self, spp_start_date, spp_end_date):
@@ -2087,7 +2209,7 @@ class ERCOTDataPipeline:
                 processed_days = 0
                 for i in range(total_days):
                     spp_date = spp_start_date + timedelta(days=i)
-                    dam_date = spp_date + timedelta(days=60)
+                    dam_date = spp_date + timedelta(days=60+i)
                     logger.info(
                         f"\n=== Processing SPP date: {spp_date.date()} (DAM date: {dam_date.date()}) ===")
                     dam_archive = self.find_dam_archive_for_date(
@@ -2102,33 +2224,73 @@ class ERCOTDataPipeline:
                         f"Extracting DAM files for {dam_date.date()} from {archive_path}")
                     extracted_files = self.extract_dam_files(
                         archive_path, temp_dir)
+                    # Step 2: Process DAM files sequentially
                     logger.debug(f"Extracted DAM files: {extracted_files}")
-                    # Step 2: Process DAM files
+                    dam_files_processed = 0
 
                     if '60d_DAM_EnergyBidAwards' in extracted_files:
-                        self.process_dam_bid_awards(
-                            extracted_files['60d_DAM_EnergyBidAwards'])
+                        logger.info(
+                            f"Processing DAM Bid Awards for {dam_date.date()}")
+                        try:
+                            self.process_dam_bid_awards(
+                                extracted_files['60d_DAM_EnergyBidAwards'])
+                            dam_files_processed += 1
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to process DAM Bid Awards: {e}")
                     else:
                         logger.warning(
                             f"Missing 60d_DAM_EnergyBidAwards for {dam_date.date()}")
+
                     if '60d_DAM_EnergyOnlyOfferAwards' in extracted_files:
-                        self.process_dam_offer_awards(
-                            extracted_files['60d_DAM_EnergyOnlyOfferAwards'])
+                        logger.info(
+                            f"Processing DAM Offer Awards for {dam_date.date()}")
+                        try:
+                            self.process_dam_offer_awards(
+                                extracted_files['60d_DAM_EnergyOnlyOfferAwards'])
+                            dam_files_processed += 1
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to process DAM Offer Awards: {e}")
                     else:
                         logger.warning(
                             f"Missing 60d_DAM_EnergyOnlyOfferAwards for {dam_date.date()}")
+
                     if '60d_DAM_EnergyBids' in extracted_files:
-                        self.process_dam_bids(
-                            extracted_files['60d_DAM_EnergyBids'])
+                        logger.info(
+                            f"Processing DAM Bids for {dam_date.date()}")
+                        try:
+                            self.process_dam_bids(
+                                extracted_files['60d_DAM_EnergyBids'])
+                            dam_files_processed += 1
+                        except Exception as e:
+                            logger.error(f"Failed to process DAM Bids: {e}")
                     else:
                         logger.warning(
                             f"Missing 60d_DAM_EnergyBids for {dam_date.date()}")
+
                     if '60d_DAM_EnergyOnlyOffers' in extracted_files:
-                        self.process_dam_offers(
-                            extracted_files['60d_DAM_EnergyOnlyOffers'], self.tracking_qse_short_names, dam_date)
+                        logger.info(
+                            f"Processing DAM Offers for {dam_date.date()}")
+                        try:
+                            self.process_dam_offers(
+                                extracted_files['60d_DAM_EnergyOnlyOffers'],
+                                self.tracking_qse_short_names,
+                                dam_date
+                            )
+                            dam_files_processed += 1
+                        except Exception as e:
+                            logger.error(f"Failed to process DAM Offers: {e}")
                     else:
                         logger.warning(
                             f"Missing 60d_DAM_EnergyOnlyOffers for {dam_date.date()}")
+
+                    if dam_files_processed > 0:
+                        logger.info(
+                            f"Successfully processed {dam_files_processed} DAM files for {dam_date.date()}")
+                    else:
+                        logger.warning(
+                            f"No DAM files processed for {dam_date.date()}")
                     spp_docs = self.find_spp_docs_for_date(
                         spp_docs_all, spp_date)
                     spp_docs = self.normalize_dicts_in_list(spp_docs)
@@ -2140,8 +2302,11 @@ class ERCOTDataPipeline:
                         conn = sqlite3.connect(self.db_path)
                         cursor = conn.cursor()
                         offers_points = set(row[0] for row in cursor.execute(
-                            "SELECT DISTINCT SETTLEMENTPOINTNAME FROM DAM_ENERGY_OFFERS"))
+                            "SELECT DISTINCT SETTLEMENTPOINTNAME FROM DAMENERGYOFFERS"))
                         conn.close()
+
+                        # Process SPP documents sequentially
+                        spp_files_processed = 0
                         for spp_doc in spp_docs:
                             try:
                                 spp_doc_id = spp_doc['DOCID']
@@ -2150,14 +2315,26 @@ class ERCOTDataPipeline:
                                     f"Downloading SPP doc: {friendly_name} (docId={spp_doc_id})")
                                 spp_path = self.download_spp_data(
                                     str(spp_doc_id), temp_dir)
+
+                                logger.info(
+                                    f"Processing SPP data for {spp_date.date()}")
                                 self.process_spp_data(spp_path, offers_points)
+                                spp_files_processed += 1
+
                             except Exception as e:
-                                logger.warning(
+                                logger.error(
                                     f"Failed to process SPP document {spp_doc_id}: {e}")
+
+                        if spp_files_processed > 0:
+                            logger.info(
+                                f"Successfully processed {spp_files_processed} SPP files for {spp_date.date()}")
+                        else:
+                            logger.warning(
+                                f"No SPP files processed for {spp_date.date()}")
                     # Step 4: Merge into FINAL table (no deletion)
                     logger.info(
                         f"Merging data for SPP date {spp_date.date()} (DAM date {dam_date.date()}) into FINAL table")
-                    self.create_final_table()
+                    self.create_final_table(spp_date, dam_date)
                     processed_days += 1
                     logger.info(
                         f"=== Finished processing SPP date {spp_date.date()} ===\n")
@@ -2171,25 +2348,39 @@ class ERCOTDataPipeline:
                 raise
 
     def find_dam_archive_for_date(self, dam_archives: List[Dict], target_date: datetime) -> Optional[Dict]:
-        """Find DAM archive for specific date using postDatetime field (not date_extracted)."""
+        """Find DAM archive for specific date using both POSTDATETIME and DATEEXTRACTED fields."""
         target_date_str = target_date.strftime("%Y-%m-%d")
         logger.debug(
-            f"Looking for DAM archive for date: {target_date_str} using postDatetime"
+            f"Looking for DAM archive for date: {target_date_str} using both POSTDATETIME and DATEEXTRACTED"
         )
         logger.debug("archive files (head): " + str(dam_archives[:5]))
 
-        # Try to match by postDatetime date part (YYYY-MM-DD)
+        # Try to match by POSTDATETIME date part (YYYY-MM-DD)
         for archive in dam_archives:
             post_datetime = archive.get('POSTDATETIME')
             if post_datetime:
-                post_date = post_datetime[:10]
+                # Handle full ISO format (2010-12-03T10:47:13.000) and extract date part
+                post_date = post_datetime.split(
+                    'T')[0] if 'T' in post_datetime else post_datetime[:10]
                 if post_date == target_date_str:
                     logger.debug(
-                        f"Found DAM archive by postDatetime: {archive.get('FRIENDLYNAME', '')} ({archive.get('DOCID', '')})"
+                        f"Found DAM archive by POSTDATETIME: {archive.get('FRIENDLYNAME', '')} ({archive.get('DOCID', '')})"
                     )
                     return archive
 
-        # Fallback: try matching by friendlyName pattern (if any date is present)
+        # Try to match by DATEEXTRACTED field (YYYY-MM-DD format)
+        for archive in dam_archives:
+            date_extracted = archive.get('DATEEXTRACTED')
+            if date_extracted:
+                # Handle both full ISO format and date-only format
+                extracted_date = date_extracted.split(
+                    'T')[0] if 'T' in date_extracted else date_extracted[:10]
+                if extracted_date == target_date_str:
+                    logger.debug(
+                        f"Found DAM archive by DATEEXTRACTED: {archive.get('FRIENDLYNAME', '')} ({archive.get('DOCID', '')})"
+                    )
+                    # Fallback: try matching by friendlyName pattern (if any date is present)
+                    return archive
         target_friendly_format = target_date.strftime("%d-%b-%y").upper()
         for archive in dam_archives:
             if target_friendly_format in archive.get('FRIENDLYNAME', ''):
@@ -2202,12 +2393,11 @@ class ERCOTDataPipeline:
         return None
 
     def find_spp_docs_for_date(self, spp_documents: List[Dict], target_date: datetime) -> List[Dict]:
-        """Find SPP documents for specific date using POSTDATETIME field (not DATEEXTRACTED)."""
+        """Find SPP documents for specific date using both POSTDATETIME and DATEEXTRACTED fields."""
         target_date_str = target_date.strftime("%Y-%m-%d")
         target_format = target_date.strftime("%Y%m%d")
         logger.debug(
-
-            f"Looking for SPP docs for date: {target_date_str} (format: {target_format})"
+            f"Looking for SPP docs for date: {target_date_str} (format: {target_format}) using both POSTDATETIME and DATEEXTRACTED"
         )
 
         matching_docs = []
@@ -2216,8 +2406,20 @@ class ERCOTDataPipeline:
         for doc in spp_documents:
             post_datetime = doc.get('POSTDATETIME')
             if post_datetime:
-                post_date = post_datetime[:10]
+                # Handle full ISO format (2010-12-03T10:47:13.000) and extract date part
+                post_date = post_datetime.split(
+                    'T')[0] if 'T' in post_datetime else post_datetime[:10]
                 if post_date == target_date_str:
+                    matching_docs.append(doc)
+
+        # Try to match by DATEEXTRACTED field (YYYY-MM-DD format)
+        for doc in spp_documents:
+            date_extracted = doc.get('DATEEXTRACTED')
+            if date_extracted:
+                # Handle both full ISO format and date-only format
+                extracted_date = date_extracted.split(
+                    'T')[0] if 'T' in date_extracted else date_extracted[:10]
+                if extracted_date == target_date_str and doc not in matching_docs:
                     matching_docs.append(doc)
 
         # If no exact matches, try filename pattern matching
@@ -2231,14 +2433,18 @@ class ERCOTDataPipeline:
         )
         return matching_docs
 
-    def create_final_table(self):
-        """Create final merged table from individual tables (no deletion)"""
-        logger.info("Creating final merged table (no deletion)")
+    def create_final_table(self, spp_date, dam_date):
+        """
+        Create final merged table from individual tables (no deletion), only for the current SPP and DAM date.
+        """
+        logger.info(
+            f"Creating final merged table for SPP date {spp_date.date()} and DAM date {dam_date.date()} (no deletion)"
+        )
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        # No DELETE FROM FINAL!
-        # Insert bid awards with SPP data
-        cursor.execute('''
+        # Insert bid awards with SPP data for the current DAM/SPP date only
+        cursor.execute(
+            '''
             INSERT OR REPLACE INTO FINAL (
                 DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
                 SETTLEMENTPOINTPRICE, AVGSETTLEMENTPOINTPRICE, BLOCKCURVE, SOURCETYPE,
@@ -2257,14 +2463,20 @@ class ERCOTDataPipeline:
                 BA.BIDID,
                 NULL as ENERGYONLYOFFERAWARDMW,
                 NULL as OFFERID
-            FROM DAM_ENERGY_BID_AWARDS BA
+            FROM DAMENERGYBIDAWARDS BA
             LEFT JOIN SETTLEMENTPOINTPRICES SPP
                 ON BA.DELIVERYDATE = SPP.DELIVERYDATE
                 AND BA.HOURENDING = SPP.DELIVERYHOUR + 1
                 AND BA.SETTLEMENTPOINTNAME = SPP.SETTLEMENTPOINT
-        ''')
-        # Insert offer awards with SPP data
-        cursor.execute('''
+            WHERE BA.DELIVERYDATE = ?
+            ''',
+            (dam_date.strftime('%Y-%m-%d'),)
+        )
+        logger.debug("Merged BID_AWARD rows into FINAL for date %s: %d",
+                     dam_date.strftime('%Y-%m-%d'), cursor.rowcount)
+        # Insert offer awards with SPP data for the current DAM/SPP date only
+        cursor.execute(
+            '''
             INSERT OR REPLACE INTO FINAL (
                 DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME,
                 SETTLEMENTPOINTPRICE, AVGSETTLEMENTPOINTPRICE, BLOCKCURVE, SOURCETYPE,
@@ -2278,56 +2490,76 @@ class ERCOTDataPipeline:
                 OA.SETTLEMENTPOINTPRICE,
                 SPP.AVGSETTLEMENTPOINTPRICE,
                 NULL as BLOCKCURVE,
-                'OFFER_AWARD' as SOURCETYPE,
+                'OFFERAWARD' as SOURCETYPE,
                 NULL as ENERGYONLYBIDAWARDINMW,
                 NULL as BIDID,
                 OA.ENERGYONLYOFFERAWARDINMW,
                 OA.OFFERID
-            FROM DAM_ENERGY_OFFER_AWARDS OA
+            FROM DAMENERGYOFFERAWARDS OA
             LEFT JOIN SETTLEMENTPOINTPRICES SPP
                 ON OA.DELIVERYDATE = SPP.DELIVERYDATE
                 AND OA.HOURENDING = SPP.DELIVERYHOUR + 1
-                AND OA.SETTLEMENTPOINTNAME = SPP.SETTLEMENT
-        ''')
+                AND OA.SETTLEMENTPOINTNAME = SPP.SETTLEMENTPOINT
+            WHERE OA.DELIVERYDATE = ?
+            ''',
+            (dam_date.strftime('%Y-%m-%d'),)
+        )
+        logger.debug("Merged OFFERAWARD rows into FINAL for date %s: %d",
+                     dam_date.strftime('%Y-%m-%d'), cursor.rowcount)
         conn.commit()
-        # Get final counts
-        cursor.execute("SELECT COUNT(*) FROM FINAL")
+        # Get final counts for this day
+        cursor.execute(
+            "SELECT COUNT(*) FROM FINAL WHERE DELIVERYDATE = ?",
+            (dam_date.strftime('%Y-%m-%d'),)
+        )
         final_count = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT qseName) FROM FINAL")
+        cursor.execute(
+            "SELECT COUNT(DISTINCT QSENAME) FROM FINAL WHERE DELIVERYDATE = ?",
+            (dam_date.strftime('%Y-%m-%d'),)
+        )
         unique_qses = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT settlementPointName) FROM FINAL")
+        cursor.execute(
+            "SELECT COUNT(DISTINCT SETTLEMENTPOINTNAME) FROM FINAL WHERE DELIVERYDATE = ?",
+            (dam_date.strftime('%Y-%m-%d'),)
+        )
         unique_settlement_points = cursor.fetchone()[0]
         conn.close()
-        logger.info(f"Final table created with {final_count:,} records")
+        logger.info(
+            f"Final table updated for {dam_date.date()} with {final_count:,} records"
+        )
         logger.info(f"Unique QSEs: {unique_qses}")
         logger.info(f"Unique settlement points: {unique_settlement_points}")
 
     def is_metadata_cache_fresh(self, cache_type: str, max_age_hours: int = 24) -> bool:
-        """Check if metadata cache is fresh enough to use"""
+        """Check if metadata cache is fresh enough to use by checking CACHEDATE in archive tables"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT last_updated, is_complete
-                FROM metadata_cache_status
-                WHERE cache_type = ?
-            """, (cache_type,))
+
+            # Determine which table to check based on cache_type
+            table_name = "DAMARCHIVESMETADATA" if cache_type == "dam_archives" else "SPPARCHIVESMETADATA"
+
+            # Get the most recent CACHEDATE from the appropriate table
+            cursor.execute(f"""
+                SELECT MAX(CACHEDATE)
+                FROM {table_name}
+                WHERE CACHEDATE IS NOT NULL
+            """)
 
             result = cursor.fetchone()
             conn.close()
 
-            if not result:
+            if not result or not result[0]:
+                logger.debug(f"No cache date found for {cache_type}")
                 return False
 
-            last_updated_str, is_complete = result
-            if not is_complete:
-                return False
-
+            last_updated_str = result[0]
             last_updated = datetime.fromisoformat(last_updated_str)
             age = datetime.now() - last_updated
 
             is_fresh = age.total_seconds() < (max_age_hours * 3600)
-            logger.debug(f"Cache {cache_type}: age={age}, fresh={is_fresh}")
+            logger.debug(
+                f"Cache {cache_type}: last_updated={last_updated}, age={age}, fresh={is_fresh}")
             return is_fresh
 
         except Exception as e:
@@ -2338,13 +2570,15 @@ class ERCOTDataPipeline:
     def load_metadata_from_cache(self, cache_type: str) -> List[Dict]:
         """Load metadata from database cache"""
         try:
-            table_name = f"{cache_type}_metadata"
+            table_name = "DAMARCHIVESMETADATA" if cache_type == "dam_archives" else "SPPARCHIVESMETADATA"
+            logger.debug(f"Loading metadata from cache for {cache_type}")
+            logger.debug(f"Using table: {table_name}")
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute(f"""
-                SELECT doc_id, friendly_name, post_datetime, download_url, date_extracted
+                SELECT DOCID, FRIENDLYNAME, POSTDATETIME, DOWNLOADURL, DATEEXTRACTED
                 FROM {table_name}
-                ORDER BY post_datetime DESC
+                ORDER BY POSTDATETIME DESC
             """)
 
             results = []
@@ -2355,8 +2589,7 @@ class ERCOTDataPipeline:
                     'friendlyName': friendly_name,
                     'postDatetime': post_datetime,
                     'date_extracted': date_extracted,
-                    '_links': {'download': download_url}
-                }))
+                    '_links': {'download': download_url}}))
             conn.close()
             return results
         except Exception as e:
@@ -2366,7 +2599,11 @@ class ERCOTDataPipeline:
     def save_metadata_to_cache(self, cache_type: str, metadata_list: List[Dict]):
         """Save metadata to database cache with deduplication by doc_id and INSERT OR REPLACE."""
         try:
-            table_name = f"{cache_type}_metadata"
+            logger.debug(
+                f"Saving metadata to cache for {cache_type}: {metadata_list}")
+            logger.debug(f"Metadata count: {len(metadata_list)}")
+            logger.debug(f"Metadata sample: {metadata_list[:5]}")
+            table_name = "DAMARCHIVESMETADATA" if cache_type == "dam_archives" else "SPPARCHIVESMETADATA"
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             deduped = {}
@@ -2382,21 +2619,31 @@ class ERCOTDataPipeline:
             cached_at = datetime.now().isoformat()
             batch_data = []
             for item in deduped.values():
-                doc_id = item['DOCID'] if 'DOCID' in item else item.get(
-                    'docId')
-                friendly_name = item['FRIENDLYNAME'] if 'FRIENDLYNAME' in item else item.get(
-                    'friendlyName')
-                post_datetime = item['POSTDATETIME'] if 'POSTDATETIME' in item else item.get(
-                    'postDatetime')
-                download_url = item['_LINKS']['DOWNLOAD'] if '_LINKS' in item and 'DOWNLOAD' in item['_LINKS'] else item.get(
-                    'download_url')
-                date_extracted = item['DATE_EXTRACTED'] if 'DATE_EXTRACTED' in item else item.get(
-                    'date_extracted')
+                doc_id = item['DOCID']
+                friendly_name = item['FRIENDLYNAME']
+                post_datetime = item['POSTDATETIME']
+                download_url = item['LINKS']['ENDPOINT']['HREF']
+                # Parse DATEEXTRACTED from POSTDATETIME (extract date part: YYYY-MM-DD)
+                try:
+                    # Parse POSTDATETIME format like "2010-12-03T10:47:13.000" and extract date part
+                    if post_datetime and 'T' in post_datetime:
+                        date_extracted = post_datetime.split(
+                            'T')[0]  # Extract YYYY-MM-DD
+                    else:
+                        # Fallback to current date if POSTDATETIME is malformed
+                        date_extracted = datetime.now().strftime('%Y-%m-%d')
+                        logger.warning(
+                            f"Malformed POSTDATETIME '{post_datetime}' for doc_id {doc_id}, using current date")
+                except Exception as e:
+                    date_extracted = datetime.now().strftime('%Y-%m-%d')
+                    logger.warning(
+                        f"Failed to parse POSTDATETIME '{post_datetime}' for doc_id {doc_id}: {e}")
+
                 batch_data.append(
                     (doc_id, friendly_name, post_datetime, download_url, cached_at, date_extracted))
             cursor.executemany(f"""
                 INSERT OR REPLACE INTO {table_name} (
-                    doc_id, friendly_name, post_datetime, download_url, cached_at, date_extracted
+                    DOCID, FRIENDLYNAME, POSTDATETIME, DOWNLOADURL, CACHEDATE, DATEEXTRACTED
                 ) VALUES (?, ?, ?, ?, ?, ?)
             """, batch_data)
             conn.commit()
@@ -2409,23 +2656,23 @@ class ERCOTDataPipeline:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS dam_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT,
-                post_datetime TEXT,
-                date_index TEXT,
-                download_url TEXT,
-                raw_json TEXT
+            CREATE TABLE IF NOT EXISTS DAMARCHIVESMETADATA (
+                DOCID INTEGER PRIMARY KEY,
+                FRIENDLYNAME TEXT,
+                POSTDATETIME TEXT,
+                DATEINDEX TEXT,
+                DOWNLOADURL TEXT,
+                RAWJSON TEXT
             )
         ''')
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS spp_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT,
-                post_datetime TEXT,
-                date_index TEXT,
-                download_url TEXT,
-                raw_json TEXT
+            CREATE TABLE IF NOT EXISTS SPPARCHIVESMETADATA (
+                DOCID INTEGER PRIMARY KEY,
+                FRIENDLYNAME TEXT,
+                POSTDATETIME TEXT,
+                DATEINDEX TEXT,
+                DOWNLOADURL TEXT,
+                RAWJSON TEXT
             )
         ''')
         conn.commit()
@@ -2437,41 +2684,41 @@ class ERCOTDataPipeline:
         cursor = conn.cursor()
         # DAM metadata flags
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS dam_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT,
-                post_datetime TEXT,
-                date_index TEXT,
-                download_url TEXT,
-                raw_json TEXT,
-                bids_loaded INTEGER DEFAULT 0,
-                bid_awards_loaded INTEGER DEFAULT 0,
-                offers_loaded INTEGER DEFAULT 0,
-                offer_awards_loaded INTEGER DEFAULT 0
+            CREATE TABLE IF NOT EXISTS DAMARCHIVESMETADATA (
+                DOCID INTEGER PRIMARY KEY,
+                FRIENDLYNAME TEXT,
+                POSTDATETIME TEXT,
+                DATEINDEX TEXT,
+                DOWNLOADURL TEXT,
+                RAWJSON TEXT,
+                BIDSLOADED INTEGER DEFAULT 0,
+                BIDAWARDSLOADED INTEGER DEFAULT 0,
+                OFFERSLOADED INTEGER DEFAULT 0,
+                OFFERAWARDSLOADED INTEGER DEFAULT 0
             )
         ''')
         # SPP metadata flags
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS spp_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT,
-                post_datetime TEXT,
-                date_index TEXT,
-                download_url TEXT,
-                raw_json TEXT,
-                settlement_point_prices_loaded INTEGER DEFAULT 0
+            CREATE TABLE IF NOT EXISTS SPPARCHIVESMETADATA (
+                DOCID INTEGER PRIMARY KEY,
+                FRIENDLYNAME TEXT,
+                POSTDATETIME TEXT,
+                DATEINDEX TEXT,
+                DOWNLOADURL TEXT,
+                RAWJSON TEXT,
+                SETTLEMENTPOINTPRICESLOADED INTEGER DEFAULT 0
             )
         ''')
         # Add columns if missing (idempotent)
-        for col in ["bids_loaded", "bid_awards_loaded", "offers_loaded", "offer_awards_loaded"]:
+        for col in ["BIDSLOADED", "BIDAWARDSLOADED", "OFFERSLOADED", "OFFERAWARDSLOADED"]:
             try:
                 cursor.execute(
-                    f"ALTER TABLE dam_metadata ADD COLUMN {col} INTEGER DEFAULT 0")
+                    f"ALTER TABLE DAMARCHIVESMETADATA ADD COLUMN {col} INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
         try:
             cursor.execute(
-                "ALTER TABLE spp_metadata ADD COLUMN settlement_point_prices_loaded INTEGER DEFAULT 0")
+                "ALTER TABLE SPPARCHIVESMETADATA ADD COLUMN SETTLEMENTPOINTPRICESLOADED INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass
         conn.commit()
@@ -2479,7 +2726,7 @@ class ERCOTDataPipeline:
 
     def store_metadata(self, product: str, archives: list):
         """Store metadata for DAM or SPP archives in the appropriate table."""
-        table = 'dam_metadata' if product == 'DAM' else 'spp_metadata'
+        table = 'DAMARCHIVESMETADATA' if product == 'DAM' else 'SPPARCHIVESMETADATA'
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         for archive in archives:
@@ -2506,16 +2753,16 @@ class ERCOTDataPipeline:
 
     def lookup_metadata(self, product: str, date_index: str):
         """Lookup doc_id and download_url for a given date_index in the metadata table."""
-        table = 'dam_metadata' if product == 'DAM' else 'spp_metadata'
+        table = 'DAMARCHIVESMETADATA' if product == 'DAM' else 'SPPARCHIVESMETADATA'
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(f'''
-            SELECT doc_id, download_url FROM {table} WHERE date_index = ?
+            SELECT DOCID, DOWNLOADURL FROM {table} WHERE DATEINDEX = ?
         ''', (date_index,))
         row = cursor.fetchone()
         conn.close()
         if row:
-            return {'doc_id': row[0], 'download_url': row[1]}
+            return {'DOCID': row[0], 'DOWNLOADURL': row[1]}
         return None
 
     def refresh_metadata(self, product: str):
@@ -2579,6 +2826,19 @@ class ERCOTDataPipeline:
         return self.get_doc_id_and_url_for_date('SPP', spp_date)
 
     def get_bearer_headers(self):
+        """
+        Returns HTTP headers required for Bearer token authentication.
+
+        If the current token is missing or expired, attempts to authenticate and obtain a new token.
+        Raises a RuntimeError if authentication fails or a valid token cannot be obtained.
+
+        Returns:
+            dict: A dictionary containing the 'Authorization' header with the Bearer token and the
+                  'Ocp-Apim-Subscription-Key' header.
+
+        Raises:
+            RuntimeError: If authentication fails or a valid token cannot be retrieved.
+        """
         if self.token is None or self.is_token_expired():
             auth_success = self.authenticate()
             if not auth_success or self.token is None:
@@ -2626,20 +2886,33 @@ def normalize_headers(headers):
 
 def normalize_dict_keys(d):
     """
-    Normalize all keys in a dictionary by removing underscores, spaces, and special characters, and capitalizing everything.
+    Recursively normalize all keys in a dictionary by removing underscores, spaces, and special characters, and capitalizing everything.
     """
     def normalize(s):
         return re.sub(r'[^A-Za-z0-9]', '', str(s)).upper()
-    return {normalize(k): v for k, v in d.items()}
+    if isinstance(d, dict):
+        return {normalize(k): normalize_dict_keys(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [normalize_dict_keys(i) for i in d]
+    else:
+        return d
 
+
+# --- PARALLEL PROCESSING WRAPPERS ---
+# Removed - no longer using parallel processing
+
+# --- END PARALLEL PROCESSING WRAPPERS ---
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="ERCOT Data Pipeline")
+    parser = argparse.ArgumentParser(
+        description="ERCOT Data Pipeline")
     parser.add_argument(
-        '--db', type=str, default="ercot_data.db", help="Path to SQLite database")
+        '--db', type=str, default="ercot_data.db",
+        help="Path to SQLite database")
     parser.add_argument('--checkpoint', type=str,
-                        default="pipeline_checkpoint.json", help="Path to checkpoint file")
+                        default="pipeline_checkpoint.json",
+                        help="Path to checkpoint file")
     parser.add_argument('--spp_start_date', type=str,
                         required=True, help="SPP start date (YYYY-MM-DD)")
     parser.add_argument('--spp_end_date', type=str,
@@ -2651,5 +2924,5 @@ if __name__ == "__main__":
     spp_start_date = datetime.strptime(args.spp_start_date, "%Y-%m-%d")
     spp_end_date = datetime.strptime(args.spp_end_date, "%Y-%m-%d")
 
-    # Use the new reverse chronological processing pipeline
+    logger.info("Running in sequential mode")
     pipeline.run_pipeline(spp_start_date, spp_end_date)

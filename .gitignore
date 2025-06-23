@@ -179,3 +179,8 @@ cython_debug/
 _data\ercot_data.db
 
 *.venv*
+_data/
+data/
+logs/
+checkpoints/
+_cache/

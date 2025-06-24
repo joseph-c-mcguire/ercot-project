@@ -1108,11 +1108,11 @@ class ImprovedERCOTDataPipeline:
                     # Increment to next day
                     logger.debug("current_date -> current_date + 1 Month" + str(
                         current_date) + " -> " + str(current_date + relativedelta(months=1)))
-                    # Create final table
-                    logger.info("Creating optimized final table...")
-                    self.create_final_table_optimized(
-                        current_date.replace(day=1, month=1), current_date.replace(day=31, month=12))
                     current_date += relativedelta(months=1)
+                    # Create final table
+                logger.info("Creating optimized final table...")
+                self.create_final_table_optimized(
+                    current_date.replace(day=1, month=1), current_date.replace(day=31, month=12))
                 execution_time = time.time() - start_time
                 logger.info(
                     f"Pipeline completed in {execution_time:.2f} seconds")

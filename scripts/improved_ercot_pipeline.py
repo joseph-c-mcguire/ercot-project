@@ -558,7 +558,6 @@ class ImprovedERCOTDataPipeline:
                 'offers': 'DAM_ENERGY_OFFERS',
                 'settlement_prices': 'SETTLEMENTPOINTPRICES'
             }
-            cursor = conn.cursor()
 
             for key, table_name in table_mapping.items():
                 # skip missing or empty DataFrames
@@ -568,10 +567,20 @@ class ImprovedERCOTDataPipeline:
                 logger.debug("Processing %s for table %s", key, table_name)
                 logger.debug("Duplicates detected: %s", df.duplicated().sum())
                 logger.debug("Sample data:\n%s", df.head())
-                # Debug statements  to check for content of data base
-                cursor.execute(f"SELECT * FROM {table_name} LIMIT 10")
-                logger.debug("Sample data from %s:\n%s",
-                             table_name, cursor.fetchall())
+                logger.debug("DataFrame shape: %s", df.shape)
+                # Debug statements  to check for content of database
+
+                logger.debug("Unique dates in %s: %s", key, df['DELIVERYDATE'].unique(
+                ) if 'DELIVERYDATE' in df.columns else 'N/A')
+                logger.debug("Unique settlement points in %s: %s", key, df['SETTLEMENTPOINTNAME'].unique(
+                ) if 'SETTLEMENTPOINTNAME' in df.columns else 'N/A')
+                logger.debug("Unique QSEs in %s: %s", key, df['QSENAME'].unique(
+                ) if 'QSENAME' in df.columns else 'N/A')
+                # Ensure DataFrame is not empty
+                logger.debug("Unique HOURENDING in %s: %s", key, df['HOURENDING'].unique(
+                ) if 'HOURENDING' in df.columns else 'N/A')
+                logger.debug("Unique DELIVERYINTERVAL in %s: %s", key, df['DELIVERYINTERVAL'].unique(
+                ) if 'DELIVERYINTERVAL' in df.columns else 'N/A')
                 # Prepare DataFrame for SQL insert
                 try:
                     df = df.copy()
@@ -595,8 +604,14 @@ class ImprovedERCOTDataPipeline:
                             for col in df.columns:
                                 if col not in group_cols + ['SETTLEMENTPOINTPRICE']:
                                     agg_dict[col] = 'first'
+                            logger.debug(
+                                "Settlement prices aggregation groups: %s", group_cols)
+                            logger.debug(
+                                "Columns before aggregation: %s", df.columns)
                             df = df.groupby(
-                                group_cols, as_index=False).agg(agg_dict)
+                                group_cols, as_index=True).agg(agg_dict).reset_index()
+                            if "Index" in df.columns:
+                                df.drop(columns=["Index"], inplace=True)
                             # Rename to match DB schema
                             df.rename(
                                 columns={'SETTLEMENTPOINTPRICE': 'AVGSETTLEMENTPOINTPRICE'}, inplace=True)
@@ -892,7 +907,7 @@ class ImprovedERCOTDataPipeline:
                             dam_month + '-01',
                             '%Y-%m-%d'
                         )
-                        logger.debug("dam_bundles %s", dam_bundles)
+                        # logger.debug("dam_bundles %s", dam_bundles)
                         logger.debug("dam_date %s", dam_date)
                         coro = self.fetch_and_extract_dam_bundle(
                             dam_date,
@@ -910,17 +925,20 @@ class ImprovedERCOTDataPipeline:
                             "for %s",
                             dam_month
                         )
-
+                logger.debug("DAM bundles fetched: %s", dam_bundles.keys())
                 # (C): Get all required SPP months for the SPP range
                 # build the set of YYYY-MM strings from start to end
                 from dateutil.relativedelta import relativedelta
                 spp_months = set()
                 current_month = spp_start_date.replace(day=1)
-                end_month = spp_end_date.replace(day=1)
+                end_month = spp_end_date.replace(
+                    day=1) + relativedelta(months=1)
                 while current_month <= end_month:
                     spp_months.add(current_month.strftime('%Y-%m'))
                     current_month += relativedelta(months=1)
-
+                logger.debug("Required SPP months: %s", spp_months)
+                # (D): Fetch and extract SPP bundles for each month
+                # Initialize a dictionary to hold SPP bundles
                 spp_bundles = {}
                 for spp_month in spp_months:
                     try:
@@ -944,14 +962,16 @@ class ImprovedERCOTDataPipeline:
                             "for %s",
                             spp_month
                         )
+                logger.debug("SPP bundles fetched: %s", spp_bundles.keys())
                 # initialize loop date before using it
                 current = spp_start_date
                 while current <= spp_end_date:
                     spp_months.add(current.strftime('%Y-%m'))
                     current += timedelta(days=1)
+                logger.debug("Final SPP months: %s", spp_months)
                 current_date = spp_start_date
                 total_processed = 0
-                while current_date <= spp_end_date:
+                while current_date <= spp_end_date + relativedelta(months=1):
                     logger.debug("current_date: %s", current_date)
                     logger.debug("spp_months: %s", spp_months)
                     try:
@@ -1608,9 +1628,13 @@ if __name__ == "__main__":
             # construct a year‐specific database filename
             base_db = args.db.rstrip('.db')
             year_db = f"{base_db}_{current_start.year}.db"
+            logger.debug("Running pipeline for year DB: %s", year_db)
+            logger.debug("Current start date: %s, Period end date: %s",
+                         current_start, period_end)
             pipeline = ImprovedERCOTDataPipeline(
                 db_path=year_db, enable_cache=args.enable_cache)
-            pipeline.run_pipeline(current_start, period_end)
+            pipeline.run_pipeline(
+                current_start, period_end)  # +9 weeks to cover all SPP data
             # move to next day after this period
             current_start = period_end + timedelta(days=1)
     elif args.mode == "update":

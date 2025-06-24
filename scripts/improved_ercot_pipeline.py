@@ -3,38 +3,31 @@ Improved ERCOT Data Pipeline integrating existing authentication and metadata ma
 with new Pydantic models and concurrent processing
 """
 
-# Standard library imports
+# Standard library importsfrom pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from typing import Set, Optional, Dict, List
+from dataclasses import dataclass
+import zipfile
+import io
 from datetime import datetime
 from datetime import timedelta
 import asyncio
 import json
 import logging
 import os
+from pathlib import Path
+from queue import Queue
+import aiosqlite
+import threading
+import calendar
+# Third-party imports
 import sqlite3
 import time
 import tempfile
 import requests
 import pandas as pd
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from typing import Set, Optional, Dict, List
-from dataclasses import dataclass
-import zipfile
-import io
-
 from dotenv import load_dotenv
-import threading
-from queue import Queue
-import aiosqlite
-import calendar
-
-# If BaseFilter is not available, define a minimal stub for compatibility
-try:
-    from pydantic_filters import BaseFilter
-except ImportError:
-    class BaseFilter:
-        pass
-
+# Local imports
 from ercot_models import (
     ERCOTTrackingQSE,
     BatchProcessor,
@@ -76,8 +69,8 @@ PROCESSING_WORKERS = 6
 STORAGE_WORKERS = 4
 RATE_LIMIT_DELAY = 2.0  # 2 seconds between API requests
 MAX_QUEUE_SIZE = 1000
-BATCH_SIZE = 10000
-CHUNK_SIZE = 50000
+CHUNK_SIZE = 1_000
+MAX_SQL_BATCH_SIZE = 999
 
 if not all([USERNAME, PASSWORD, SUBSCRIPTION_KEY]):
     raise ValueError("Missing required environment variables")
@@ -436,20 +429,18 @@ class ImprovedERCOTDataPipeline:
         """Create all necessary tables with indexes and wide format"""
         cursor = conn.cursor()
 
-        # Main data tables (wide format)
+        # Main data tables (wide format) with DATE affinity for date columns
         cursor.execute(
             'CREATE TABLE IF NOT EXISTS DAM_ENERGY_BID_AWARDS ('
-            'DELIVERYDATE TEXT, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
+            'DELIVERYDATE DATE, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
             'QSENAME TEXT, ENERGYONLYBIDAWARDINMW REAL, '
             'SETTLEMENTPOINTPRICE REAL, BIDID TEXT, '
-            'INSERTEDAT TEXT, '
-            'PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, '
-            'QSENAME, BIDID)'
+            'INSERTEDAT TEXT'
             ')'
         )
         cursor.execute(
             'CREATE TABLE IF NOT EXISTS DAM_ENERGY_BIDS ('
-            'DELIVERYDATE TEXT, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
+            'DELIVERYDATE DATE, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
             'QSENAME TEXT, BIDID TEXT, MULTIHOURBLOCK BOOLEAN, '
             'BLOCKCURVE BOOLEAN, '
             'ENERGYONLYBIDMW1 REAL, ENERGYONLYBIDPRICE1 REAL, '
@@ -462,23 +453,20 @@ class ImprovedERCOTDataPipeline:
             'ENERGYONLYBIDMW8 REAL, ENERGYONLYBIDPRICE8 REAL, '
             'ENERGYONLYBIDMW9 REAL, ENERGYONLYBIDPRICE9 REAL, '
             'ENERGYONLYBIDMW10 REAL, ENERGYONLYBIDPRICE10 REAL, '
-            'INSERTEDAT TEXT DEFAULT (datetime(\'now\')), '
-            'PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME, BIDID)'
+            'INSERTEDAT TEXT DEFAULT (datetime(\'now\'))'
             ')'
         )
         cursor.execute(
             'CREATE TABLE IF NOT EXISTS DAM_ENERGY_OFFER_AWARDS ('
-            'DELIVERYDATE TEXT, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
+            'DELIVERYDATE DATE, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
             'QSENAME TEXT, ENERGYONLYOFFERAWARDINMW REAL, '
             'SETTLEMENTPOINTPRICE REAL, OFFERID TEXT, '
-            'INSERTEDAT TEXT, '
-            'PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, '
-            'QSENAME, OFFERID)'
+            'INSERTEDAT TEXT'
             ')'
         )
         cursor.execute(
             'CREATE TABLE IF NOT EXISTS DAM_ENERGY_OFFERS ('
-            'DELIVERYDATE TEXT, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
+            'DELIVERYDATE DATE, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
             'QSENAME TEXT, OFFERID TEXT, MULTIHOURBLOCK BOOLEAN, '
             'BLOCKCURVE BOOLEAN, '
             'ENERGYONLYOFFERMW1 REAL, ENERGYONLYOFFERPRICE1 REAL, '
@@ -491,145 +479,16 @@ class ImprovedERCOTDataPipeline:
             'ENERGYONLYOFFERMW8 REAL, ENERGYONLYOFFERPRICE8 REAL, '
             'ENERGYONLYOFFERMW9 REAL, ENERGYONLYOFFERPRICE9 REAL, '
             'ENERGYONLYOFFERMW10 REAL, ENERGYONLYOFFERPRICE10 REAL, '
-            'INSERTEDAT TEXT DEFAULT (datetime(\'now\')), '
-            'PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME, OFFERID)'
+            'INSERTEDAT TEXT DEFAULT (datetime(\'now\'))'
             ')'
         )
         cursor.execute(
             'CREATE TABLE IF NOT EXISTS SETTLEMENTPOINTPRICES ('
-            'DELIVERYDATE TEXT, DELIVERYHOUR INTEGER, DELIVERYINTERVAL INTEGER, SETTLEMENTPOINTNAME TEXT, '
+            'DELIVERYDATE DATE, DELIVERYHOUR INTEGER, DELIVERYINTERVAL INTEGER, SETTLEMENTPOINTNAME TEXT, '
             'SETTLEMENTPOINTTYPE TEXT, AVGSETTLEMENTPOINTPRICE REAL, '
-            'DSTFLAG TEXT, INSERTEDAT TEXT, '
-            'PRIMARY KEY (DELIVERYDATE, DELIVERYHOUR, DELIVERYINTERVAL, SETTLEMENTPOINTNAME)'
+            'DSTFLAG TEXT, INSERTEDAT TEXT'
             ')'
         )
-        cursor.execute(
-            'CREATE TABLE IF NOT EXISTS FINAL ('
-            'DELIVERYDATE TEXT, HOURENDING INTEGER, SETTLEMENTPOINTNAME TEXT, '
-            'QSENAME TEXT, SETTLEMENTPOINTPRICE REAL, '
-            'AVGSETTLEMENTPOINTPRICE REAL, BLOCKCURVE TEXT, SOURCETYPE TEXT, '
-            'ENERGYONLYBIDAWARDINMW REAL, BIDID TEXT, '
-            'ENERGYONLYBIDMW1 REAL, ENERGYONLYBIDPRICE1 REAL, '
-            'ENERGYONLYBIDMW2 REAL, ENERGYONLYBIDPRICE2 REAL, '
-            'ENERGYONLYBIDMW3 REAL, ENERGYONLYBIDPRICE3 REAL, '
-            'ENERGYONLYBIDMW4 REAL, ENERGYONLYBIDPRICE4 REAL, '
-            'ENERGYONLYBIDMW5 REAL, ENERGYONLYBIDPRICE5 REAL, '
-            'ENERGYONLYBIDMW6 REAL, ENERGYONLYBIDPRICE6 REAL, '
-            'ENERGYONLYBIDMW7 REAL, ENERGYONLYBIDPRICE7 REAL, '
-            'ENERGYONLYBIDMW8 REAL, ENERGYONLYBIDPRICE8 REAL, '
-            'ENERGYONLYBIDMW9 REAL, ENERGYONLYBIDPRICE9 REAL, '
-            'ENERGYONLYBIDMW10 REAL, ENERGYONLYBIDPRICE10 REAL, '
-            'ENERGYONLYOFFERAWARDMW REAL, OFFERID TEXT, '
-            'ENERGYONLYOFFERMW1 REAL, ENERGYONLYOFFERPRICE1 REAL, '
-            'ENERGYONLYOFFERMW2 REAL, ENERGYONLYOFFERPRICE2 REAL, '
-            'ENERGYONLYOFFERMW3 REAL, ENERGYONLYOFFERPRICE3 REAL, '
-            'ENERGYONLYOFFERMW4 REAL, ENERGYONLYOFFERPRICE4 REAL, '
-            'ENERGYONLYOFFERMW5 REAL, ENERGYONLYOFFERPRICE5 REAL, '
-            'ENERGYONLYOFFERMW6 REAL, ENERGYONLYOFFERPRICE6 REAL, '
-            'ENERGYONLYOFFERMW7 REAL, ENERGYONLYOFFERPRICE7 REAL, '
-            'ENERGYONLYOFFERMW8 REAL, ENERGYONLYOFFERPRICE8 REAL, '
-            'ENERGYONLYOFFERMW9 REAL, ENERGYONLYOFFERPRICE9 REAL, '
-            'ENERGYONLYOFFERMW10 REAL, ENERGYONLYOFFERPRICE10 REAL, '
-            'INSERTEDAT TEXT, '
-            'PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME, SOURCETYPE)'
-            ')'
-        )
-        # Intermediate join tables
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS BID_AWARD_DETAILS (
-                DELIVERYDATE TEXT,
-                HOURENDING INTEGER,
-                SETTLEMENTPOINTNAME TEXT,
-                QSENAME TEXT,
-                BIDID TEXT,
-                ENERGYONLYBIDAWARDINMW REAL,
-                SETTLEMENTPOINTPRICE REAL,
-                ENERGYONLYBIDMW1 REAL, ENERGYONLYBIDPRICE1 REAL,
-                ENERGYONLYBIDMW2 REAL, ENERGYONLYBIDPRICE2 REAL,
-                ENERGYONLYBIDMW3 REAL, ENERGYONLYBIDPRICE3 REAL,
-                ENERGYONLYBIDMW4 REAL, ENERGYONLYBIDPRICE4 REAL,
-                ENERGYONLYBIDMW5 REAL, ENERGYONLYBIDPRICE5 REAL,
-                ENERGYONLYBIDMW6 REAL, ENERGYONLYBIDPRICE6 REAL,
-                ENERGYONLYBIDMW7 REAL, ENERGYONLYBIDPRICE7 REAL,
-                ENERGYONLYBIDMW8 REAL, ENERGYONLYBIDPRICE8 REAL,
-                ENERGYONLYBIDMW9 REAL, ENERGYONLYBIDPRICE9 REAL,
-                ENERGYONLYBIDMW10 REAL, ENERGYONLYBIDPRICE10 REAL,
-                MULTIHOURBLOCK BOOLEAN,
-                BLOCKCURVE BOOLEAN,
-                INSERTEDAT TEXT DEFAULT (datetime(\'now\')),
-                PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME, BIDID)
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS OFFER_AWARD_DETAILS (
-                DELIVERYDATE TEXT,
-                HOURENDING INTEGER,
-                SETTLEMENTPOINTNAME TEXT,
-                QSENAME TEXT,
-                OFFERID TEXT,
-                ENERGYONLYOFFERAWARDINMW REAL,
-                SETTLEMENTPOINTPRICE REAL,
-                ENERGYONLYOFFERMW1 REAL, ENERGYONLYOFFERPRICE1 REAL,
-                ENERGYONLYOFFERMW2 REAL, ENERGYONLYOFFERPRICE2 REAL,
-                ENERGYONLYOFFERMW3 REAL, ENERGYONLYOFFERPRICE3 REAL,
-                ENERGYONLYOFFERMW4 REAL, ENERGYONLYOFFERPRICE4 REAL,
-                ENERGYONLYOFFERMW5 REAL, ENERGYONLYOFFERPRICE5 REAL,
-                ENERGYONLYOFFERMW6 REAL, ENERGYONLYOFFERPRICE6 REAL,
-                ENERGYONLYOFFERMW7 REAL, ENERGYONLYOFFERPRICE7 REAL,
-                ENERGYONLYOFFERMW8 REAL, ENERGYONLYOFFERPRICE8 REAL,
-                ENERGYONLYOFFERMW9 REAL, ENERGYONLYOFFERPRICE9 REAL,
-                ENERGYONLYOFFERMW10 REAL, ENERGYONLYOFFERPRICE10 REAL,
-                MULTIHOURBLOCK BOOLEAN,
-                BLOCKCURVE BOOLEAN,
-                INSERTEDAT TEXT DEFAULT (datetime(\'now\')),
-                PRIMARY KEY (DELIVERYDATE, HOURENDING, SETTLEMENTPOINTNAME, QSENAME, OFFERID)
-            )
-        ''')
-        # Active settlement points tracking
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ACTIVE_SETTLEMENT_POINTS (
-                SETTLEMENTPOINTNAME TEXT PRIMARY KEY,
-                FIRST_SEEN_DATE TEXT,
-                LAST_SEEN_DATE TEXT,
-                TOTAL_AWARDS INTEGER DEFAULT 0,
-                TOTAL_BIDS INTEGER DEFAULT 0,
-                TOTAL_OFFERS INTEGER DEFAULT 0,
-                IS_ACTIVE BOOLEAN DEFAULT 1,
-                UPDATED_AT TEXT DEFAULT (datetime(\'now\'))
-            )
-        ''')
-        # Tracked QSEs table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS TRACKED_QSES_ACTIVE (
-                QSENAME TEXT PRIMARY KEY,
-                SHORTNAME TEXT,
-                FIRST_SEEN_DATE TEXT,
-                LAST_SEEN_DATE TEXT,
-                TOTAL_BIDS INTEGER DEFAULT 0,
-                TOTAL_OFFERS INTEGER DEFAULT 0,
-                IS_ACTIVE BOOLEAN DEFAULT 1,
-                UPDATED_AT TEXT DEFAULT (datetime(\'now\'))
-            )
-        ''')
-
-        # Create indexes
-        indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_bid_awards_date "
-            "ON DAM_ENERGY_BID_AWARDS(DELIVERYDATE)",
-            "CREATE INDEX IF NOT EXISTS idx_bid_awards_qse "
-            "ON DAM_ENERGY_BID_AWARDS(QSENAME)",
-            "CREATE INDEX IF NOT EXISTS idx_offers_date "
-            "ON DAM_ENERGY_OFFERS(DELIVERYDATE)",
-            "CREATE INDEX IF NOT EXISTS idx_offers_qse "
-            "ON DAM_ENERGY_OFFERS(QSENAME)",
-            "CREATE INDEX IF NOT EXISTS idx_spp_date "
-            "ON SETTLEMENTPOINTPRICES(DELIVERYDATE)",
-            "CREATE INDEX IF NOT EXISTS idx_final_date "
-            "ON FINAL(DELIVERYDATE)"
-        ]
-
-        for idx in indexes:
-            cursor.execute(idx)
 
         conn.commit()
 
@@ -637,49 +496,6 @@ class ImprovedERCOTDataPipeline:
         """Setup metadata tables for tracking processing state"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-
-        # DAM archives metadata table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS dam_archives_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT NOT NULL,
-                post_datetime TEXT NOT NULL,
-                download_url TEXT NOT NULL,
-                cached_at TEXT NOT NULL,
-                date_extracted TEXT,
-                bids_extracted INTEGER DEFAULT 0,
-                bid_awards_extracted INTEGER DEFAULT 0,
-                offers_extracted INTEGER DEFAULT 0,
-                offer_awards_extracted INTEGER DEFAULT 0
-            )
-        """)
-
-        # SPP documents metadata table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS spp_documents_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                friendly_name TEXT NOT NULL,
-                post_datetime TEXT NOT NULL,
-                download_url TEXT NOT NULL,
-                cached_at TEXT NOT NULL,
-                date_extracted TEXT,
-                extracted INTEGER DEFAULT 0
-            )
-        """)
-
-        # Bundle metadata table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS bundle_metadata (
-                doc_id INTEGER PRIMARY KEY,
-                emil_id TEXT NOT NULL,
-                friendly_name TEXT NOT NULL,
-                post_datetime TEXT NOT NULL,
-                download_url TEXT NOT NULL,
-                download_status TEXT DEFAULT 'pending',
-                downloaded_at TEXT,
-                file_path TEXT
-            )
-        """)
 
         # Add this table for caching bundle docIds
         cursor.execute("""
@@ -693,39 +509,6 @@ class ImprovedERCOTDataPipeline:
                 UNIQUE(product_type, bundle_date)
             )
         """)
-
-        # Tracked QSEs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tracked_qses (
-                qse_short_name TEXT PRIMARY KEY,
-                qse_name TEXT,
-                added_date TEXT,
-                active BOOLEAN DEFAULT 1
-            )
-        """)
-
-        # Settlement point activity table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS settlement_point_activity (
-                settlement_point_name TEXT,
-                activity_date TEXT,
-                first_seen_hour INTEGER,
-                last_seen_hour INTEGER,
-                data_source TEXT,
-                PRIMARY KEY (settlement_point_name, activity_date)
-            )
-        """)
-
-        # Create indexes for metadata tables
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_dam_date_extracted "
-            "ON dam_archives_metadata(date_extracted)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_spp_date_extracted "
-            "ON spp_documents_metadata(date_extracted)"
-        )
-
         conn.commit()
         conn.close()
 
@@ -800,25 +583,26 @@ class ImprovedERCOTDataPipeline:
                         'BLOCKCURVEINDICATOR': 'BLOCKCURVE'
                     }, inplace=True)
                     # also rename the aggregated price for settlement_prices
+                    # ...existing code...
                     if key == 'settlement_prices':
-                        df.rename(columns={
-                            'SETTLEMENTPOINTPRICE': 'AVGSETTLEMENTPOINTPRICE'
-                        }, inplace=True)
                         logger.debug(
                             "Sample of Settlement Point Prices table: %s", df.head())
-                        # Aggregate settlement prices: average the price and take the first of other columns
-                        group_cols = ['DELIVERYDATE', 'DELIVERYHOUR',
-                                      'DELIVERYINTERVAL', 'SETTLEMENTPOINTNAME']
-                        # Build aggregation dictionary
-                        agg_dict = {'AVGSETTLEMENTPOINTPRICE': 'mean'}
-                        for col in df.columns:
-                            if col not in group_cols + ['AVGSETTLEMENTPOINTPRICE']:
-                                agg_dict[col] = 'first'
-                        # Apply grouping and aggregation
-                        df = df.groupby(
-                            group_cols, as_index=False).agg(agg_dict)
-                        logger.debug(
-                            "After aggregation, settlement_prices sample:\n%s", df.head())
+                        # If the DataFrame has SETTLEMENTPOINTPRICE, aggregate and rename
+                        if 'SETTLEMENTPOINTPRICE' in df.columns:
+                            group_cols = ['DELIVERYDATE', 'DELIVERYHOUR',
+                                          'SETTLEMENTPOINTNAME']
+                            agg_dict = {'SETTLEMENTPOINTPRICE': 'mean'}
+                            for col in df.columns:
+                                if col not in group_cols + ['SETTLEMENTPOINTPRICE']:
+                                    agg_dict[col] = 'first'
+                            df = df.groupby(
+                                group_cols, as_index=False).agg(agg_dict)
+                            # Rename to match DB schema
+                            df.rename(
+                                columns={'SETTLEMENTPOINTPRICE': 'AVGSETTLEMENTPOINTPRICE'}, inplace=True)
+                            logger.debug(
+                                "After aggregation, settlement_prices sample:\n%s", df.head())
+                    # ...existing code...
                     df['INSERTEDAT'] = datetime.now().isoformat()
                     df.to_sql(
                         table_name,
@@ -826,7 +610,8 @@ class ImprovedERCOTDataPipeline:
                         if_exists='append',
                         index=False,
                         method='multi',
-                        chunksize=200
+                        chunksize=min(
+                            CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(df.columns))
                     )
                     logger.info("Stored %d rows to %s", len(df), table_name)
                 except sqlite3.IntegrityError as e:
@@ -843,161 +628,206 @@ class ImprovedERCOTDataPipeline:
         finally:
             conn.close()
 
-    def create_final_table_optimized(self):
-        """Create final table in multiple steps using intermediate tables"""
+    def create_final_table_optimized(self, spp_start_date, spp_end_date) -> None:
+        """Create final table using pandas DataFrames and to_sql for merging and writing."""
+        import pandas as pd
+        import sqlite3
+        from datetime import datetime
+
         conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
 
-        # 1) Drop any existing intermediate/final tables
-        cursor.execute("DROP TABLE IF EXISTS COMBINED_OFFERS")
-        cursor.execute("DROP TABLE IF EXISTS COMBINED_BIDS")
-        cursor.execute("DROP TABLE IF EXISTS MERGED_BIDS_OFFERS")
-        cursor.execute("DROP TABLE IF EXISTS FINAL")
+        # 2) Read source tables into DataFrames with date filtering
+        start_spp = spp_start_date.strftime('%m/%d/%Y')
+        end_spp = spp_end_date.strftime('%m/%d/%Y')
 
-        # 2) COMBINED_OFFERS: merge DAM_ENERGY_OFFERS with DAM_ENERGY_OFFER_AWARDS
-        cursor.execute("""
-        CREATE TABLE COMBINED_OFFERS AS
-        SELECT
-            O.DELIVERYDATE,
-            O.HOURENDING,
-            O.SETTLEMENTPOINTNAME,
-            O.QSENAME,
-            O.OFFERID,
-            O.BLOCKCURVE,
-            O.ENERGYONLYOFFERMW1,
-            O.ENERGYONLYOFFERPRICE1,
-            O.ENERGYONLYOFFERMW2,
-            O.ENERGYONLYOFFERPRICE2,
-            O.ENERGYONLYOFFERMW3,
-            O.ENERGYONLYOFFERPRICE3,
-            O.ENERGYONLYOFFERMW4,
-            O.ENERGYONLYOFFERPRICE4,
-            O.ENERGYONLYOFFERMW5,
-            O.ENERGYONLYOFFERPRICE5,
-            O.ENERGYONLYOFFERMW6,
-            O.ENERGYONLYOFFERPRICE6,
-            O.ENERGYONLYOFFERMW7,
-            O.ENERGYONLYOFFERPRICE7,
-            O.ENERGYONLYOFFERMW8,
-            O.ENERGYONLYOFFERPRICE8,
-            O.ENERGYONLYOFFERMW9,
-            O.ENERGYONLYOFFERPRICE9,
-            O.ENERGYONLYOFFERMW10,
-            O.ENERGYONLYOFFERPRICE10,
-            OA.ENERGYONLYOFFERAWARDINMW   AS OFFER_AWARD_MW,
-            OA.SETTLEMENTPOINTPRICE       AS OFFER_AWARD_PRICE
-        FROM DAM_ENERGY_OFFERS O
-        LEFT JOIN DAM_ENERGY_OFFER_AWARDS OA
-          ON O.DELIVERYDATE        = OA.DELIVERYDATE
-         AND O.HOURENDING          = OA.HOURENDING
-         AND O.SETTLEMENTPOINTNAME = OA.SETTLEMENTPOINTNAME
-         AND O.QSENAME             = OA.QSENAME
-         AND O.OFFERID             = OA.OFFERID
-        """)
+        offers = pd.read_sql(
+            "SELECT * FROM DAM_ENERGY_OFFERS WHERE DELIVERYDATE BETWEEN ? AND ?",
+            conn,
+            params=(start_spp, end_spp)
+        )
+        offer_awards = pd.read_sql(
+            "SELECT * FROM DAM_ENERGY_OFFER_AWARDS WHERE DELIVERYDATE BETWEEN ? AND ?",
+            conn,
+            params=(start_spp, end_spp)
+        )
+        bids = pd.read_sql(
+            "SELECT * FROM DAM_ENERGY_BIDS WHERE DELIVERYDATE BETWEEN ? AND ?",
+            conn,
+            params=(start_spp, end_spp)
+        )
+        bid_awards = pd.read_sql(
+            "SELECT * FROM DAM_ENERGY_BID_AWARDS WHERE DELIVERYDATE BETWEEN ? AND ?",
+            conn,
+            params=(start_spp, end_spp)
+        )
+        spp = pd.read_sql(
+            "SELECT * FROM SETTLEMENTPOINTPRICES WHERE DELIVERYDATE BETWEEN ? AND ?",
+            conn,
+            params=(start_spp, end_spp)
+        )
+        # --- Deduplicate core tables before merging ---
+        # Drop duplicate bids by unique key
+        bids = bids.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING",
+                    "QSENAME", "SETTLEMENTPOINTNAME", "BIDID"],
+            keep="first"
+        )
+        bid_awards = bid_awards.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING",
+                    "QSENAME", "SETTLEMENTPOINTNAME", "BIDID"],
+            keep="first"
+        )
 
-        # 3) COMBINED_BIDS: merge DAM_ENERGY_BIDS with DAM_ENERGY_BID_AWARDS
-        cursor.execute("""
-        CREATE TABLE COMBINED_BIDS AS
-        SELECT
-            B.DELIVERYDATE,
-            B.HOURENDING,
-            B.SETTLEMENTPOINTNAME,
-            B.QSENAME,
-            B.BIDID,
-            B.MULTIHOURBLOCK           AS BLOCK_CURVE_FLAG,
-            B.ENERGYONLYBIDMW1,
-            B.ENERGYONLYBIDPRICE1,
-            B.ENERGYONLYBIDMW2,
-            B.ENERGYONLYBIDPRICE2,
-            B.ENERGYONLYBIDMW3,
-            B.ENERGYONLYBIDPRICE3,
-            B.ENERGYONLYBIDMW4,
-            B.ENERGYONLYBIDPRICE4,
-            B.ENERGYONLYBIDMW5,
-            B.ENERGYONLYBIDPRICE5,
-            B.ENERGYONLYBIDMW6,
-            B.ENERGYONLYBIDPRICE6,
-            B.ENERGYONLYBIDMW7,
-            B.ENERGYONLYBIDPRICE7,
-            B.ENERGYONLYBIDMW8,
-            B.ENERGYONLYBIDPRICE8,
-            B.ENERGYONLYBIDMW9,
-            B.ENERGYONLYBIDPRICE9,
-            B.ENERGYONLYBIDMW10,
-            B.ENERGYONLYBIDPRICE10,
-            BA.ENERGYONLYBIDAWARDINMW    AS BID_AWARD_MW,
-            BA.SETTLEMENTPOINTPRICE      AS BID_AWARD_PRICE
-        FROM DAM_ENERGY_BIDS B
-        LEFT JOIN DAM_ENERGY_BID_AWARDS BA
-          ON B.DELIVERYDATE        = BA.DELIVERYDATE
-         AND B.HOURENDING          = BA.HOURENDING
-         AND B.SETTLEMENTPOINTNAME = BA.SETTLEMENTPOINTNAME
-         AND B.QSENAME             = BA.QSENAME
-         AND B.BIDID               = BA.BIDID
-        """)
+        # Drop duplicate offers by unique key
+        offers = offers.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING", "QSENAME",
+                    "SETTLEMENTPOINTNAME", "OFFERID"],
+            keep="first"
+        )
+        offer_awards = offer_awards.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING", "QSENAME",
+                    "SETTLEMENTPOINTNAME", "OFFERID"],
+            keep="first"
+        )
 
-        # 4) MERGED_BIDS_OFFERS: inner‐join COMBINED_BIDS and COMBINED_OFFERS
-        cursor.execute("""
-        CREATE TABLE MERGED_BIDS_OFFERS AS
-        SELECT
-            B.*,
-            O.OFFERID,
-            O.ENERGYONLYOFFERMW1,
-            O.ENERGYONLYOFFERPRICE1,
-            O.ENERGYONLYOFFERMW2,
-            O.ENERGYONLYOFFERPRICE2,
-            O.ENERGYONLYOFFERMW3,
-            O.ENERGYONLYOFFERPRICE3,
-            O.ENERGYONLYOFFERMW4,
-            O.ENERGYONLYOFFERPRICE4,
-            O.ENERGYONLYOFFERMW5,
-            O.ENERGYONLYOFFERPRICE5,
-            O.ENERGYONLYOFFERMW6,
-            O.ENERGYONLYOFFERPRICE6,
-            O.ENERGYONLYOFFERMW7,
-            O.ENERGYONLYOFFERPRICE7,
-            O.ENERGYONLYOFFERMW8,
-            O.ENERGYONLYOFFERPRICE8,
-            O.ENERGYONLYOFFERMW9,
-            O.ENERGYONLYOFFERPRICE9,
-            O.ENERGYONLYOFFERMW10,
-            O.ENERGYONLYOFFERPRICE10,
-            O.OFFER_AWARD_MW,
-            O.OFFER_AWARD_PRICE
-        FROM COMBINED_BIDS B
-        INNER JOIN COMBINED_OFFERS O
-          ON B.DELIVERYDATE        = O.DELIVERYDATE
-         AND B.HOURENDING          = O.HOURENDING
-         AND B.SETTLEMENTPOINTNAME = O.SETTLEMENTPOINTNAME
-         AND B.QSENAME             = O.QSENAME
-        """)
+        # Drop duplicate settlement point prices by unique key
+        spp = spp.drop_duplicates(
+            subset=["DELIVERYDATE", "DELIVERYHOUR",
+                    "DELIVERYINTERVAL", "SETTLEMENTPOINTNAME"],
+            keep="first"
+        )
 
-        # 5) FINAL: left‐join MERGED_BIDS_OFFERS to settlement point prices
-        cursor.execute("""
-        CREATE TABLE FINAL AS
-        SELECT
-            M.DELIVERYDATE,
-            M.HOURENDING,
-            M.SETTLEMENTPOINTNAME,
-            M.QSENAME,
-            M.BIDID,
-            M.BID_AWARD_MW,
-            M.BID_AWARD_PRICE,
-            M.OFFERID,
-            M.OFFER_AWARD_MW,
-            M.OFFER_AWARD_PRICE,
-            S.AVGSETTLEMENTPOINTPRICE,
-            datetime('now') AS INSERTEDAT
-        FROM MERGED_BIDS_OFFERS M
-        LEFT JOIN SETTLEMENTPOINTPRICES S
-          ON M.DELIVERYDATE        = S.DELIVERYDATE
-         AND M.HOURENDING          = S.DELIVERYHOUR
-         AND M.SETTLEMENTPOINTNAME = S.SETTLEMENTPOINTNAME
-        """)
+        # Convert int64 to int32 and float64 to float32 for all intermediate tables
+        for name, df in {
+            "offers": offers,
+            "offer_awards": offer_awards,
+            "bids": bids,
+            "bid_awards": bid_awards,
+            "spp": spp
+        }.items():
+            # find all int64 and float64 columns
+            int_cols = df.select_dtypes(include=["int64"]).columns
+            float_cols = df.select_dtypes(include=["float64"]).columns
 
-        conn.commit()
+            # downcast to smaller types
+            if not int_cols.empty:
+                df[int_cols] = df[int_cols].astype("int32")
+            if not float_cols.empty:
+                df[float_cols] = df[float_cols].astype("float32")
+
+            logger.debug(
+                f"Dtype conversion for {name}: "
+                f"{len(int_cols)} int64 to int32, {len(float_cols)} float64 to float32"
+            )
+
+        logger.debug("start_spp & end_spp %s %s", start_spp, end_spp)
+        logger.debug("Offers DataFrame shape: %s", offers.shape)
+        logger.debug("Offer Awards DataFrame shape: %s", offer_awards.shape)
+        logger.debug("Bids DataFrame shape: %s", bids.shape)
+        logger.debug("Bid Awards DataFrame shape: %s", bid_awards.shape)
+        logger.debug("Settlement Point Prices DataFrame shape: %s", spp.shape)
+        # 3) COMBINED_OFFERS: merge offers with offer_awards
+        combined_offers = pd.merge(
+            offers.drop(columns=["INSERTEDAT"]),
+            offer_awards.drop(columns=["INSERTEDAT"]),
+            how="right",
+            left_on=["DELIVERYDATE", "HOURENDING",
+                     "SETTLEMENTPOINTNAME", "QSENAME", "OFFERID"],
+            right_on=["DELIVERYDATE", "HOURENDING",
+                      "SETTLEMENTPOINTNAME", "QSENAME", "OFFERID"],
+        )
+        combined_offers = combined_offers.rename(columns={
+            "ENERGYONLYOFFERAWARDINMW": "OFFER_AWARD_MW",
+            "SETTLEMENTPOINTPRICE": "OFFER_AWARD_PRICE"
+        })
+        combined_offers["INSERTEDAT"] = datetime.now().isoformat()
+
+        combined_offers = combined_offers.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING",
+                    "SETTLEMENTPOINTNAME", "QSENAME", "OFFERID"],
+            keep="first"
+        )
+        # Save to DB
+        combined_offers.to_sql("COMBINED_OFFERS", conn,
+                               if_exists="append", chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(combined_offers.columns)), method='multi', index=False)
+
+        logger.debug("combined_offers columns: %s", combined_offers.columns)
+
+        # 4) COMBINED_BIDS: merge bids with bid_awards
+        combined_bids = pd.merge(
+            bids.drop(columns=["INSERTEDAT"]),
+            bid_awards.drop(columns=["INSERTEDAT"]),
+            how="right",
+            left_on=["DELIVERYDATE", "HOURENDING",
+                     "SETTLEMENTPOINTNAME", "QSENAME", "BIDID"],
+            right_on=["DELIVERYDATE", "HOURENDING",
+                      "SETTLEMENTPOINTNAME", "QSENAME", "BIDID"],
+        )
+        combined_bids = combined_bids.rename(columns={
+            "ENERGYONLYBIDAWARDINMW": "BID_AWARD_MW",
+            "SETTLEMENTPOINTPRICE": "BID_AWARD_PRICE"
+        })
+        combined_bids["INSERTEDAT"] = datetime.now().isoformat()
+        combined_bids = combined_bids.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING",
+                    "SETTLEMENTPOINTNAME", "QSENAME", "BIDID"],
+            keep="first"
+        )
+        # Save to DB
+        combined_bids.to_sql("COMBINED_BIDS", conn,
+                             if_exists="append", method='multi', chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(combined_bids.columns)), index=False)
+
+        logger.debug("combined_bids columns: %s", combined_bids.columns)
+
+        # 5) MERGED_BIDS_OFFERS: inner join on deliverydate, hourending, settlementpointname, qsename
+        merged_bids_offers = pd.merge(
+            combined_bids.drop(columns=["INSERTEDAT"]),
+            combined_offers.drop(columns=["INSERTEDAT"]),
+            how="inner",
+            on=["DELIVERYDATE", "HOURENDING", "SETTLEMENTPOINTNAME", "QSENAME"],
+            suffixes=('_BID', '_OFFER')
+        )
+
+        merged_bids_offers["INSERTEDAT"] = datetime.now().isoformat()
+
+        merged_bids_offers = merged_bids_offers.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING",
+                    "SETTLEMENTPOINTNAME", "QSENAME", "BIDID", "OFFERID"],
+            keep="first"
+        )
+        # Save to DB
+        merged_bids_offers.to_sql("MERGED_BIDS_OFFERS", conn,
+                                  if_exists="append", method='multi',
+                                  chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(merged_bids_offers.columns)), index=False)
+
+        logger.debug("merged_bids_offers columns: %s",
+                     merged_bids_offers.columns)
+        # 6) FINAL: left join with settlement point prices
+        final = pd.merge(
+            merged_bids_offers.drop(columns=["INSERTEDAT"]),
+            spp.drop(columns=["INSERTEDAT"]),
+            how="left",
+            left_on=["DELIVERYDATE", "HOURENDING", "SETTLEMENTPOINTNAME"],
+            right_on=["DELIVERYDATE", "DELIVERYHOUR", "SETTLEMENTPOINTNAME"],
+        )
+
+        # Select and rename columns for FINAL table
+        final_table = final.copy()
+        final_table["INSERTEDAT"] = datetime.now().isoformat()
+
+        final_table = final_table.drop_duplicates(
+            subset=["DELIVERYDATE", "HOURENDING",
+                    "SETTLEMENTPOINTNAME", "QSENAME", "BIDID", "OFFERID"],
+            keep="first"
+        )
+
+        # 7) Write to FINAL table
+        final_table.to_sql("FINAL", conn, if_exists="append",
+                           chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(final_table.columns)), index=False)
+
         conn.close()
-        logger.info("Final table and intermediates created successfully")
+        logger.info(
+            "Final table and intermediates created successfully (pandas version)")
 
     def update_stats(self, stat_name: str, increment: int = 1):
         """Thread-safe stats update"""
@@ -1011,6 +841,12 @@ class ImprovedERCOTDataPipeline:
             for key, value in self.stats.items():
                 logger.info(f"{key}: {value}")
             logger.info("=========================")
+    # ...existing code...
+
+    def get_cache_path(self, cache_type: str, date: datetime, suffix: str = "zip") -> Path:
+        date_str = date.strftime("%Y%m%d")
+        return self.cache_dir / f"{cache_type}_{date_str}.{suffix}"
+# ...existing code...
 
     def get_cache_path(self, cache_type: str, date: datetime, suffix: str = "json") -> Path:
         date_str = date.strftime("%Y%m%d")
@@ -1155,35 +991,6 @@ class ImprovedERCOTDataPipeline:
                         bids.columns = normalize_headers(bids.columns)
                         bid_awards.columns = normalize_headers(
                             bid_awards.columns)
-                        merged_bids = pd.DataFrame()
-                        if not bids.empty and not bid_awards.empty:
-                            logger.debug("bids columns: %s", bids.columns)
-                            logger.debug("bid_awards columns: %s",
-                                         bid_awards.columns)
-                            logger.debug("Merging bids and bid awards...")
-                            logger.debug("Sample of bids and bid_awards: %s, %s", bids.head(
-                                5),  bid_awards.head(5))
-                            merged_bids = pd.merge(
-                                bids, bid_awards,
-                                on=['DELIVERYDATE', 'HOURENDING',
-                                    'SETTLEMENTPOINTNAME', 'QSENAME'],
-                                how='inner', suffixes=('_bid', '_award')
-                            )
-                        merged_offers = pd.DataFrame()
-                        if not offers.empty and not offer_awards.empty:
-                            logger.debug("offers columns: %s", offers.columns)
-                            logger.debug("offer_awards columns: %s",
-                                         offer_awards.columns)
-                            logger.debug("Merging offers and offer awards...")
-                            logger.debug("Sample of offers and offer_awards: %s, %s", offers.head(
-                                5),  offer_awards.head(5)
-                            )
-                            merged_offers = pd.merge(
-                                offers, offer_awards,
-                                on=['DELIVERYDATE', 'HOURENDING',
-                                    'SETTLEMENTPOINTNAME', 'QSENAME'],
-                                how='inner', suffixes=('_offer', '_award')
-                            )
                         # (E) Filter SPPs by settlement points in awards
                         used_settlement_points = set()
                         if not bid_awards.empty:
@@ -1199,49 +1006,7 @@ class ImprovedERCOTDataPipeline:
                         if not spp_df.empty and used_settlement_points:
                             spp_df = spp_df[spp_df['SETTLEMENTPOINTNAME'].isin(
                                 used_settlement_points)]
-                        # (F) Hour alignment: join on DELIVERYDATE, HOURENDING = DELIVERYHOUR + 1, SETTLEMENTPOINT
 
-                        def join_hourly(df, spp, used_settlement_points):
-                            logger.debug(
-                                "Joining hourly dataframes: %s rows in df, %s rows in spp", len(df), len(spp))
-                            logger.debug("df columns: %s", df.columns)
-                            logger.debug("spp columns: %s", spp.columns)
-                            # ...existing code...
-                            if not spp_df.empty and used_settlement_points:
-                                spp = spp[spp['SETTLEMENTPOINTNAME'].isin(
-                                    used_settlement_points)]
-                                # Add this line to create HOURENDING for join# ...existing code...
-                            if df.empty or spp.empty:
-                                return pd.DataFrame()
-                            spp = spp.copy()
-                            spp['HOURENDING'] = spp['DELIVERYHOUR']
-                            # Check for any overlapping join keys
-                            df_keys = set(
-                                zip(df['DELIVERYDATE'], df['HOURENDING'], df['SETTLEMENTPOINTNAME']))
-                            spp_keys = set(
-                                zip(spp['DELIVERYDATE'], spp['HOURENDING'], spp['SETTLEMENTPOINTNAME']))
-                            overlap = df_keys & spp_keys
-                            if not overlap:
-                                logger.debug(
-                                    "No overlapping keys for join. df sample keys: %s; spp sample keys: %s",
-                                    list(df_keys)[:5],
-                                    list(spp_keys)[:5]
-                                )
-                            return pd.merge(
-                                df,
-                                spp,
-                                on=['DELIVERYDATE', 'HOURENDING',
-                                    'SETTLEMENTPOINTNAME'],
-                                how='left',
-                                suffixes=('', '_SPP')
-                            )
-                        final_bids = join_hourly(
-                            merged_bids, spp_df, used_settlement_points)
-                        final_offers = join_hourly(
-                            merged_offers, spp_df, used_settlement_points)
-                        logger.debug("Final bids shape: %s", final_bids.shape)
-                        logger.debug("Final offers shape: %s",
-                                     final_offers.shape)
                         # Ensure DataFrame columns match the database schema
                         for df in (bid_awards, bids, offer_awards, offers, spp_df):
                             if 'SETTLEMENTPOINT' in df.columns:
@@ -1250,7 +1015,7 @@ class ImprovedERCOTDataPipeline:
                                         'SETTLEMENTPOINT': 'SETTLEMENTPOINTNAME'},
                                     inplace=True
                                 )
-
+                        logger.debug("Storing data to .db")
                         # Store to DB (reuse store_dataframes_batch)
                         self.store_dataframes_batch({
                             'bid_awards': bid_awards,
@@ -1259,13 +1024,7 @@ class ImprovedERCOTDataPipeline:
                             'offers': offers,
                             'settlement_prices': spp_df
                         })
-                        # Optionally store merged tables
-                        if not final_bids.empty:
-                            self.store_dataframes_batch(
-                                {'final_bids': final_bids})
-                        if not final_offers.empty:
-                            self.store_dataframes_batch(
-                                {'final_offers': final_offers})
+
                         total_processed += 1
                         logger.info(
                             f"Processed SPP date {current_date.date()} (DAM month {dam_month})")
@@ -1277,10 +1036,11 @@ class ImprovedERCOTDataPipeline:
                     # Increment to next day
                     logger.debug("current_date -> current_date + 1 Month" + str(
                         current_date) + " -> " + str(current_date + relativedelta(months=1)))
+                    # Create final table
+                    logger.info("Creating optimized final table...")
+                    self.create_final_table_optimized(
+                        current_date, current_date + relativedelta(months=1))
                     current_date += relativedelta(months=1)
-                # Create final table
-                logger.info("Creating optimized final table...")
-                self.create_final_table_optimized()
                 execution_time = time.time() - start_time
                 logger.info(
                     f"Pipeline completed in {execution_time:.2f} seconds")
@@ -1487,14 +1247,14 @@ class ImprovedERCOTDataPipeline:
             for key, dfs in dam_files.items():
                 if dfs:
                     dam_files_final[key] = pd.concat(dfs, ignore_index=True)
-                    logger.info(
+                    logger.debug(
                         f"fetch_and_extract_dam_bundle: All files for {key}: {file_map[key]}")
                     logger.info(
                         f"fetch_and_extract_dam_bundle: {key} total rows: {dam_files_final[key].shape[0]}")
                 else:
                     logger.warning(
                         f"fetch_and_extract_dam_bundle: No files found for {key}")
-            logger.info(
+            logger.debug(
                 f"fetch_and_extract_dam_bundle: All DAM extracted file names: {extracted_files}")
             logger.info(
                 f"fetch_and_extract_dam_bundle: Total DAM CSVs processed: {sum(len(dfs) for dfs in dam_files.values())}")
@@ -1545,22 +1305,33 @@ class ImprovedERCOTDataPipeline:
                 return frames
             logger.debug("Starting to process SPP bundles...")
             logger.debug("SPP bundles to process: %s", bundles)
+            # ...existing code in fetch_and_extract_spp_bundle...
+
             for bundle in bundles:
-                logger.info(
-                    f"Processing SPP bundle: {bundle['docId']} ({bundle.get('friendlyName', '')})"
-                )
                 doc_id = bundle['docId']
                 friendly_name = bundle.get('friendlyName', '')
                 bundle_zip_path = Path(temp_dir) / f"{doc_id}_spp_bundle.zip"
-                # Download if not already present
-                if not bundle_zip_path.exists():
+                spp_zip_cache = self.get_cache_path("spp_zip", spp_date, "zip")
+
+                # --- Caching logic start ---
+                if self.enable_cache and spp_zip_cache.exists():
+                    import shutil
+                    shutil.copy(spp_zip_cache, bundle_zip_path)
+                    logger.info(f"Using cached SPP ZIP: {spp_zip_cache}")
+                elif not bundle_zip_path.exists():
                     self.ercot_api.download_bundle(
                         product_id, doc_id, str(bundle_zip_path))
                     logger.info(
                         f"Downloaded SPP bundle ZIP: {bundle_zip_path} (docId={doc_id}, {friendly_name})")
+                    # Save to cache after download
+                    if self.enable_cache:
+                        import shutil
+                        shutil.copy(bundle_zip_path, spp_zip_cache)
                 else:
                     logger.info(
                         f"SPP bundle ZIP already exists: {bundle_zip_path}")
+                # --- Caching logic end ---
+
                 # Recursively extract all CSVs from this bundle
                 try:
                     with open(bundle_zip_path, 'rb') as f:
@@ -1570,12 +1341,172 @@ class ImprovedERCOTDataPipeline:
                         f"Extracted {len(frames)} SPP CSV files from bundle {doc_id} ({friendly_name})")
                 except Exception as e:
                     logger.error(f"Failed to extract SPP bundle {doc_id}: {e}")
+            # ...existing code...
             logger.info(
                 f"Total SPP bundles processed for {year_month}: {bundles_processed}")
             logger.debug(f"All SPP extracted file names: {extracted_files}")
         except Exception as e:
             logger.error(f"Failed to fetch/extract SPP bundles: {e}")
         return frames
+
+    def update(self, spp_start_date, spp_end_date, dam_start_date, dam_end_date):
+        """
+        Update the pipeline by filtering and appending new data for the given date ranges.
+        - Loads DAM and SPP data from ERCOT API endpoints.
+        - Filters DAM tables (offers, bids, offer_awards, bid_awards) by tracked QSEs.
+        - Filters settlement points based on active awards for those QSEs.
+        - Aggregates SPP data by DELIVERYDATE, DELIVERHOUR, SETTLEMENTPOINTNAME, averaging SETTLEMENTPOINTPRICE over DELIVERYINTERVAL, and taking the first of INSERTEDAT, DSTGLAD, SETTLEMENTPOINTTYPE.
+        - Appends filtered/aggregated data to the existing tables.
+        """
+        import pandas as pd
+
+        # 1. Get tracked QSEs
+        tracked_qses = set(self.tracked_qse_names)
+        if not tracked_qses:
+            tracking_csv = None
+            for path in ["_data/ERCOT_tracking_list.csv", "ercot_scraping/_data/ERCOT_tracking_list.csv"]:
+                try:
+                    tracking_csv = pd.read_csv(path)
+                    break
+                except Exception:
+                    continue
+            if tracking_csv is not None:
+                tracked_qses = set(
+                    tracking_csv[tracking_csv.columns[0]].dropna().unique())
+            else:
+                raise RuntimeError("Could not load tracked QSEs from CSV.")
+
+        # 2. Load DAM data from API and filter by tracked QSEs
+        dam_offers = self.current_60_dam_energy_only_offers(
+            dam_start_date, dam_end_date)
+        dam_bids = self.current_60_dam_energy_only_bids(
+            dam_start_date, dam_end_date)
+        dam_offer_awards = self.current_60_dam_energy_only_offer_awards(
+            dam_start_date, dam_end_date)
+        dam_bid_awards = self.current_60_dam_energy_only_bid_awards(
+            dam_start_date, dam_end_date)
+
+        dam_offers = dam_offers[dam_offers["QSENAME"].isin(tracked_qses)]
+        dam_bids = dam_bids[dam_bids["QSENAME"].isin(tracked_qses)]
+        dam_offer_awards = dam_offer_awards[dam_offer_awards["QSENAME"].isin(
+            tracked_qses)]
+        dam_bid_awards = dam_bid_awards[dam_bid_awards["QSENAME"].isin(
+            tracked_qses)]
+
+        # 3. Find settlement points with active awards for tracked QSEs
+        active_offer_points = set(
+            dam_offer_awards.loc[dam_offer_awards["ENERGYONLYOFFERAWARDINMW"] > 0, "SETTLEMENTPOINTNAME"])
+        active_bid_points = set(
+            dam_bid_awards.loc[dam_bid_awards["ENERGYONLYBIDAWARDINMW"] > 0, "SETTLEMENTPOINTNAME"])
+        active_points = active_offer_points.union(active_bid_points)
+
+        # 4. Load and aggregate SPP data from API, filter by active points
+        spp_prices = self.current_spp_node_zone_hub(
+            spp_start_date, spp_end_date)
+        spp_prices = spp_prices[spp_prices["SETTLEMENTPOINTNAME"].isin(
+            active_points)]
+
+        if not spp_prices.empty:
+            # aggregate settlement point prices by date/hour/point
+            agg_dict = {
+                "SETTLEMENTPOINTPRICE": "mean",
+                "DELIVERYINTERVAL": "first",
+                "INSERTEDAT": "first",
+                "DSTFLAG": "first",
+                "SETTLEMENTPOINTTYPE": "first"
+            }
+            group_cols = ["DELIVERYDATE",
+                          "DELIVERYHOUR", "SETTLEMENTPOINTNAME"]
+            spp_prices = (
+                spp_prices
+                .groupby(group_cols, as_index=False)
+                .agg(agg_dict)
+                .rename(columns={"SETTLEMENTPOINTPRICE": "AVGSETTLEMENTPOINTPRICE"})
+            )
+
+        # 5. Append filtered / aggregated data to existing tables
+        self.store_dataframes_batch({
+            "bid_awards": dam_bid_awards,
+            "bids":      dam_bids,
+            "offer_awards": dam_offer_awards,
+            "offers":    dam_offers,
+            "settlement_prices": spp_prices
+        })
+
+        # 6. Append to FINAL table
+        try:
+            logger.info(
+                f"Appending new FINAL records for SPP dates {spp_start_date} to {spp_end_date}"
+            )
+            self.create_final_table_optimized(spp_start_date, spp_end_date)
+            logger.info("Successfully appended to FINAL table")
+        except Exception as e:
+            logger.error(f"Failed to append to FINAL table: {e}")
+
+    def fetch_current_api_data(self, url: str, start_date: str, end_date: str) -> List[Dict]:
+        """
+        Fetches all paginated data from the ERCOT API endpoint for the given date range.
+        Returns a list of records (dicts).
+        """
+        records = []
+        page = 1
+        while True:
+            params = {
+                "deliveryDateFrom": start_date,
+                "deliveryDateTo": end_date,
+                "page": page
+            }
+            resp = requests.get(url, params=params)
+            resp.raise_for_status()
+            result = resp.json()
+            # --- replace $SELECTION_PLACEHOLDER$ with this block ---
+            raw = result.get("data", [])
+            # flatten dict-of-lists or dict-of-dicts into one list
+            candidates = []
+            if isinstance(raw, dict):
+                for v in raw.values():
+                    if isinstance(v, list):
+                        candidates.extend(v)
+                    elif isinstance(v, dict):
+                        candidates.append(v)
+            elif isinstance(raw, list):
+                candidates = raw
+            # finally, only keep dictionaries
+            for item in candidates:
+                if isinstance(item, dict):
+                    records.append(item)
+            records.extend(data)
+            meta = result.get("_meta", {})
+            total_pages = meta.get("totalPages", 1)
+            if page >= total_pages:
+                break
+            page += 1
+        return records
+
+    def current_60_dam_energy_only_offer_awards(self, start_date: str, end_date: str) -> pd.DataFrame:
+        url = "https://api.ercot.com/api/public-reports/np3-966-er/60_dam_energy_only_offer_awards"
+        data = self.fetch_current_api_data(url, start_date, end_date)
+        return pd.DataFrame(data)
+
+    def current_60_dam_energy_only_offers(self, start_date: str, end_date: str) -> pd.DataFrame:
+        url = "https://api.ercot.com/api/public-reports/np3-966-er/60_dam_energy_only_offers"
+        data = self.fetch_current_api_data(url, start_date, end_date)
+        return pd.DataFrame(data)
+
+    def current_60_dam_energy_only_bids(self, start_date: str, end_date: str) -> pd.DataFrame:
+        url = "https://api.ercot.com/api/public-reports/np3-966-er/60_dam_energy_only_bids"
+        data = self.fetch_current_api_data(url, start_date, end_date)
+        return pd.DataFrame(data)
+
+    def current_60_dam_energy_only_bid_awards(self, start_date: str, end_date: str) -> pd.DataFrame:
+        url = "https://api.ercot.com/api/public-reports/np3-966-er/60_dam_energy_only_bid_awards"
+        data = self.fetch_current_api_data(url, start_date, end_date)
+        return pd.DataFrame(data)
+
+    def current_spp_node_zone_hub(self, start_date: str, end_date: str) -> pd.DataFrame:
+        url = "https://api.ercot.com/api/public-reports/np6-905-cd/spp_node_zone_hub"
+        data = self.fetch_current_api_data(url, start_date, end_date)
+        return pd.DataFrame(data)
 # --- ASYNC ERCOT DATA PROCESSOR INTEGRATION ---
 
 # --- ENTRY POINT ---
@@ -1624,6 +1555,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Remove the cache directory before running the pipeline"
     )
+    parser.add_argument("--enable-cache",
+                        action="store_true",
+                        default=True,
+                        help="Enable caching of downloaded files (default: True)"
+                        )
+
+    parser.add_argument("--clear-db",
+                        action="store_true",
+                        help="Clear the database before running the pipeline"
+                        )
 
     args = parser.parse_args()
 
@@ -1635,6 +1576,23 @@ if __name__ == "__main__":
             print(f"Cache cleared at {cache_dir}")
         else:
             print(f"No cache directory to clear at {cache_dir}")
+
+    if args.clear_db:
+        # Remove the main DB and any year‐specific DBs (e.g. mydb_2021.db, mydb_2022.db)
+        base = args.db.rstrip('.db')
+        pattern = f"{base}*.db"
+        removed = []
+        for db_file in Path('.').glob(pattern):
+            try:
+                db_file.unlink()
+                removed.append(str(db_file))
+            except Exception as e:
+                print(f"Failed to remove {db_file}: {e}")
+        if removed:
+            print(f"Database files cleared: {', '.join(removed)}")
+        else:
+            print(f"No database files matched pattern '{pattern}'")
+            # exit so we don't run the pipeline
 
     start_date = parse_flexible_date(args.start, is_start=True)
     end_date = parse_flexible_date(args.end, is_start=False)
@@ -1650,11 +1608,38 @@ if __name__ == "__main__":
             # construct a year‐specific database filename
             base_db = args.db.rstrip('.db')
             year_db = f"{base_db}_{current_start.year}.db"
-            pipeline = ImprovedERCOTDataPipeline(db_path=year_db)
+            pipeline = ImprovedERCOTDataPipeline(
+                db_path=year_db, enable_cache=args.enable_cache)
             pipeline.run_pipeline(current_start, period_end)
             # move to next day after this period
             current_start = period_end + timedelta(days=1)
-
+    elif args.mode == "update":
+        # Initialize pipeline and run the update operation against the existing DB
+        try:
+            pipeline = ImprovedERCOTDataPipeline(
+                db_path=args.db, enable_cache=args.enable_cache)
+            # Read from the database to get the last DeliveryDate for the SPP table
+            db_file = args.db
+            db_conn = sqlite3.connect(db_file)
+            latest_spp_date = pd.read_sql(
+                "SELECT MAX(DELIVERYDATE) FROM spp_settlement_prices",
+                db_conn
+            ).values[0][0]
+            latest_dam_date = pd.read_sql(
+                "SELECT MAX(DELIVERYDATE) FROM dam_energy_offers",
+                db_conn
+            ).values[0][0]
+            end_spp_date = datetime.now() - timedelta(days=60)
+            end_dam_date = datetime.now()
+            db_conn.close()
+            pipeline.update(spp_start_date=latest_spp_date,
+                            spp_end_date=end_spp_date,
+                            dam_start_date=latest_dam_date,
+                            dam_end_date=end_dam_date)
+        except sqlite3.OperationalError as e:
+            print(f"Database error: {e}")
+            print("Ensure the database exists and is accessible.")
+            sys.exit(1)
     else:
         print("ERROR: Invalid mode or multiple pipeline modes selected. Only one pipeline can be run at a time.")
         sys.exit(1)

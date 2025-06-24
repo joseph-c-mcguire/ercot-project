@@ -619,6 +619,8 @@ class ImprovedERCOTDataPipeline:
                                 "After aggregation, settlement_prices sample:\n%s", df.head())
                     # ...existing code...
                     df['INSERTEDAT'] = datetime.now().isoformat()
+                    logger.debug("Unique DELIVERYDATE in %s: %s",
+                                 key, df['DELIVERYDATE'].unique())
                     df.to_sql(
                         table_name,
                         conn,
@@ -680,6 +682,18 @@ class ImprovedERCOTDataPipeline:
             conn,
             params=(start_spp, end_spp)
         )
+
+        logger.debug("Loaded data from database:")
+        logger.debug("Unique Dates from offers: %s",
+                     offers['DELIVERYDATE'].unique())
+        logger.debug("Unique Dates from offer_awards: %s",
+                     offer_awards['DELIVERYDATE'].unique())
+        logger.debug("Unique Dates from bids: %s",
+                     bids['DELIVERYDATE'].unique())
+        logger.debug("Unique Dates from bid_awards: %s",
+                     bid_awards['DELIVERYDATE'].unique())
+        logger.debug("Unique Dates from spp: %s", spp['DELIVERYDATE'].unique())
+
         # --- Deduplicate core tables before merging ---
         # Drop duplicate bids by unique key
         bids = bids.drop_duplicates(
@@ -712,6 +726,17 @@ class ImprovedERCOTDataPipeline:
             keep="first"
         )
 
+        logger.debug("Deduplicated DataFrames:")
+        logger.debug("Offers unique dates: %s",
+                     offers['DELIVERYDATE'].unique())
+        logger.debug("Offer Awards unique dates: %s",
+                     offer_awards['DELIVERYDATE'].unique())
+        logger.debug("Bids unique dates: %s", bids['DELIVERYDATE'].unique())
+        logger.debug("Bid Awards unique dates: %s",
+                     bid_awards['DELIVERYDATE'].unique())
+        logger.debug("Settlement Point Prices unique dates: %s",
+                     spp['DELIVERYDATE'].unique())
+
         # Convert int64 to int32 and float64 to float32 for all intermediate tables
         for name, df in {
             "offers": offers,
@@ -734,6 +759,16 @@ class ImprovedERCOTDataPipeline:
                 f"Dtype conversion for {name}: "
                 f"{len(int_cols)} int64 to int32, {len(float_cols)} float64 to float32"
             )
+        logger.debug("Data types after conversion:")
+        logger.debug("Offer uniques dates: %s",
+                     offers['DELIVERYDATE'].unique())
+        logger.debug("Offer Awards uniques dates: %s",
+                     offer_awards['DELIVERYDATE'].unique())
+        logger.debug("Bids uniques dates: %s", bids['DELIVERYDATE'].unique())
+        logger.debug("Bid Awards uniques dates: %s",
+                     bid_awards['DELIVERYDATE'].unique())
+        logger.debug("Settlement Point Prices uniques dates: %s",
+                     spp['DELIVERYDATE'].unique())
 
         logger.debug("start_spp & end_spp %s %s", start_spp, end_spp)
         logger.debug("Offers DataFrame shape: %s", offers.shape)
@@ -751,6 +786,9 @@ class ImprovedERCOTDataPipeline:
             right_on=["DELIVERYDATE", "HOURENDING",
                       "SETTLEMENTPOINTNAME", "QSENAME", "OFFERID"],
         )
+
+        logger.debug("Combined offers unique dates: %s",
+                     combined_offers['DELIVERYDATE'].unique())
         combined_offers = combined_offers.rename(columns={
             "ENERGYONLYOFFERAWARDINMW": "OFFER_AWARD_MW",
             "SETTLEMENTPOINTPRICE": "OFFER_AWARD_PRICE"
@@ -762,6 +800,9 @@ class ImprovedERCOTDataPipeline:
                     "SETTLEMENTPOINTNAME", "QSENAME", "OFFERID"],
             keep="first"
         )
+
+        logger.debug("Combined offers after merge and deduplication: %s",
+                     combined_offers['DELIVERYDATE'].unique())
         # Save to DB
         combined_offers.to_sql("COMBINED_OFFERS", conn,
                                if_exists="append", chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(combined_offers.columns)), method='multi', index=False)
@@ -778,6 +819,8 @@ class ImprovedERCOTDataPipeline:
             right_on=["DELIVERYDATE", "HOURENDING",
                       "SETTLEMENTPOINTNAME", "QSENAME", "BIDID"],
         )
+        logger.debug("Combined bids unique dates: %s",
+                     combined_bids['DELIVERYDATE'].unique())
         combined_bids = combined_bids.rename(columns={
             "ENERGYONLYBIDAWARDINMW": "BID_AWARD_MW",
             "SETTLEMENTPOINTPRICE": "BID_AWARD_PRICE"
@@ -788,6 +831,9 @@ class ImprovedERCOTDataPipeline:
                     "SETTLEMENTPOINTNAME", "QSENAME", "BIDID"],
             keep="first"
         )
+
+        logger.debug("Combined bids after merge and deduplication: %s",
+                     combined_bids['DELIVERYDATE'].unique())
         # Save to DB
         combined_bids.to_sql("COMBINED_BIDS", conn,
                              if_exists="append", method='multi', chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(combined_bids.columns)), index=False)
@@ -802,7 +848,8 @@ class ImprovedERCOTDataPipeline:
             on=["DELIVERYDATE", "HOURENDING", "SETTLEMENTPOINTNAME", "QSENAME"],
             suffixes=('_BID', '_OFFER')
         )
-
+        logger.debug("Merged bids and offers unique dates: %s",
+                     merged_bids_offers['DELIVERYDATE'].unique())
         merged_bids_offers["INSERTEDAT"] = datetime.now().isoformat()
 
         merged_bids_offers = merged_bids_offers.drop_duplicates(
@@ -810,6 +857,8 @@ class ImprovedERCOTDataPipeline:
                     "SETTLEMENTPOINTNAME", "QSENAME", "BIDID", "OFFERID"],
             keep="first"
         )
+        logger.debug("Merged bids and offers after merge and deduplication: %s",
+                     merged_bids_offers['DELIVERYDATE'].unique())
         # Save to DB
         merged_bids_offers.to_sql("MERGED_BIDS_OFFERS", conn,
                                   if_exists="append", method='multi',
@@ -825,7 +874,8 @@ class ImprovedERCOTDataPipeline:
             left_on=["DELIVERYDATE", "HOURENDING", "SETTLEMENTPOINTNAME"],
             right_on=["DELIVERYDATE", "DELIVERYHOUR", "SETTLEMENTPOINTNAME"],
         )
-
+        logger.debug("Final table unique dates: %s",
+                     final['DELIVERYDATE'].unique())
         # Select and rename columns for FINAL table
         final_table = final.copy()
         final_table["INSERTEDAT"] = datetime.now().isoformat()
@@ -835,6 +885,8 @@ class ImprovedERCOTDataPipeline:
                     "SETTLEMENTPOINTNAME", "QSENAME", "BIDID", "OFFERID"],
             keep="first"
         )
+        logger.debug("Final table after merge and deduplication: %s",
+                     final_table['DELIVERYDATE'].unique())
 
         # 7) Write to FINAL table
         final_table.to_sql("FINAL", conn, if_exists="append",
@@ -975,7 +1027,7 @@ class ImprovedERCOTDataPipeline:
                     logger.debug("current_date: %s", current_date)
                     logger.debug("spp_months: %s", spp_months)
                     try:
-                        dam_date = current_date + timedelta(days=60)
+                        dam_date = current_date + relativedelta(months=2)
                         dam_month = dam_date.strftime('%Y-%m')
                         spp_month = current_date.strftime('%Y-%m')
                         dam_data = dam_bundles.get(dam_month)
@@ -1019,14 +1071,14 @@ class ImprovedERCOTDataPipeline:
                         if not offer_awards.empty:
                             used_settlement_points.update(
                                 offer_awards['SETTLEMENTPOINTNAME'].unique())
-
                         # (D) Filter SPP data
                         spp_df = pd.concat(spp_data, ignore_index=True) if isinstance(
                             spp_data, list) else spp_data
                         if not spp_df.empty and used_settlement_points:
                             spp_df = spp_df[spp_df['SETTLEMENTPOINTNAME'].isin(
                                 used_settlement_points)]
-
+                        logger.debug("Unique settlement points in SPP data: %s",
+                                     spp_df['SETTLEMENTPOINTNAME'].unique())
                         # Ensure DataFrame columns match the database schema
                         for df in (bid_awards, bids, offer_awards, offers, spp_df):
                             if 'SETTLEMENTPOINT' in df.columns:
@@ -1059,7 +1111,7 @@ class ImprovedERCOTDataPipeline:
                     # Create final table
                     logger.info("Creating optimized final table...")
                     self.create_final_table_optimized(
-                        current_date, current_date + relativedelta(months=1))
+                        current_date.replace(day=1, month=1), current_date.replace(day=31, month=12))
                     current_date += relativedelta(months=1)
                 execution_time = time.time() - start_time
                 logger.info(

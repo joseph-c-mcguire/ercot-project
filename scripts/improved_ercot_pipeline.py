@@ -888,6 +888,11 @@ class ImprovedERCOTDataPipeline:
         logger.debug("Final table after merge and deduplication: %s",
                      final_table['DELIVERYDATE'].unique())
 
+        if final_table.isnull().values.any():
+            logger.warning("Final table contains NaN values, dropping rows")
+            final_table.dropna(
+                subset=["AVGSETTLEMENTPOINTPRICE"], inplace=True)
+
         # 7) Write to FINAL table
         final_table.to_sql("FINAL", conn, if_exists="append",
                            chunksize=min(CHUNK_SIZE, MAX_SQL_BATCH_SIZE // len(final_table.columns)), index=False)

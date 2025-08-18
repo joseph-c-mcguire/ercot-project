@@ -1,10 +1,20 @@
 """
 Improved ERCOT Data Pipeline integrating existing authentication and metadata management
-with new Pydantic models and concurrent processing
+with new Pydantic models and concurrent processing.
+
+The user interface for this is a CLI command prompt.
+
+usage: improved_ercot_pipeline.py [-h] --start START --end END [--db DB]
+                                  [--mode {sync,async,bundle-download}]
+                                  [--download-workers DOWNLOAD_WORKERS]
+                                  [--processing-workers PROCESSING_WORKERS]
+                                  [--storage-workers STORAGE_WORKERS] [--clear-cache]
+                                  [--enable-cache] [--clear-db]
+                                  
+                                  The 
 """
 
 # Standard library importsfrom pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 from typing import Set, Optional, Dict, List
 from dataclasses import dataclass
 import zipfile
@@ -16,7 +26,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from queue import Queue
 import aiosqlite
 import threading
 import calendar
@@ -28,9 +37,8 @@ import requests
 import pandas as pd
 from dotenv import load_dotenv
 # Local imports
-from ercot_models import (
+from .ercot_models import (
     ERCOTTrackingQSE,
-    BatchProcessor,
     normalize_headers,
     ERCOTOpenApiClient
 )
@@ -130,19 +138,19 @@ class ImprovedERCOTDataPipeline:
         self.setup_logging()
 
         # Initialize queues
-        self.download_queue = Queue(maxsize=MAX_QUEUE_SIZE)
-        self.processing_queue = Queue(maxsize=MAX_QUEUE_SIZE)
-        self.storage_queue = Queue(maxsize=MAX_QUEUE_SIZE)
+        # self.download_queue = Queue(maxsize=MAX_QUEUE_SIZE)
+        # self.processing_queue = Queue(maxsize=MAX_QUEUE_SIZE)
+        # self.storage_queue = Queue(maxsize=MAX_QUEUE_SIZE)
 
-        # Rate limiter
-        self.rate_limiter = RateLimiter(RATE_LIMIT_DELAY)
+        # # Rate limiter
+        # self.rate_limiter = RateLimiter(RATE_LIMIT_DELAY)
 
         # Worker pools
-        self.download_executor = ThreadPoolExecutor(
-            max_workers=DOWNLOAD_WORKERS)
-        self.processing_executor = ThreadPoolExecutor(
-            max_workers=PROCESSING_WORKERS)
-        self.storage_executor = ThreadPoolExecutor(max_workers=STORAGE_WORKERS)
+        # self.download_executor = ThreadPoolExecutor(
+        #     max_workers=DOWNLOAD_WORKERS)
+        # self.processing_executor = ThreadPoolExecutor(
+        #     max_workers=PROCESSING_WORKERS)
+        # self.storage_executor = ThreadPoolExecutor(max_workers=STORAGE_WORKERS)
 
         # Authentication
         self.token: Optional[AuthToken] = None
@@ -152,7 +160,7 @@ class ImprovedERCOTDataPipeline:
         self.last_request_time = 0
 
         # Batch processor
-        self.batch_processor = BatchProcessor()
+        # self.batch_processor = BatchProcessor()
 
         # Tracking data
         self.tracked_qses_df = self.load_tracking_qses()
@@ -353,13 +361,13 @@ class ImprovedERCOTDataPipeline:
             'spp_documents_cache': {}
         }
 
-    def save_checkpoint(self):
-        """Save checkpoint data"""
-        try:
-            with open(self.checkpoint_file, 'w') as f:
-                json.dump(self.checkpoint_data, f, indent=2, default=str)
-        except Exception as e:
-            logger.error(f"Failed to save checkpoint: {e}")
+    # def save_checkpoint(self):
+    #     """Save checkpoint data"""
+    #     try:
+    #         with open(self.checkpoint_file, 'w') as f:
+    #             json.dump(self.checkpoint_data, f, indent=2, default=str)
+    #     except Exception as e:
+    #         logger.error(f"Failed to save checkpoint: {e}")
 
     def load_tracking_qses(self) -> pd.DataFrame:
         """Load QSEs to track from CSV using pandas and Pydantic validation"""
@@ -913,14 +921,9 @@ class ImprovedERCOTDataPipeline:
             for key, value in self.stats.items():
                 logger.info(f"{key}: {value}")
             logger.info("=========================")
-    # ...existing code...
 
     def get_cache_path(self, cache_type: str, date: datetime, suffix: str = "zip") -> Path:
-        date_str = date.strftime("%Y%m%d")
-        return self.cache_dir / f"{cache_type}_{date_str}.{suffix}"
-# ...existing code...
 
-    def get_cache_path(self, cache_type: str, date: datetime, suffix: str = "json") -> Path:
         date_str = date.strftime("%Y%m%d")
         return self.cache_dir / f"{cache_type}_{date_str}.{suffix}"
 
@@ -1189,15 +1192,34 @@ class ImprovedERCOTDataPipeline:
             logger.error(f"OpenAPI DAM ZIP download failed: {e}")
             raise
 
-    def get_dam_metadata(self, dam_date: datetime):
-        dam_emil_id = dam_date.strftime('%Y%m%d')
-        try:
-            return self.ercot_api.get_archive_metadata(dam_emil_id)
-        except Exception as e:
-            logger.error(f"Failed to get DAM metadata: {e}")
-            return None
+    # def get_dam_metadata(self, dam_date: datetime):
+    #     dam_emil_id = dam_date.strftime('%Y%m%d')
+    #     try:
+    #         return self.ercot_api.get_archive_metadata(dam_emil_id)
+    #     except Exception as e:
+    #         logger.error(f"Failed to get DAM metadata: {e}")
+    #         return None
 
     async def get_bundle_metadata(self, bundle_date: datetime, product_type: str = 'SPP'):
+        """
+        Asynchronously retrieves and caches bundle metadata for a given ERCOT product and date.
+
+        This method looks up the ERCOT product ID for the specified product_type, fetches
+        available bundle metadata from the ERCOT API, and searches for a bundle whose
+        postDatetime matches the year and month of bundle_date. If found, the bundle's
+        docId, postDatetime, and friendlyName are saved to the database for caching.
+
+        Args:
+            bundle_date (datetime): The target date for the bundle (only year and month used).
+            product_type (str, optional): The ERCOT product type key (must exist in ERCOT_PRODUCT_IDS).
+                                          Defaults to 'SPP'.
+
+        Returns:
+            dict or None: The matching bundle metadata dictionary if found; otherwise, None.
+
+        Logs:
+            Errors are logged if the API call fails, no bundles are returned, or no matching bundle is found.
+        """
         # Use product ID from ERCOT_PRODUCT_IDS
         product_id = ERCOT_PRODUCT_IDS[product_type]['BUNDLE']
         logger.debug(
@@ -1233,38 +1255,71 @@ class ImprovedERCOTDataPipeline:
             logger.error(f"Failed to get bundle metadata: {e}")
             return None
 
-    async def download_bundle_openapi(self, bundle_date: datetime, temp_dir: str, product_type: str = 'SPP') -> Path:
-        # Check DB for docId first
-        bundle_info = await self.get_bundle_docid_from_db(product_type, bundle_date)
-        logger.debug("bundle_info: %s", bundle_info)
-        if not bundle_info:
-            # Fetch metadata and save docid to DB
-            bundle_info = await self.get_bundle_metadata(bundle_date, product_type)
-            logger.debug("bundle_info: %s", bundle_info)
-            await self.save_bundle_docid_to_db(
-                product_type, bundle_date,
-                bundle_info['docId'],
-                bundle_info['postDatetime'],
-                bundle_info.get('friendlyName', '')
-            )
-        doc_id = bundle_info['docId']
-        friendly_name = bundle_info.get('friendlyName', '')
-        product_id = ERCOT_PRODUCT_IDS[product_type]['BUNDLE']
-        bundle_zip_path = Path(
-            temp_dir) / f"{bundle_date.strftime('%Y%m%d')}_{product_type.lower()}_bundle.zip"
-        logger.debug("Bundle Info: Doc Id %s Friendly Name: %s Product Id: %s bundle_zip_path: %s",
-                     doc_id, friendly_name, product_id, bundle_zip_path)
-        # Only download if not already present
-        if not bundle_zip_path.exists():
-            await self.api_client.download_bundle(
-                product_id, doc_id, str(bundle_zip_path))
-            logger.info(
-                f"Downloaded bundle ZIP via OpenAPI: {bundle_zip_path} (docId={doc_id}, {friendly_name})")
-        else:
-            logger.info(f"Bundle ZIP already exists: {bundle_zip_path}")
-        return bundle_zip_path
+    # async def download_bundle_openapi(self, bundle_date: datetime, temp_dir: str, product_type: str = 'SPP') -> Path:
+    #     # Check DB for docId first
+    #     bundle_info = await self.get_bundle_docid_from_db(product_type, bundle_date)
+    #     logger.debug("bundle_info: %s", bundle_info)
+    #     if not bundle_info:
+    #         # Fetch metadata and save docid to DB
+    #         bundle_info = await self.get_bundle_metadata(bundle_date, product_type)
+    #         logger.debug("bundle_info: %s", bundle_info)
+    #         await self.save_bundle_docid_to_db(
+    #             product_type, bundle_date,
+    #             bundle_info['docId'],
+    #             bundle_info['postDatetime'],
+    #             bundle_info.get('friendlyName', '')
+    #         )
+    #     doc_id = bundle_info['docId']
+    #     friendly_name = bundle_info.get('friendlyName', '')
+    #     product_id = ERCOT_PRODUCT_IDS[product_type]['BUNDLE']
+    #     bundle_zip_path = Path(
+    #         temp_dir) / f"{bundle_date.strftime('%Y%m%d')}_{product_type.lower()}_bundle.zip"
+    #     logger.debug("Bundle Info: Doc Id %s Friendly Name: %s Product Id: %s bundle_zip_path: %s",
+    #                  doc_id, friendly_name, product_id, bundle_zip_path)
+    #     # Only download if not already present
+    #     if not bundle_zip_path.exists():
+    #         await self.api_client.download_bundle(
+    #             product_id, doc_id, str(bundle_zip_path))
+    #         logger.info(
+    #             f"Downloaded bundle ZIP via OpenAPI: {bundle_zip_path} (docId={doc_id}, {friendly_name})")
+    #     else:
+    #         logger.info(f"Bundle ZIP already exists: {bundle_zip_path}")
+    #     return bundle_zip_path
 
     async def fetch_and_extract_dam_bundle(self, dam_date: datetime, temp_dir: str) -> dict:
+        """
+        Fetch and extract the Day-Ahead Market (DAM) data bundle for a given date.
+        This asynchronous method checks whether the specified DAM bundle (identified by
+        `dam_date`) has already been processed in the database. If not, it retrieves
+        metadata, downloads the bundle as a ZIP file, and recursively extracts any
+        nested ZIP archives. All CSV files matching the predefined DAM data keys are
+        read into pandas DataFrames with normalized headers, collected, and concatenated
+        per key. Detailed logging captures progress and warnings.
+        Parameters
+        ----------
+        dam_date : datetime.datetime
+            The date of the DAM bundle to fetch and process. Used to form lookup keys
+            and metadata retrieval.
+        temp_dir : str
+            Filesystem path to the temporary directory where the downloaded ZIP file
+            will be stored before extraction.
+        Returns
+        -------
+        Dict[str, pandas.DataFrame]
+            A mapping from each DAM data key (e.g.,
+            "60d_DAM_EnergyBids", "60d_DAM_EnergyBidAwards",
+            "60d_DAM_EnergyOnlyOffers", "60d_DAM_EnergyOnlyOfferAwards") to a
+            pandas.DataFrame containing the concatenated contents of all matching CSV
+            files. Keys with no extracted files are omitted. Returns an empty dict if:
+              - The bundle was already processed.
+              - Metadata lookup failed.
+              - Any extraction or parsing error occurred (errors are logged internally).
+        Notes
+        -----
+        - Nested ZIP files within the main archive are handled recursively.
+        - Headers of CSV files are normalized before DataFrame creation.
+        - All exceptions are caught and logged; this method never raises.
+        """
         month_key = dam_date.strftime('%Y-%m')
         bundle_info = await self.get_bundle_docid_from_db('DAM', dam_date)
         if bundle_info:
@@ -1341,6 +1396,30 @@ class ImprovedERCOTDataPipeline:
             return {}
 
     async def fetch_and_extract_spp_bundle(self, spp_date: datetime, temp_dir: str) -> list:
+        """
+        Asynchronously fetches, downloads, caches, and extracts all CSV files from ERCOT SPP bundles for a given month.
+        Parameters:
+            spp_date (datetime): Target date used to identify the year-month of SPP bundles to process.
+            temp_dir (str): Local temporary directory path where bundle ZIP files will be downloaded.
+        Returns:
+            List[pandas.DataFrame]: A list of DataFrame objects, each corresponding to an extracted CSV file.
+              Returns an empty list if the bundle has already been processed or no bundles are found.
+        Behavior:
+            1. Checks the database to see if the SPP bundle for the specified month has already been processed.
+               - If found, logs and skips re-download, returning an empty list.
+            2. Retrieves bundle metadata from the ERCOT API, filtered by the specified year-month.
+               - Logs an error and returns if no bundles are available.
+            3. For each bundle:
+               a. Determines the download path and optional cache path.
+               b. If caching is enabled and a cached ZIP exists, copies it; otherwise downloads the bundle.
+               c. Saves the downloaded bundle to cache if enabled.
+               d. Opens the ZIP file and recursively extracts nested ZIPs and CSVs.
+               e. Reads each CSV into a pandas DataFrame, normalizes column headers, and appends to the result list.
+               f. Logs successes and handles extraction errors individually.
+            4. Logs the total number of bundles processed and all extracted file names.
+        Exceptions:
+            Catches and logs any errors occurring during metadata fetch, download, caching, or extraction.
+        """
         product_type = 'SPP'
         month_key = spp_date.strftime('%Y-%m')
         bundle_info = await self.get_bundle_docid_from_db(product_type, spp_date)
@@ -1428,13 +1507,34 @@ class ImprovedERCOTDataPipeline:
 
     def update(self, spp_start_date, spp_end_date, dam_start_date, dam_end_date):
         """
-        Update the pipeline by filtering and appending new data for the given date ranges.
-        - Loads DAM and SPP data from ERCOT API endpoints.
-        - Filters DAM tables (offers, bids, offer_awards, bid_awards) by tracked QSEs.
-        - Filters settlement points based on active awards for those QSEs.
-        - Aggregates SPP data by DELIVERYDATE, DELIVERHOUR, SETTLEMENTPOINTNAME, averaging SETTLEMENTPOINTPRICE over DELIVERYINTERVAL, and taking the first of INSERTEDAT, DSTGLAD, SETTLEMENTPOINTTYPE.
-        - Appends filtered/aggregated data to the existing tables.
+        Update ERCOT pipeline data for DA and SPP markets within the provided date ranges.
+        This method performs the following steps:
+          1. Determine the set of tracked QSEs either from self.tracked_qse_names or by reading
+             the ERCOT_tracking_list.csv file.
+          2. Load Day-Ahead Market (DAM) energy-only offers, bids, offer awards, and bid awards
+             from the API for the provided DAM date range.
+          3. Filter each DAM DataFrame to include only records for the tracked QSEs.
+          4. Identify settlement point names with positive awards in the DAM data.
+          5. Load Settlement Point Price (SPP) data from the API for the provided SPP date range
+             and filter to the active settlement points identified in step 4.
+          6. If SPP data is present, aggregate it by delivery date, hour, and settlement point,
+             computing the average price and preserving the first interval, timestamp, DST flag,
+             and point type.
+          7. Store the filtered and aggregated DataFrames in batch via `store_dataframes_batch`.
+          8. Append the new SPP records to the FINAL table using `create_final_table_optimized`,
+             logging success or failure.
+        Args:
+            spp_start_date (str or datetime-like): Start date for SPP data retrieval.
+            spp_end_date (str or datetime-like): End date for SPP data retrieval.
+            dam_start_date (str or datetime-like): Start date for DAM data retrieval.
+            dam_end_date (str or datetime-like): End date for DAM data retrieval.
+        Raises:
+            RuntimeError: If no tracked QSEs are provided and the tracking CSV cannot be loaded.
+            Exception: If appending to the FINAL table fails, the exception is logged and propagated.
+        Returns:
+            None
         """
+
         import pandas as pd
 
         # 1. Get tracked QSEs
@@ -1522,9 +1622,21 @@ class ImprovedERCOTDataPipeline:
 
     def fetch_current_api_data(self, url: str, start_date: str, end_date: str) -> List[Dict]:
         """
-        Fetches all paginated data from the ERCOT API endpoint for the given date range.
-        Returns a list of records (dicts).
+        Fetches and aggregates paginated API data between two dates, flattening nested structures.
+        This method sends repeated GET requests to the specified URL with pagination parameters
+        until all pages of data are retrieved. It extracts the "data" field from the JSON response,
+        which may be a list, a dictionary of lists, or a dictionary of dictionaries, and flattens it
+        into a single list of dictionaries.
+        Parameters:
+            url (str): The API endpoint to query.
+            start_date (str): The lower bound delivery date in ISO format (e.g., "YYYY-MM-DD").
+            end_date (str): The upper bound delivery date in ISO format (e.g., "YYYY-MM-DD").
+        Returns:
+            List[Dict]: A list of data records, where each record is a dictionary.
+        Raises:
+            requests.HTTPError: If any HTTP request returns a bad status code.
         """
+
         records = []
         page = 1
         while True:
@@ -1561,11 +1673,39 @@ class ImprovedERCOTDataPipeline:
         return records
 
     def current_60_dam_energy_only_offer_awards(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """
+        Fetches the current 60-minute day-ahead market (DAM) energy-only offer awards for a given date range.
+
+        Args:
+            start_date (str): Start date in 'YYYY-MM-DD' format for the data retrieval.
+            end_date (str): End date in 'YYYY-MM-DD' format for the data retrieval.
+
+        Returns:
+            pandas.DataFrame: DataFrame containing the energy-only offer awards for each 60-minute interval between start_date and end_date.
+
+        Raises:
+            ValueError: If the API returns invalid data or required parameters are missing.
+            requests.HTTPError: If the HTTP request to the ERCOT API fails.
+        """
         url = "https://api.ercot.com/api/public-reports/np3-966-er/60_dam_energy_only_offer_awards"
         data = self.fetch_current_api_data(url, start_date, end_date)
         return pd.DataFrame(data)
 
     def current_60_dam_energy_only_offers(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """
+        Fetches the current 60-minute day-ahead market (DAM) energy-only offers from ERCOT.
+
+        Args:
+            start_date (str): Start of the reporting period, in YYYY-MM-DD format.
+            end_date (str): End of the reporting period, in YYYY-MM-DD format.
+
+        Returns:
+            pandas.DataFrame: DataFrame containing the DAM energy-only offers for the specified date range.
+
+        Raises:
+            requests.HTTPError: If the API request to ERCOT fails.
+            ValueError: If the provided dates are not in the expected format.
+        """
         url = "https://api.ercot.com/api/public-reports/np3-966-er/60_dam_energy_only_offers"
         data = self.fetch_current_api_data(url, start_date, end_date)
         return pd.DataFrame(data)
@@ -1612,23 +1752,34 @@ if __name__ == "__main__":
     import argparse
     from pathlib import Path
     import shutil
-    parser = argparse.ArgumentParser(description="ERCOT Data Pipeline")
+    parser = argparse.ArgumentParser(
+        description="ERCOT Data Pipeline. "
+        "This pipeline processes Day-Ahead Market (DAM) data and Settlement Point Prices (SPP) data from ERCOT."
+        "The final tables are: DAM_ENERGY_BIDS, DAM_ENERGY_BID_AWARDS, DAM_ENERGY_OFFERS, DAM_ENERGY_OFFER_AWARDS, SPP_SETTLEMENT_PRICES, and FINAL."
+        "The FINAL table combines DAM and SPP data for tracked QSEs and settlement points."
+
+    )
     parser.add_argument('--start', type=str, required=True,
-                        help='Start date (YYYY-MM-DD or YYYY-MM)')
+                        help='Start date (YYYY-MM-DD or YYYY-MM) Must be 60 days lagged if you want the DAM data.')
     parser.add_argument('--end', type=str, required=True,
-                        help='End date (YYYY-MM-DD or YYYY-MM)')
+                        help='End date (YYYY-MM-DD or YYYY-MM)',
+                        )
     parser.add_argument(
-        '--db', type=str, default='ercot_data_improved.db', help='SQLite DB path')
+        '--db', type=str, default='ercot_data_improved.db', help='SQLite DB path',
+    )
     parser.add_argument('--mode', type=str, choices=['sync', 'async', 'bundle-download'],
                         default='sync', help='Pipeline mode: sync (default), async, or bundle-download.')
     parser.add_argument('--download-workers', type=int, default=3,
                         help='Number of download workers (default: 3)')
     parser.add_argument('--processing-workers', type=int, default=6,
                         help='Number of processing workers (default: 6)')
-    parser.add_argument('--storage-workers', type=int, default=4,
-                        help='Number of storage workers (default: 4)')
+    parser.add_argument(
+        '--storage-workers', type=int, default=4,
+        help='Number of storage workers (default: 4)'
+    )
     parser.add_argument(
         "--clear-cache",
+        default=True,
         action="store_true",
         help="Remove the cache directory before running the pipeline"
     )
@@ -1682,9 +1833,16 @@ if __name__ == "__main__":
             # end of calendar year or overall end date
             year_end = datetime(current_start.year, 12, 31)
             period_end = min(year_end, end_date)
-            # construct a year‐specific database filename
-            base_db = args.db.rstrip('.db')
-            year_db = f"{base_db}_{current_start.year}.db"
+            # Only append year if not already present
+            db_arg = args.db
+            year_str = str(current_start.year)
+            if db_arg.endswith(f"_{year_str}.db"):
+                year_db = db_arg
+            elif db_arg.endswith(".db"):
+                base_db = db_arg[:-3]
+                year_db = f"{base_db}_{year_str}.db"
+            else:
+                year_db = f"{db_arg}_{year_str}.db"
             logger.debug("Running pipeline for year DB: %s", year_db)
             logger.debug("Current start date: %s, Period end date: %s",
                          current_start, period_end)
